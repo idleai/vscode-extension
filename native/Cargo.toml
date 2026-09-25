@@ -1,0 +1,11 @@
+[package]
+name = "idle-vscode-native"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "MIT"
+publish = false
+description = "VS Code-specific native observation and bridge adapters"
+
+[lints]
+workspace = true

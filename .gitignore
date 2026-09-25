@@ -1,0 +1,10 @@
+/target/
+/dist/
+/node_modules/
+/out/
+*.vsix
+.DS_Store
+.env
+.env.*
+!.env.example
+.editchain/

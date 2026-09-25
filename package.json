@@ -1,0 +1,55 @@
+{
+  "name": "idle",
+  "displayName": "Idle",
+  "description": "Idle workspace client scaffold",
+  "version": "0.1.0",
+  "publisher": "idleai",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/idleai/vscode-extension.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=22"
+  },
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "idle.open",
+        "title": "Idle: Open Workspace"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "type": "webview",
+          "id": "idle.workspace",
+          "name": "Idle"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "compile": "tsc -p .",
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "build": "npm run compile && npm run build:wasm",
+    "check": "bash scripts/check.sh",
+    "package": "vsce package --no-dependencies --out idle.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "@types/vscode": "1.85.0",
+    "@vscode/vsce": "3.9.2",
+    "typescript": "6.0.2"
+  }
+}

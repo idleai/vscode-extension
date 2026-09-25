@@ -1,0 +1,41 @@
+[graph]
+all-features = true
+
+[advisories]
+db-urls = ["https://github.com/rustsec/advisory-db"]
+ignore = [
+    # Crux 0.20 requires bincode 1.3.3 for its bridge; no patched version exists.
+    # This is an unmaintained advisory, not a vulnerability waiver. Remove when
+    # Crux migrates serialization (f21). Keep all other advisory checks enabled.
+    # https://rustsec.org/advisories/RUSTSEC-2025-0141.html
+    "RUSTSEC-2025-0141",
+]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "CC0-1.0",
+    "Zlib",
+    "MPL-2.0",
+]
+confidence-threshold = 0.8
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+
+[sources]
+unknown-registry = "warn"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

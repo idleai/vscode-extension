@@ -1,0 +1,55 @@
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vscode-extension
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: vscode-extension
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: idleai/app-core
+          ref: main
+          path: app-core
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: idleai/web-ui
+          ref: main
+          path: web-ui
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "vscode-extension -> target"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: vscode-extension/package-lock.json
+      - run: cargo install --locked wasm-bindgen-cli --version 0.2.127
+      - run: npm ci
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked --version 0.20.2
+      - run: bash scripts/check.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: idle-vscode
+          path: vscode-extension/idle.vsix
+          if-no-files-found: error
