@@ -31,4 +31,4 @@ run("wasm-bindgen", [
   join(metadata.target_directory, "wasm32-unknown-unknown", "release", "idle_vscode_webview.wasm"),
 ]);
 cpSync(join(root, "static"), output, { recursive: true });
-cpSync(join(root, "../web-ui/assets/theme.css"), join(output, "theme.css"));
+cpSync(join(root, "../web-ui/crates/web-ui/assets/theme.css"), join(output, "theme.css"));

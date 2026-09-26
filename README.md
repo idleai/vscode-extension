@@ -1,5 +1,9 @@
 # vscode-extension
 
+The TypeScript host lives in `extension/src/`. The root Cargo workspace contains
+`crates/idle-vscode-native/` and `crates/idle-vscode-webview/`. Build, test and package
+commands still run from the repository root and emit `out/`, `dist/` and `idle.vsix`.
+
 Initial scaffold for Idle. Module ownership, current behavior, and build
 instructions are documented below; reserved modules are intentionally empty.
 
@@ -67,11 +71,11 @@ The workspace extension runs on the file-owning host (including remote VS Code).
 
 | Boundary | Owner after f1 |
 | --- | --- |
-| package.json, TypeScript host exports, `src/extension.ts`, `src/host/`, native manifest, CI | f38/extension-host |
-| `src/capture/`, `native/src/capture.rs` | f39/editor-capture |
-| `src/history/`, `native/src/history.rs` | f40/native-history-actions |
-| `src/presence/` | f41/peer-awareness |
-| `src/provenance/` | f42/provenance-decorations |
+| package.json, TypeScript host exports, `extension/src/extension.ts`, `extension/src/host/`, native manifest, CI | f38/extension-host |
+| `extension/src/capture/`, `crates/idle-vscode-native/src/capture.rs` | f39/editor-capture |
+| `extension/src/history/`, `crates/idle-vscode-native/src/history.rs` | f40/native-history-actions |
+| `extension/src/presence/` | f41/peer-awareness |
+| `extension/src/provenance/` | f42/provenance-decorations |
 | webview manifest/entrypoint, WASM build/assets, shared view assembly | f43/extension-assembly |
 
 The root Cargo workspace manifest is owned by f38; f43 owns changes specific to
