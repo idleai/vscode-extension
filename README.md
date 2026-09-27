@@ -4,13 +4,76 @@ The TypeScript host lives in `extension/src/`. The root Cargo workspace contains
 `crates/idle-vscode-native/` and `crates/idle-vscode-webview/`. Build, test and package
 commands still run from the repository root and emit `out/`, `dist/` and `idle.vsix`.
 
-Initial scaffold for Idle. Module ownership, current behavior, and build
-instructions are documented below; reserved modules are intentionally empty.
+Idle's thin TypeScript workspace host, with application state in `app-core` and
+shared Rust/WASM rendering in `web-ui`. Activation installs commands, configuration,
+sidebar/detail webviews, output/status/notifications, credentials, native IPC and
+Dev Tunnels adapters. Opening either view currently mounts the shared bootstrap
+component; editor capture, history actions and complete workspace UI assembly have
+separate feature owners below.
 
-Thin TypeScript extension host with a Rust/WASM webview and a reserved native
-adapter crate. The `Idle: Open Workspace` command reveals an Idle view in Explorer
-and mounts the same scaffold component as the browser app. Capture, process
-bridges, tunnels and session execution are not implemented here yet.
+Activation performs no authentication, native launch or network connection.
+Platform services live until extension deactivation, independently of view
+lifetimes. Each view receives a fresh protocol session; closing it cancels its
+pending calls and discards late responses without stopping native services.
+
+## Host integration
+
+`activate()` returns `HostServices`. Native feature modules use
+`host.configuration.forResource(uri)`, `host.native.request(uri, body)`,
+`host.native.requestJson(uri, bytes)`, and `host.native.startPeer(uri)`. Every
+native operation resolves an explicit open workspace folder. Relative chain
+directories use that folder, and processes inherit its directory. Multi-root
+windows never silently choose their first folder. Unsupported virtual filesystems
+and untrusted workspaces cannot launch native adapters or access credentials.
+
+The manifest declares `extensionKind: ["workspace"]`, so native adapters run with
+the files in remote SSH, containers and Codespaces. See VS Code's
+[workspace extension host documentation](https://code.visualstudio.com/api/advanced-topics/extension-host).
+`idle.native.servicePath` and `idle.native.peerPath` are absolute paths on that
+host. Empty settings resolve `bin/<platform>-<arch>/editchain-vscode-service`
+and `editchain-peer` (with `.exe` on Windows). **This feature does not yet ship
+native binaries**; configure built compatible executables until f43 packages them.
+Workspace build directories and the UI machine's PATH are not searched.
+
+`host.effects.register(method, handler, requiresTrust)` installs an explicit
+webview effect. Uninstalled actions fail as unavailable. The built-in methods
+are `host.ready`, `configuration.read`, `output.show`, `notification.show`,
+`clipboard.write` and `external.open`. Credentials, arbitrary commands, executable
+paths and general native RPC are not webview methods. `external.open` accepts
+HTTP(S) links without embedded credentials. File/revision/diff actions arrive
+through f40's explicit engine bindings.
+
+The Rust `webview::bridge` owns API acquisition, deferred `postMessage`, JSON
+`getState`/`setState`, and disposable subscriptions. Envelope version 1 uses
+`{protocol, session, id, method, params}`; replies contain `result` or
+`error: {code, message}`, and events contain `event` and `params`. Requests are
+limited to 1 MiB and 64 concurrent calls per view. Domain correlation, selection,
+reconciliation, caches and rendering stay in the Rust libraries. The host uses
+asset-only resource roots and a restrictive
+[webview content security policy](https://code.visualstudio.com/api/extension-guides/webview#content-security-policy).
+
+`host.credentials` adapts VS Code GitHub sessions and namespaced SecretStorage.
+SDK callbacks re-read a token for the originally selected account; only account
+metadata reaches UI. `host.devTunnels()` lazily supplies pinned encrypted relay
+streams, with local port forwarding disabled. Caller-supplied Rust/runtime code
+owns authorization, invitations, peer protocol and reconnect decisions. The
+adapter never refreshes an approved endpoint to an unapproved host key.
+
+Tunnel shutdown suspends established leases and removes incomplete new hosts;
+explicit `stop()` deletes a resource. An account-scoped journal retains cleanup
+markers, checks known active window/process leases and releases them on shutdown.
+It is a local VS Code cleanup journal, not a distributed ownership service.
+Cancelled SDK calls dispose late streams/resources, and failed cleanup remains
+retryable. SDK SSH disconnect/close events terminate the owned Node streams;
+destroying a V2 stream also disposes its encryption session. Default automated
+tests use injected SDKs and real local encrypted SSH
+streams. The opt-in live probe below exercises the migrated adapters against the
+Microsoft relay with both endpoints on one machine.
+
+Commands: **Open Workspace**, **Open Detail View**, **Show Output**, **Open Extension
+Settings**, **Restart Native Adapters**, **Sign In to GitHub**, and **Clean Up Dev
+Tunnels** (all prefixed `Idle:`). Restart closes adapters; their next operation
+starts them again. Cleanup selects inactive resources for the current account.
 
 Keep sibling checkouts under one parent directory:
 
@@ -48,7 +111,7 @@ and cargo-deny. Browser-facing libraries also run checks and Clippy for
 Rust, Clippy and Rustdoc rules and its thresholds in `clippy.toml`.
 `./scripts/check.sh` runs that gate followed by this repo's builds/packaging.
 
-For the WASM bundle, install Node 22 and the exact matching bindgen CLI:
+For the WASM bundle and host tooling, install Node 22.12 or newer and the exact matching bindgen CLI:
 
 ```sh
 cargo install --locked wasm-bindgen-cli --version 0.2.127
@@ -59,10 +122,51 @@ snippets alongside WASM. It uses Cargo and the pinned wasm-bindgen CLI.
 
 ```sh
 npm ci
+npm test
 npm run build
 npm run package
 bash scripts/check.sh
 ```
+
+`npm test` covers activation, trust/account boundaries, session-isolated webview
+messages, real child process cleanup, framing/backpressure, and encrypted tunnel
+lifecycle/cleanup. `scripts/check.sh` runs those tests as well as the canonical
+Rust gate and VSIX build. An optional isolated Chromium check exercises the WASM
+and CSP extracted from the VSIX, without using a signed-in browser:
+
+```sh
+CHROME_BIN=/absolute/path/to/chrome npm run test:webview
+```
+
+With an existing `gh auth login` for GitHub, run the cloud probe explicitly:
+
+```sh
+npm run test:tunnels:live
+```
+
+This creates a temporary private tunnel, verifies 1 MiB of synthetic bytes in each
+direction, suspends/resumes its host, reconnects with the approved new key, rejects
+the previous host key, cancels a live port wait, and deletes the tunnel. It
+checks the service independently for remaining resources. Credentials and relay
+descriptors stay in memory; only cleanup markers are persisted in the printed
+temporary journal path. The probe does not read or transmit workspace files.
+If cleanup fails or the process is killed, retain that journal and, after the
+original process has exited, retry with the same GitHub account:
+
+```sh
+npm run test:tunnels:live -- --cleanup /path/from/probe/cleanup.json
+```
+
+The live probe is separate from CI. It does not cover another machine/network,
+another account, or the assembled multiplayer UI in VS Code.
+
+The host bundle includes its runtime dependencies; the VSIX contains only that
+bundle, notices and web assets (plus native artifacts when supplied under `bin`).
+The Dev Tunnels SDK pins match the extraction source. Its `uuid` dependency is
+overridden to 11.1.1 to address its advisory; the SDK's `v4()` calls are covered by
+an actual SDK construction/disposal test. `node-rsa` supplies the SDK's undeclared
+legacy fallback so bundling leaves no unresolved import for it. Supported VS Code
+hosts use Node's native RSA implementation.
 
 `npm run package` builds and writes `idle.vsix`. Install it with
 `code --install-extension idle.vsix`, or use the checked-in `Idle Extension`
@@ -81,11 +185,16 @@ The workspace extension runs on the file-owning host (including remote VS Code).
 The root Cargo workspace manifest is owned by f38; f43 owns changes specific to
 its webview member. Coordinate npm manifest/script changes with f38.
 
-Reuse `editchain/extensions/vscode-editchain/src/` editor capture, historical
-providers, stdio messaging, credentials, multiplayer and Dev Tunnels adapters.
-Retain VS Code-specific Rust conversion from `editchain-node/src/editor/` and
-`editchain-protocol/src/editor*` in the native crate. Feature owners move those
-implementations; f1 leaves the existing extension working in its current repo.
+## Extraction ownership
+
+The host primitives were adapted from EditChain's `stdioClient.ts`,
+`frameDecoder.ts`, activation/commands/account adapters, `multiplayer/relay.ts`,
+`multiplayer/native.ts`, `devTunnels/spike.ts`, and renderer `shell/runtime.rs`.
+The complete legacy extension remains temporarily executable for its capture and
+history consumers. Its `HOST-MIGRATION.md` records the source mappings and cleanup
+owners. f39 moves capture/conversion, f40 moves document/history actions, f43
+switches UI consumers and retires the old host; f18/f23/f28 own coordination and
+shared Rust state. No legacy domain or rendering state was copied into TypeScript.
 
 The dependency policy in `deny.toml` includes one explicit maintenance exception:
 [RUSTSEC-2025-0141](https://rustsec.org/advisories/RUSTSEC-2025-0141.html), for

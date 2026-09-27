@@ -1,7 +1,7 @@
 {
   "name": "idle",
   "displayName": "Idle",
-  "description": "Idle workspace client scaffold",
+  "description": "Idle workspace host with shared Rust application and rendering libraries",
   "version": "0.1.0",
   "publisher": "idleai",
   "license": "MIT",
@@ -12,7 +12,7 @@
   },
   "engines": {
     "vscode": "^1.85.0",
-    "node": ">=22"
+    "node": ">=22.12"
   },
   "categories": [
     "Other"
@@ -20,14 +20,82 @@
   "extensionKind": [
     "workspace"
   ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Views and diagnostics are available. Native processes, credentials and transports require trust.",
+      "restrictedConfigurations": [
+        "idle.native.servicePath",
+        "idle.native.peerPath",
+        "idle.chainDirectory"
+      ]
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Native adapters run on the host that owns the workspace files."
+    }
+  },
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "idle.open",
         "title": "Idle: Open Workspace"
+      },
+      {
+        "command": "idle.openDetail",
+        "title": "Idle: Open Detail View"
+      },
+      {
+        "command": "idle.showOutput",
+        "title": "Idle: Show Output"
+      },
+      {
+        "command": "idle.openSettings",
+        "title": "Idle: Open Extension Settings"
+      },
+      {
+        "command": "idle.restartNative",
+        "title": "Idle: Restart Native Adapters",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.signIn",
+        "title": "Idle: Sign In to GitHub",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.cleanupTunnels",
+        "title": "Idle: Clean Up Dev Tunnels",
+        "enablement": "isWorkspaceTrusted"
       }
     ],
+    "configuration": {
+      "title": "Idle",
+      "properties": {
+        "idle.native.servicePath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Absolute editchain-vscode-service path on the workspace host. Empty resolves a packaged binary for that host's platform and architecture."
+        },
+        "idle.native.peerPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Absolute editchain-peer path on the workspace host. Empty resolves a packaged binary for that host's platform and architecture."
+        },
+        "idle.chainDirectory": {
+          "type": "string",
+          "default": ".editchain",
+          "scope": "resource",
+          "description": "Folder-local chain binding. Relative paths resolve against the explicitly selected workspace folder on the file-owning host."
+        }
+      }
+    },
     "views": {
       "explorer": [
         {
@@ -41,8 +109,12 @@
   "scripts": {
     "vscode:prepublish": "npm run build",
     "compile": "tsc -p .",
+    "test": "npm run compile && node --test test/*.test.cjs",
+    "test:tunnels:live": "npm run compile && node scripts/smoke-dev-tunnels.cjs",
+    "test:webview": "node scripts/smoke-webview.mjs idle.vsix",
+    "build:host": "node scripts/build-host.mjs",
     "build:wasm": "node scripts/build-wasm.mjs",
-    "build": "npm run compile && npm run build:wasm",
+    "build": "npm run compile && npm run build:host && npm run build:wasm",
     "check": "bash scripts/check.sh",
     "package": "vsce package --no-dependencies --out idle.vsix"
   },
@@ -50,6 +122,22 @@
     "@types/node": "22.19.17",
     "@types/vscode": "1.85.0",
     "@vscode/vsce": "3.9.2",
+    "esbuild": "0.28.2",
+    "puppeteer-core": "25.12.0",
     "typescript": "6.0.2"
+  },
+  "overrides": {
+    "@microsoft/dev-tunnels-connections": {
+      "uuid": "11.1.1"
+    }
+  },
+  "dependencies": {
+    "@microsoft/dev-tunnels-connections": "1.3.56",
+    "@microsoft/dev-tunnels-contracts": "1.3.56",
+    "@microsoft/dev-tunnels-management": "1.3.56",
+    "@microsoft/dev-tunnels-ssh": "3.12.42",
+    "@microsoft/dev-tunnels-ssh-tcp": "3.12.42",
+    "node-rsa": "2.0.0",
+    "vscode-jsonrpc": "4.0.0"
   }
 }
