@@ -11,13 +11,17 @@ description = "Idle VS Code webview entrypoint"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-app-core = { path = "../../app-core", version = "0.1.0" }
-web-ui = { path = "../../web-ui", version = "0.1.0" }
+app-core = { path = "../../../app-core/crates/app-core", version = "0.1.0" }
+web-ui = { path = "../../../web-ui/crates/web-ui", version = "0.1.0" }
 dioxus = { version = "=0.7.7", default-features = false, features = ["macro", "html", "hooks", "signals"] }
+serde_json = "=1.0.151"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 dioxus-web = { version = "=0.7.7", default-features = false }
+js-sys = "=0.3.104"
 wasm-bindgen = "=0.2.127"
+wasm-bindgen-futures = "=0.4.77"
+web-sys = { version = "=0.3.104", features = ["Window", "Document", "Element", "EventTarget", "MessageEvent", "console"] }
 
 [lints]
 workspace = true

@@ -6,7 +6,7 @@
     "lib": [
       "ES2022"
     ],
-    "rootDir": "src",
+    "rootDir": "extension/src",
     "outDir": "out",
     "strict": true,
     "noUnusedLocals": true,
@@ -16,6 +16,6 @@
     "sourceMap": true
   },
   "include": [
-    "src/**/*.ts"
+    "extension/src/**/*.ts"
   ]
 }

@@ -18,8 +18,11 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 name = "app-core"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "crux_core",
+ "facet",
  "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -798,7 +801,11 @@ dependencies = [
  "app-core",
  "dioxus",
  "dioxus-web",
+ "js-sys",
+ "serde_json",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
  "web-ui",
 ]
 

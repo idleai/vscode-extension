@@ -2,7 +2,7 @@
 !package.json
 !README.md
 !LICENSE
-!out/
-!out/**/*.js
-!dist/
+!out/extension.js
+!out/extension.js.LEGAL.txt
 !dist/**
+!bin/**
