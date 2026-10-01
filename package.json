@@ -92,6 +92,31 @@
         "command": "idle.tracking.status",
         "title": "Idle: Show Capture Status",
         "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.history.openRecord",
+        "title": "Idle: Open Raw Record",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.history.openOriginal",
+        "title": "Idle: Open Original",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.history.openFile",
+        "title": "Idle: Open Recorded File",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.history.openDiff",
+        "title": "Idle: Open Recorded Diff",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.history.openWorkingFile",
+        "title": "Idle: Open Working File",
+        "enablement": "isWorkspaceTrusted"
       }
     ],
     "configuration": {
@@ -154,6 +179,12 @@
           "default": "",
           "scope": "window",
           "description": "Raw archive directory on the workspace host. Empty uses extension global storage; relative paths require one unambiguous folder."
+        },
+        "idle.native.historyPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Absolute idle-history-service path on the workspace host. Empty uses the packaged history service."
         }
       }
     },
@@ -163,6 +194,30 @@
           "type": "webview",
           "id": "idle.workspace",
           "name": "Idle"
+        }
+      ]
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "idle.history.openRecord",
+          "when": "false"
+        },
+        {
+          "command": "idle.history.openOriginal",
+          "when": "false"
+        },
+        {
+          "command": "idle.history.openFile",
+          "when": "false"
+        },
+        {
+          "command": "idle.history.openDiff",
+          "when": "false"
+        },
+        {
+          "command": "idle.history.openWorkingFile",
+          "when": "false"
         }
       ]
     }
@@ -175,10 +230,11 @@
     "test:webview": "node scripts/smoke-webview.mjs idle.vsix",
     "build:host": "node scripts/build-host.mjs",
     "build:wasm": "node scripts/build-wasm.mjs",
-    "build": "npm run compile && npm run build:host && npm run build:wasm && npm run build:capture",
+    "build": "npm run compile && npm run build:host && npm run build:wasm && npm run build:capture && npm run build:history",
     "check": "bash scripts/check.sh",
     "package": "vsce package --no-dependencies --out idle.vsix",
-    "build:capture": "node scripts/build-capture.mjs"
+    "build:capture": "node scripts/build-capture.mjs",
+    "build:history": "node scripts/build-history.mjs"
   },
   "devDependencies": {
     "@types/node": "22.19.17",

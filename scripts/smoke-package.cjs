@@ -8,6 +8,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { fixture, uri } = require('../test/helpers/vscode.cjs');
 const { smokeCapture } = require('./smoke-capture.cjs');
+const { smokeHistory } = require('./smoke-history.cjs');
 
 async function main() {
   const temporary = mkdtempSync(path.join(tmpdir(), 'idle-package-smoke-'));
@@ -21,6 +22,8 @@ async function main() {
     assert.ok(files.includes('extension/dist/pkg/idle_vscode_webview_bg.wasm'));
     const captureBinary = `bin/${process.platform}-${process.arch}/idle-editor-service${process.platform === 'win32' ? '.exe' : ''}`;
     assert.ok(files.includes(`extension/${captureBinary}`));
+    const historyBinary = `bin/${process.platform}-${process.arch}/idle-history-service${process.platform === 'win32' ? '.exe' : ''}`;
+    assert.ok(files.includes(`extension/${historyBinary}`));
     assert.ok(!files.some(file => file.includes('/node_modules/') || file.includes('/out/host/') || file.endsWith('.map')));
     execFileSync('unzip', ['-q', archive, '-d', temporary]);
     const entry = path.join(temporary, 'extension/out/extension.js');
@@ -43,6 +46,7 @@ async function main() {
     const adapters = await host.devTunnels();
     adapters.createClient();
     adapters.createHost({ port: 43187, incoming() {} });
+    await smokeHistory(host, f, path.join(temporary, 'extension', historyBinary), path.join(temporary, 'extension'));
     await extension.deactivate();
     assert.deepEqual(external, []);
     Module._load = original;
