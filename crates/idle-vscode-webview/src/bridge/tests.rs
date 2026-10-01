@@ -113,9 +113,36 @@ fn null_response_remains_a_success_and_remote_errors_keep_their_code() {
             result: Err(BridgeError {
                 code: "not_available".to_owned(),
                 message: "Native service is stopped".to_owned(),
+                details: None,
             }),
         }),
         "Host errors must reach the caller without reinterpretation"
+    );
+}
+
+#[test]
+fn remote_errors_preserve_complete_candidate_references() {
+    let details = json!({"candidates": [
+        {"operation": "3".repeat(64), "hash": "4".repeat(64)},
+        {"operation": "5".repeat(64), "hash": "6".repeat(64)},
+    ]});
+    assert_eq!(
+        protocol().decode(&json!({
+            "protocol": 1, "session": "document-1", "id": "alias",
+            "error": {
+                "code": "migrated_alias", "message": "Select a converted record.",
+                "details": details,
+            },
+        })),
+        Ok(HostMessage::Response {
+            id: "alias".to_owned(),
+            result: Err(BridgeError {
+                code: "migrated_alias".to_owned(),
+                message: "Select a converted record.".to_owned(),
+                details: Some(details),
+            }),
+        }),
+        "The application needs the full replacement references to retry explicitly"
     );
 }
 
@@ -162,6 +189,8 @@ fn rejects_ambiguous_or_malformed_host_messages() {
         json!({"id": 1, "result": null}),
         json!({"id": "one", "error": {"code": "bad"}}),
         json!({"id": "one", "error": {"code": "bad", "message": 5}}),
+        json!({"id": "one", "error": {"code": "bad", "message": "bad", "details": "private"}}),
+        json!({"id": "one", "error": {"code": "bad", "message": "bad", "details": null}}),
         json!({"event": "changed"}),
         json!({"event": "changed", "params": null, "result": null}),
         json!({"event": "", "params": null}),

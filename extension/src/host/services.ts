@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { PeerAwarenessHost } from "../presence";
 import { CaptureHost } from "../capture";
+import { HistoryHost } from "../history";
 import { HostConfiguration } from "./configuration";
 import { HostCredentials } from "./credentials";
 import type { DevTunnelsAdapters } from "./devTunnels";
@@ -20,6 +21,7 @@ export class HostServices implements vscode.Disposable {
   readonly presence = new PeerAwarenessHost(this.diagnostics);
   readonly native: NativeServices;
   readonly capture: CaptureHost;
+  readonly history: HistoryHost;
   /** Byte adapters; the caller/Rust runtime owns protocol interpretation. */
   readonly transport = { bridgeDuplex, consumeTransport, writeTransport };
   private tunnels: Promise<DevTunnelsAdapters> | undefined;
@@ -34,12 +36,14 @@ export class HostServices implements vscode.Disposable {
     this.credentials = new HostCredentials(context.secrets, () => vscode.workspace.isTrusted);
     this.native = new NativeServices(this.configuration);
     this.capture = new CaptureHost(context, this.configuration, this.diagnostics);
+    this.history = new HistoryHost(context.extensionUri.fsPath, this.effects, this.diagnostics);
     const refreshCaptureAccount = () => { void this.capture.refreshAccount(async () => (await this.credentials.account())?.label); };
     refreshCaptureAccount();
     this.accountChanged = this.credentials.onDidChange(() => {
       this.capture.useAccount(undefined);
       refreshCaptureAccount();
       this.presence.disconnect();
+      this.history.disconnect();
       this.retireTunnels();
     });
     this.registerPlatformEffects();
@@ -127,7 +131,7 @@ export class HostServices implements vscode.Disposable {
     this.presence.dispose();
     this.effects.dispose();
     this.retireTunnels();
-    try { await Promise.all([this.capture.shutdown(), this.native.shutdown(), ...this.retiring]); }
+    try { await Promise.all([this.capture.shutdown(), this.history.shutdown(), this.native.shutdown(), ...this.retiring]); }
     finally { this.credentials.dispose(); }
   }
 

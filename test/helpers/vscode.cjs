@@ -15,12 +15,16 @@ function uri(value) {
 function fixture() {
   const commands = new Map();
   const events = Object.fromEntries(['configuration', 'folders', 'trust', 'authentication', 'activeEditor'].map(key => [key, new Emitter()]));
-  const calls = { auth: [], output: [], notifications: [], external: [], clipboard: [], providers: [], panels: [], lenses: [], statuses: [], choices: [] };
+  const calls = { auth: [], output: [], notifications: [], external: [], clipboard: [], providers: [], panels: [], lenses: [], statuses: [], choices: [], fileProviders: [], contentProviders: [], editorCommands: [] };
   const secrets = new Map();
   const state = new Map();
   const configuration = new Map();
   const api = {
     EventEmitter: Emitter,
+    Disposable: class { constructor(dispose) { this.dispose = dispose; } },
+    FileType: { File: 1, Directory: 2 },
+    FilePermission: { Readonly: 1 },
+    FileSystemError: { NoPermissions: message => Object.assign(new Error(message), { code: 'NoPermissions' }) },
     Uri: { parse: uri, joinPath: (base, ...parts) => uri(`${base.toString()}/${parts.join('/')}`) },
     StatusBarAlignment: { Left: 1, Right: 2 }, ViewColumn: { Active: 1 },
     CodeLens: class { constructor(range, command) { this.range = range; this.command = command; } },
@@ -35,6 +39,16 @@ function fixture() {
       onDidChangeConfiguration: events.configuration.event,
       onDidChangeWorkspaceFolders: events.folders.event,
       onDidGrantWorkspaceTrust: events.trust.event,
+      registerFileSystemProvider: (scheme, provider, options) => {
+        const value = { scheme, provider, options, disposed: false };
+        calls.fileProviders.push(value);
+        return { dispose() { value.disposed = true; } };
+      },
+      registerTextDocumentContentProvider: (scheme, provider) => {
+        const value = { scheme, provider, disposed: false };
+        calls.contentProviders.push(value);
+        return { dispose() { value.disposed = true; } };
+      },
     },
     env: { remoteName: undefined, clipboard: { writeText: async text => { calls.clipboard.push(text); } }, openExternal: async url => { calls.external.push(url.toString()); return true; } },
     authentication: {
@@ -55,7 +69,7 @@ function fixture() {
     },
     commands: {
       registerCommand: (id, run) => { commands.set(id, run); return { dispose: () => commands.delete(id) }; },
-      executeCommand: async id => id,
+      executeCommand: async (id, ...args) => { calls.editorCommands.push({ id, args }); return id; },
     },
   };
   const context = {

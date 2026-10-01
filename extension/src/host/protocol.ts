@@ -10,10 +10,19 @@ export interface HostRequest {
   params: unknown;
 }
 
+export interface PublicHostError {
+  code: string;
+  message: string;
+  /** Explicitly selected domain details; never a serialized exception. */
+  details?: Record<string, unknown>;
+}
+
 export class HostError extends Error {
   constructor(readonly code: string, message: string) {
     super(message);
   }
+
+  toPublic(): PublicHostError { return { code: this.code, message: this.message }; }
 }
 
 export function record(value: unknown): value is Record<string, unknown> {
@@ -32,9 +41,9 @@ export function parseRequest(value: unknown, session: string): HostRequest | und
 }
 
 /** Never forward unexpected exception text, transport frames or SDK errors. */
-export function publicError(error: unknown): { code: string; message: string } {
+export function publicError(error: unknown): PublicHostError {
   return error instanceof HostError
-    ? { code: error.code, message: error.message }
+    ? error.toPublic()
     : { code: "host_failure", message: "The host operation failed. Check the Idle output channel." };
 }
 

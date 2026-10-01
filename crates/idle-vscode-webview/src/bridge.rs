@@ -36,6 +36,8 @@ pub struct BridgeError {
     pub code: String,
     /// Description suitable for the caller's error reporting surface.
     pub message: String,
+    /// Host-selected domain details, such as complete replacement record references.
+    pub details: Option<Value>,
 }
 
 impl BridgeError {
@@ -43,6 +45,7 @@ impl BridgeError {
         Self {
             code: code.to_owned(),
             message: message.into(),
+            details: None,
         }
     }
 }
@@ -135,7 +138,7 @@ impl HostProtocol {
     /// Validate the version, session and envelope before exposing its payload.
     ///
     /// Success is `{protocol, session, id, result}`, failure replaces `result`
-    /// with `error: {code, message}`, and events use `{event, params}` in place
+    /// with `error: {code, message, details?}`, and events use `{event, params}` in place
     /// of `{id, result}`. Explicit null success values remain successful.
     ///
     /// # Errors
@@ -192,10 +195,17 @@ fn decode_response(value: &Value) -> Result<HostMessage, BridgeError> {
     let id = required_text(value, "id")?.to_owned();
     let result = match (value.get("result"), value.get("error")) {
         (Some(result), None) => Ok(result.clone()),
-        (None, Some(error)) => Err(BridgeError::new(
-            required_text(error, "code")?,
-            required_text(error, "message")?,
-        )),
+        (None, Some(error)) => {
+            let details = error.get("details");
+            if details.is_some_and(|value| !value.is_object()) {
+                return Err(invalid_message("Host error details must be an object"));
+            }
+            Err(BridgeError {
+                code: required_text(error, "code")?.to_owned(),
+                message: required_text(error, "message")?.to_owned(),
+                details: details.cloned(),
+            })
+        }
         (None | Some(_), None | Some(_)) => {
             return Err(invalid_message(
                 "Host response requires exactly one result or error",

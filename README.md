@@ -8,8 +8,8 @@ Idle's thin TypeScript workspace host, with application state in `app-core` and
 shared Rust/WASM rendering in `web-ui`. Activation installs commands, configuration,
 sidebar/detail webviews, output/status/notifications, credentials, native IPC and
 Dev Tunnels adapters. Opening either view currently mounts the shared bootstrap
-component. Editor capture runs independently of these views; history actions and
-complete workspace UI assembly have separate feature owners below.
+component. Editor capture and native history actions run independently of these
+views; complete workspace UI assembly has a separate feature owner below.
 
 Trusted folders with capture enabled start the packaged editor capture service
 during activation. Capture can silently read an existing account's display label;
@@ -45,8 +45,8 @@ webview effect. Uninstalled actions fail as unavailable. The built-in methods
 are `host.ready`, `configuration.read`, `output.show`, `notification.show`,
 `clipboard.write` and `external.open`. Credentials, arbitrary commands, executable
 paths and general native RPC are not webview methods. `external.open` accepts
-HTTP(S) links without embedded credentials. File/revision/diff actions arrive
-through f40's explicit engine bindings.
+HTTP(S) links without embedded credentials. Native history effects are installed
+through `host.history` and require explicit engine bindings.
 
 The Rust `webview::bridge` owns API acquisition, deferred `postMessage`, JSON
 `getState`/`setState`, and disposable subscriptions. Envelope version 1 uses
@@ -98,6 +98,40 @@ Enable `idle.tracking.jsonl.enabled` for complete raw JSONL archives. Its
 `directory` setting defaults to extension global storage. Raw event bytes match
 the outbox, so archive replay preserves identities even after lost replies.
 See [the capture contract, archive replay and remaining legacy callers](docs/editor-capture.md).
+
+## Native history actions
+
+`host.history.connect({ root, repository, chainDirectory, retainedDirectory? })`
+binds an exact checkout and app-core workspace/repository/chain selection to the
+packaged `idle-history-service`. Storage paths are absolute paths on the
+file-owning host. A selected standalone or managed adapter installs this binding;
+f43 owns wiring it to the assembled history UI. An optional provider implements
+the same contract over an existing engine connection, with an optional `restart()`
+method for resetting a service it owns.
+
+`history.open` accepts the binding, a complete operation ID and record digest,
+an explicit current/retained source, and a `Record`, `Original`, `File`, `Diff`
+or `Content` target. `history.openQuery` adapts app-core's `QueryAction::Open`.
+`history.openWorkingFile` handles explicit repository-relative working-copy
+requests. Typed `idle.history.open*` commands expose the same native actions.
+They require arguments and are hidden from the command palette.
+
+Recorded files and diff sides come from engine content queries. Raw records use
+their exact retained encoding. Binary bytes open as complete hexadecimal text;
+the companion read-only `idle-history:` URI exposes unchanged bytes. Missing,
+unrecorded, corrupt and unresolved content fail explicitly; recorded empty files
+open successfully. Migrated aliases offer complete converted references, while
+old record bytes require an explicitly bound retained source. No current file
+or partial patch substitutes for an unavailable historical snapshot.
+
+The native service is packaged for the build host's platform and architecture.
+`idle.native.historyPath` can select an absolute compatible executable on the
+workspace host. Binding, account and folder changes cancel old reads and make
+their document addresses unavailable. Restart Native preserves installed bindings
+while restarting their services and renewing document addresses. Closing a webview
+leaves history services running. Migration and conflict errors include complete
+candidate references in the bridge's `error.details.candidates` field.
+See [the action contract and extraction handoff](docs/native-history-actions.md).
 
 ## File peers and invitations
 
@@ -265,7 +299,7 @@ The workspace extension runs on the file-owning host (including remote VS Code).
 | --- | --- |
 | package.json, TypeScript host exports, `extension/src/extension.ts`, `extension/src/host/`, native manifest, CI | f38/extension-host |
 | `extension/src/capture/`, `crates/idle-editor-capture/`, native capture re-export and capture packaging | f39/editor-capture |
-| `extension/src/history/`, `crates/idle-vscode-native/src/history.rs` | f40/native-history-actions |
+| `extension/src/history/`, `crates/idle-vscode-native/src/history.rs`, history service and packaging | f40/native-history-actions |
 | `extension/src/presence/`, `crates/idle-vscode-native/src/presence/` | f41/peer-awareness |
 | `extension/src/provenance/` | f42/provenance-decorations |
 | webview manifest/entrypoint, WASM build/assets, shared view assembly | f43/extension-assembly |
@@ -281,7 +315,7 @@ The host primitives were adapted from EditChain's `stdioClient.ts`,
 The complete legacy extension remains temporarily executable for existing capture
 and history consumers. Its `HOST-MIGRATION.md` and this repo's
 [capture handoff](docs/editor-capture.md) record the source mappings and cleanup
-owners. f39 supplies the editor-owned capture/conversion path; f40 moves document/history actions, and f43
+owners. f39 supplies the editor-owned capture/conversion path; f40 supplies document/history actions, and f43
 switches UI consumers and retires the old host; f18/f23/f28 own coordination and
 shared Rust state. No legacy domain or rendering state was copied into TypeScript.
 
