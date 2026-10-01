@@ -80,6 +80,19 @@ fn resolve_effects(core: &Core, mut effects: Vec<Effect>) -> Result<(), String> 
                     .map_err(|error| error.to_string())?,
                 );
             }
+            Effect::Resource(mut request) => {
+                effects.extend(
+                    core.resolve(
+                        request.as_mut(),
+                        Err(app_core::resources::ResourceError {
+                            code: app_core::resources::ResourceErrorCode::Unavailable,
+                            message: "Resource adapter is not connected.".to_owned(),
+                            retry: app_core::resources::ResourceRetryAdvice::Never,
+                        }),
+                    )
+                    .map_err(|error| error.to_string())?,
+                );
+            }
             Effect::Session(mut request) => {
                 effects.extend(
                     core.resolve(
@@ -100,6 +113,56 @@ fn resolve_effects(core: &Core, mut effects: Vec<Effect>) -> Result<(), String> 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn resource_requests_resolve_as_unavailable_without_a_connected_adapter() {
+        use app_core::resources::{
+            ResourceCapabilities, ResourceContext, ResourceError, ResourceErrorCode,
+            ResourceLoadState, ResourceRetryAdvice,
+        };
+        use app_core::workspace::WorkspaceMode;
+
+        for mode in [WorkspaceMode::Standalone, WorkspaceMode::Managed] {
+            let core = app_core::Core::new();
+            let context = ResourceContext {
+                provider: "provider".to_owned(),
+                workspace_id: "workspace".to_owned(),
+                contributor_id: "contributor".to_owned(),
+                chain: "chain".to_owned(),
+                mode,
+            };
+            let effects = core.process_event(app_core::Event::Resources(
+                app_core::resources::Event::Connect(context.clone()),
+            ));
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, app_core::Effect::Resource(_))),
+                "connecting resources must request the host adapter"
+            );
+            super::resolve_effects(&core, effects).expect("resolve resource operation");
+            let view = core.view().resources;
+            assert_eq!(
+                view.context,
+                Some(context),
+                "the failure retains its selected context"
+            );
+            assert_eq!(
+                view.load,
+                ResourceLoadState::Failed(ResourceError {
+                    code: ResourceErrorCode::Unavailable,
+                    message: "Resource adapter is not connected.".to_owned(),
+                    retry: ResourceRetryAdvice::Never,
+                }),
+                "an absent adapter must finish the request with an explicit failure"
+            );
+            assert_eq!(
+                view.capabilities,
+                ResourceCapabilities::default(),
+                "an absent adapter cannot enable runtime capabilities"
+            );
+        }
+    }
+
     #[test]
     fn session_requests_resolve_as_unavailable_without_a_connected_adapter() {
         use app_core::sessions::{
