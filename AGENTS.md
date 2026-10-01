@@ -14,3 +14,14 @@ ignore a failing test, or delete a test merely to pass a gate.
 
 Necessary suppressions must use narrowly scoped `#[expect(..., reason = "...")]`
 and be called out in the final report. New code must satisfy the existing limits.
+
+## Wording
+
+Avoid the words "evidence" and "provenance" in responses, documentation, UI
+copy, comments, and new names. Use concrete terms suited to the context:
+"records", "recorded data", "details", "results", "source", "origin", "author",
+or "history".
+
+Use the original spelling only when an existing identifier, schema field,
+API, feature name, or exact quotation requires it. Do not rename established
+interfaces solely to follow this wording rule.

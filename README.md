@@ -71,9 +71,73 @@ streams. The opt-in live probe below exercises the migrated adapters against the
 Microsoft relay with both endpoints on one machine.
 
 Commands: **Open Workspace**, **Open Detail View**, **Show Output**, **Open Extension
-Settings**, **Restart Native Adapters**, **Sign In to GitHub**, and **Clean Up Dev
+Settings**, **Restart Native Adapters**, **Sign In to GitHub**, **Show File Peers**, and **Clean Up Dev
 Tunnels** (all prefixed `Idle:`). Restart closes adapters; their next operation
 starts them again. Cleanup selects inactive resources for the current account.
+
+## File peers and invitations
+
+The native editor header uses CodeLens to show each fresh same-file connection's
+contributor name, branch, host label and supplied work summary. **Idle: Show File
+Peers**, the header and the peer count in the status bar open the same picker.
+Session and host join choices remain separate. Missing summaries, branches and
+hosts are left unknown; a host owner is never substituted for a contributor.
+
+`host.presence.connect(binding, provider)` installs the selected standalone or
+managed coordination adapter. `binding` contains an explicit checkout URI and
+app-core's workspace/repository/chain binding, mode and authenticated connection
+identity. There is no first-folder fallback or repository inference from remote
+URLs. Replacing the binding, changing accounts or removing folders cancels old
+work and clears the UI. The returned disposable releases only its own binding.
+Awareness survives closing sidebar/detail views and stops at host shutdown.
+
+The provider implements `PeerAwarenessProvider` in
+`extension/src/presence/contracts.ts`. Its serialized `publish` calls receive the
+active repository-relative file and observed branch. The observer uses the
+[built-in Git API](https://github.com/microsoft/vscode/blob/1.85.0/extensions/git/src/api/git.d.ts)
+for the exact checkout, including repository removal and detached HEAD. It does
+not read file contents or derive identity from Git authors. The adapter publishes
+these observations under a bounded presence lease, renewing the latest observation
+until the connection is aborted. `update` reconciles its app-core workspace view
+and coordination directory without publishing; subscription echoes therefore
+cannot trigger another publication. Keep one Rust `PeerAwareness` instance for
+the installed connection. Apply the delivered invitation IDs with
+`acknowledge_invitations`, then pass accepted inputs to `update` and return its
+JSON view. Unacknowledged transitions retain their IDs across refreshes, with
+current peer details and grants, until delivered or no longer applicable.
+Reset the Rust baseline on recovery; IDs remain unique across resets.
+Explicit connection/session associations must come from coordination; shared
+ownership or a shared host does not establish a session association.
+
+The Rust projection uses the published `app-core` workspace types and
+`idle-protocol` grants, sessions and host publications. It filters revoked,
+offline, expired and foreign-repository connections. It reports transitions
+when a known peer switches to the local branch, or the local checkout switches
+to a known peer's branch. Known same-host connections need no convergence prompt;
+an unknown host label does not hide an observed branch change. Initial discovery, detached/unknown
+branches, reconnects and recovery stream changes establish a baseline without
+branch notifications. Peer summaries remain exactly the supplied records.
+
+Join choices reference an existing `Observe` session grant or `Connect` compute
+grant for the current contributor. On selection, the adapter refreshes shared
+state, calls `presence::prepare_join`, and routes that exact intent through the
+selected provider's existing authorization and transport. The helper returns
+current discovery references and session runtime identity; it does not issue
+credentials or grants. The authority and runtime still authenticate, authorize
+and enforce revocation, including on established connections. A session grant
+does not authorize general host access; connecting to a host does not authorize
+file writes or process execution. Only a runtime-confirmed connection returns
+`connected`; a coordination receipt returns `pending`.
+
+The host discards delayed responses and stale picker choices, cancels joins on
+invalidation, and clears views at their freshness deadline while refreshing.
+Both modes share this integration port. f43 installs the production connections
+alongside app-core selection/subscription assembly; f18 and f52 supply their
+standalone and managed services. Until an adapter is installed, **Show File
+Peers** reports unavailable. No production fixture or implicit network
+connection is installed. The native projection and both host adapter modes are
+tested with the same `test/fixtures/peer-view.json` contract fixture, including
+revocation, expiry, branch changes, multi-root isolation and cancellation.
 
 Keep sibling checkouts under one parent directory:
 
@@ -178,7 +242,7 @@ The workspace extension runs on the file-owning host (including remote VS Code).
 | package.json, TypeScript host exports, `extension/src/extension.ts`, `extension/src/host/`, native manifest, CI | f38/extension-host |
 | `extension/src/capture/`, `crates/idle-vscode-native/src/capture.rs` | f39/editor-capture |
 | `extension/src/history/`, `crates/idle-vscode-native/src/history.rs` | f40/native-history-actions |
-| `extension/src/presence/` | f41/peer-awareness |
+| `extension/src/presence/`, `crates/idle-vscode-native/src/presence/` | f41/peer-awareness |
 | `extension/src/provenance/` | f42/provenance-decorations |
 | webview manifest/entrypoint, WASM build/assets, shared view assembly | f43/extension-assembly |
 

@@ -68,6 +68,10 @@
         "enablement": "isWorkspaceTrusted"
       },
       {
+        "command": "idle.presence.showPeers",
+        "title": "Idle: Show File Peers"
+      },
+      {
         "command": "idle.cleanupTunnels",
         "title": "Idle: Clean Up Dev Tunnels",
         "enablement": "isWorkspaceTrusted"

@@ -13,6 +13,7 @@ export function activate(context: vscode.ExtensionContext): HostServices {
   const register = (name: string, run: () => unknown) => vscode.commands.registerCommand(name,
     () => host.diagnostics.command(name, run));
   const changed = () => {
+    host.presence.disconnect();
     host.native.reset();
     provider.broadcast("host.configurationChanged", host.configuration.snapshot());
   };
