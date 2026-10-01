@@ -35,9 +35,14 @@ async function smokeHistory(host, f, binary, extensionPath) {
         }
       }
     }
+    const beforeRestart = await host.history.open(fixture.requests[0]);
+    await f.commands.get('idle.restartNative')();
+    await assert.rejects(documents.readFile(f.api.Uri.parse(beforeRestart.byteUris[0])), { code: 'unavailable' });
+    const afterRestart = await host.history.open(fixture.requests[0]);
+    assert.deepEqual(Buffer.from(await documents.readFile(f.api.Uri.parse(afterRestart.byteUris[0]))), Buffer.from(fixture.after));
     await assert.rejects(host.history.open(fixture.requests[5]), { code: 'missing_content' });
     await assert.rejects(fs.readFile(path.join(root, 'recorded.ts')), { code: 'ENOENT' });
-    console.log('PASS: packaged native file, raw-record, Original and diff previews match engine bytes, including Unicode, binary and empty content; missing content remains an error.');
+    console.log('PASS: packaged native previews match engine bytes, retain bindings across Restart Native, and keep missing content distinct from empty content.');
   } finally {
     lease?.dispose();
     await host.history.shutdown();

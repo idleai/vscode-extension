@@ -80,19 +80,6 @@ fn resolve_effects(core: &Core, mut effects: Vec<Effect>) -> Result<(), String> 
                     .map_err(|error| error.to_string())?,
                 );
             }
-            Effect::Resource(mut request) => {
-                effects.extend(
-                    core.resolve(
-                        request.as_mut(),
-                        Err(app_core::resources::ResourceError {
-                            code: app_core::resources::ResourceErrorCode::Unavailable,
-                            message: "Resource adapter is not connected.".to_owned(),
-                            retry: app_core::resources::ResourceRetryAdvice::Never,
-                        }),
-                    )
-                    .map_err(|error| error.to_string())?,
-                );
-            }
             Effect::Session(mut request) => {
                 effects.extend(
                     core.resolve(

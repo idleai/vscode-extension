@@ -23,9 +23,17 @@ The default provider lazily starts the packaged `idle-history-service`, passing
 these locations once as process arguments. Requests carry logical bindings and
 record references, never storage paths. An injected `HistoryProvider` may reuse
 the owning engine connection; it must enforce the same contract and cancellation.
-Bindings are independent of views. Their disposables release only the installed
-generation. Repository replacement, account changes, configuration changes,
-folder changes and shutdown invalidate outstanding operations and old documents.
+Bindings are independent of views. Their disposables release their own registration,
+including its later restart generations. Repository replacement, account changes,
+configuration changes, folder changes and shutdown invalidate outstanding
+operations and old documents.
+
+`host.history.restart()` and Restart Native retain the installed bindings, cancel
+pending reads and renew document generations. New reads wait until reset finishes.
+The packaged provider stops its process and starts a fresh one on the next read.
+Injected providers may implement `restart()` to reset an owned service; otherwise
+the host retains their reader. Failed resets can be retried without selecting the
+repository again. Replaced or released bindings cannot be restored by a late reset.
 
 The host effects and methods are:
 
@@ -87,6 +95,12 @@ representation, choose an ambiguous candidate, or substitute converted bytes.
 The caller can explicitly select a new candidate, or use `source: retained` with
 the original record reference and a separately installed retained directory.
 
+Both native-open effects return these references in the host error's
+`details.candidates` array, including every candidate's full `operation` and
+`hash`. The Rust webview bridge retains that object as `BridgeError.details`.
+Direct TypeScript callers use `HistoryFailure.candidates`. Only these validated
+record references are added to public errors; arbitrary exception fields are omitted.
+
 An Original payload and a pre-conversion encoded record are different documents.
 `Original` follows the recorded source link. `Record` in the retained namespace
 opens the exact old encoding. No source location stored in an Original record is
@@ -122,9 +136,10 @@ f43 owns switching those consumers to these bindings and shared app-core/web-ui
 actions, then removing the legacy provider registrations and handlers. No new
 production fixture or implicit repository discovery is installed by f40.
 
-The package also resolves the previously unhandled `Effect::Projection` and
-`Effect::Resource` as unavailable in the bootstrap shell. Production projection,
-resource and history view assembly remains with f43.
+The package also resolves the previously unhandled `Effect::Projection` as
+unavailable in the bootstrap shell. Resource effects belong to the corresponding
+app-core interface update. Production projection, resource and history view
+assembly remains with f43.
 
 ## Verification
 
@@ -132,19 +147,23 @@ Rust tests write real engine records and blobs, exercise schema conversion and
 the retained migration archive, and cover conflicts, late blobs, corruption,
 complete content references and exact encoded records. Host tests cover byte and
 hex providers, multi-root/remote bindings, cancellation, invalid responses,
-working-path containment and Unicode positions.
+working-path containment and Unicode positions. They also exercise the VS Code
+1.85 cancellation API surface, restart races, binding lease disposal and full
+candidate references across the host bridge.
 
 `scripts/smoke-package.cjs` extracts the VSIX and activates its bundled host.
 `scripts/smoke-history.cjs` creates synthetic engine history with the
 `history-fixture` example, then compares packaged service/provider bytes against
 the input snapshots and encoded record, including empty and missing content.
 The test checkout has no live file matching the historical filename.
+The smoke check invokes Restart Native, then reads the same record through the
+retained binding and checks that old document addresses have expired.
 
 Run `./scripts/lint.sh`, `npm test`, and `./scripts/check.sh`. The last command
 includes packaging and the isolated VSIX checks.
 
-Verified with EditChain `3c75cf0`, app-core `4b7c6d1` (`f26/resource-state`) and
-web-ui `e81e72c` (`f32/session-ui`). The bootstrap's `Resource` response requires
-the f26 interface; CI's sibling checkouts must include that commit before this
-consumer change lands. Local lint returned `RESULT: PASS`; the full check exited
-successfully with 189 host tests and the packaged history/capture checks.
+Verification uses EditChain `3c75cf0`, app-core `0ebae9d` and web-ui `9306d68`,
+matching CI's dependency checkouts. Feature branches in sibling working directories
+are not required to build this changeset.
+The lint gate returned `RESULT: PASS`; the full check passed with 195 host tests
+and the packaged history restart and capture checks.

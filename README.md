@@ -106,7 +106,8 @@ binds an exact checkout and app-core workspace/repository/chain selection to the
 packaged `idle-history-service`. Storage paths are absolute paths on the
 file-owning host. A selected standalone or managed adapter installs this binding;
 f43 owns wiring it to the assembled history UI. An optional provider implements
-the same contract over an existing engine connection.
+the same contract over an existing engine connection, with an optional `restart()`
+method for resetting a service it owns.
 
 `history.open` accepts the binding, a complete operation ID and record digest,
 an explicit current/retained source, and a `Record`, `Original`, `File`, `Diff`
@@ -126,8 +127,11 @@ or partial patch substitutes for an unavailable historical snapshot.
 The native service is packaged for the build host's platform and architecture.
 `idle.native.historyPath` can select an absolute compatible executable on the
 workspace host. Binding, account and folder changes cancel old reads and make
-their document addresses unavailable. Closing a webview leaves history services
-running. See [the action contract and extraction handoff](docs/native-history-actions.md).
+their document addresses unavailable. Restart Native preserves installed bindings
+while restarting their services and renewing document addresses. Closing a webview
+leaves history services running. Migration and conflict errors include complete
+candidate references in the bridge's `error.details.candidates` field.
+See [the action contract and extraction handoff](docs/native-history-actions.md).
 
 ## File peers and invitations
 

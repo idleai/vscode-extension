@@ -13,15 +13,18 @@ import {
 import { BYTE_SCHEME, TEXT_SCHEME, HEX_SCHEME, DocumentAddress, HexDocuments, TextDocuments, HistoryDocuments, documentUri, needsHex } from "./documents";
 import { NativeHistoryProvider } from "./native";
 import { openWorkingFile } from "./workingFile";
+import { linkCancellation } from "./cancellation";
 
 export type { HistoryBinding, HistoryProvider, HistoryRequest, HistoryPreview, RepositoryBinding } from "./contracts";
 export { HistoryFailure } from "./contracts";
 
 interface Connection {
   id: string;
+  owner: symbol;
   binding: HistoryBinding;
   provider: HistoryProvider;
   abort: AbortController;
+  ready?: Promise<void>;
 }
 
 /** Native editor actions live independently of any history webview. */
@@ -66,9 +69,32 @@ export class HistoryHost implements vscode.Disposable {
     const key = bindingKey(repository);
     const old = this.connections.get(key);
     if (old) this.remove(key, old);
-    const connection = { id: randomUUID(), binding: installed, provider: provider ?? new NativeHistoryProvider(this.extensionPath, installed), abort: new AbortController() };
+    const owner = Symbol();
+    const connection = { id: randomUUID(), owner, binding: installed, provider: provider ?? new NativeHistoryProvider(this.extensionPath, installed), abort: new AbortController() };
     this.connections.set(key, connection);
-    return new vscode.Disposable(() => { if (this.connections.get(key) === connection) this.remove(key, connection); });
+    return new vscode.Disposable(() => {
+      const current = this.connections.get(key);
+      if (current?.owner === owner) this.remove(key, current);
+    });
+  }
+
+  /** Renew document generations and native services while retaining the installed bindings. */
+  async restart(): Promise<void> {
+    this.assertOpen();
+    const work: Promise<void>[] = [];
+    for (const [key, connection] of this.connections) {
+      const next: Connection = { ...connection, id: randomUUID(), abort: new AbortController() };
+      const reset = async () => {
+        this.assertCurrent(next);
+        await next.provider.restart?.();
+        this.assertCurrent(next);
+      };
+      next.ready = (connection.ready ?? Promise.resolve()).then(reset, reset);
+      this.connections.set(key, next);
+      connection.abort.abort();
+      work.push(next.ready);
+    }
+    await Promise.all(work);
   }
 
   /** Adapter for app-core QueryAction::Open; the reducer receives Opened after editor success. */
@@ -119,11 +145,18 @@ export class HistoryHost implements vscode.Disposable {
 
   private async resolve(connection: Connection, request: HistoryRequest, signal?: AbortSignal): Promise<HistoryPreview> {
     this.assertCurrent(connection, signal);
+    if (connection.ready) {
+      await connection.ready;
+      this.assertCurrent(connection, signal);
+    }
     if (request.source === "retained" && !connection.binding.retainedDirectory) {
       throw new HostError("unavailable", "A retained input source has not been bound.");
     }
-    const combined = signal ? AbortSignal.any([signal, connection.abort.signal]) : connection.abort.signal;
-    const preview = await connection.provider.resolve(request, combined);
+    const cancellation = linkCancellation(connection.abort.signal, signal);
+    let preview: HistoryPreview;
+    try { preview = await connection.provider.resolve(request, cancellation.signal); }
+    catch (error) { this.assertCurrent(connection, signal); throw error; }
+    finally { cancellation.dispose(); }
     this.assertCurrent(connection, signal);
     if (!preview || !isDeepStrictEqual(preview.request, request) || !Array.isArray(preview.documents) ||
         preview.documents.length !== (request.target === "Diff" ? 2 : 1)) {

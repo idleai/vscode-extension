@@ -25,7 +25,12 @@ export function activate(context: vscode.ExtensionContext): HostServices {
     register("idle.openDetail", () => provider.openDetail()),
     register("idle.showOutput", () => host.diagnostics.show()),
     register("idle.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "@ext:idleai.idle")),
-    register("idle.restartNative", async () => { host.configuration.assertTrusted(); host.history.disconnect(); host.native.reset(); await host.capture.restart(); host.diagnostics.append("Native adapters restarted."); }),
+    register("idle.restartNative", async () => {
+      host.configuration.assertTrusted();
+      host.native.reset();
+      await Promise.all([host.history.restart(), host.capture.restart()]);
+      host.diagnostics.append("Native adapters restarted.");
+    }),
     register("idle.signIn", async () => {
       const account = await host.credentials.account(true);
       host.capture.useAccount(account?.label);

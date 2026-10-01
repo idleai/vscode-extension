@@ -7,7 +7,7 @@ import { HistoryBinding, HistoryFailure, HistoryPreview, HistoryProvider, Histor
 
 /** Lazy packaged engine process; every request uses the installed storage binding. */
 export class NativeHistoryProvider implements HistoryProvider {
-  private readonly client = new StdioClient();
+  private client = new StdioClient();
   private closed = false;
 
   constructor(private readonly extensionPath: string, private readonly binding: HistoryBinding) {}
@@ -31,6 +31,12 @@ export class NativeHistoryProvider implements HistoryProvider {
       throw new HostError("invalid_response", "The history adapter returned a different request.");
     }
     return response.Ok as unknown as HistoryPreview;
+  }
+
+  async restart(): Promise<void> {
+    if (this.closed) throw new HostError("cancelled", "The history connection was closed.");
+    await this.client.shutdown();
+    if (!this.closed) this.client = new StdioClient();
   }
 
   async shutdown(): Promise<void> { this.closed = true; await this.client.shutdown(); }

@@ -4,12 +4,15 @@ const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { test } = require('node:test');
+const { getEventListeners } = require('node:events');
+const { setImmediate: turn } = require('node:timers/promises');
 const { fixture, uri, loadWithVSCode } = require('./helpers/vscode.cjs');
 
 const f = fixture();
 const { HistoryHost, HistoryFailure } = loadWithVSCode(path.resolve(__dirname, '../out/history'), f.api);
 const { documentUri, documentAddress, hexText } = require('../out/history/documents');
 const { HostEffects } = require('../out/host/effects');
+const { WebviewBridge } = require('../out/host/messageBridge');
 const repository = { workspace_id: 'workspace', repository_id: 'repository', chain: 'chain' };
 const reference = { operation: '1'.repeat(64), hash: '2'.repeat(64) };
 const request = target => ({ binding: repository, source: 'current', record: reference, target });
@@ -104,6 +107,40 @@ test('aliases retain candidates and require a separate retained-source binding',
   assert.deepEqual(await h.byteProvider.readFile(uri(opened.byteUris[0])), Buffer.from('retained\r\n'));
 });
 
+test('the webview receives complete migration and conflict candidates without private exception fields', async t => {
+  const h = setup(t);
+  h.host.connect(binding(), h.provider);
+  const candidates = [{ operation: '3'.repeat(64), hash: '4'.repeat(64) }, { operation: '5'.repeat(64), hash: '6'.repeat(64) }];
+  const replies = [];
+  const bridge = new WebviewBridge('history-view', h.effects, async value => { replies.push(JSON.parse(JSON.stringify(value))); return true; }, () => {});
+  t.after(() => bridge.dispose());
+  const send = (method, params) => bridge.receive({ protocol: 1, session: 'history-view', id: 'open', method, params });
+  for (const code of ['migrated_alias', 'record_mismatch', 'conflicted']) {
+    const inputs = candidates.map(candidate => ({ ...candidate, privatePayload: 'DO-NOT-FORWARD' }));
+    const failure = new HistoryFailure(code, 'Select an exact record.', inputs);
+    failure.privatePayload = 'DO-NOT-FORWARD';
+    inputs[0].hash = '7'.repeat(64);
+    h.provider.resolve = async () => { throw failure; };
+    for (const method of ['history.open', 'history.openQuery']) {
+      const params = method === 'history.open' ? request('Record') : {
+        binding: repository, query: { chain: repository.chain, action: { Open: { record: reference, target: 'Record' } } },
+      };
+      await send(method, params);
+      assert.deepEqual(replies.pop().error, { code, message: 'Select an exact record.', details: { candidates } });
+    }
+  }
+  assert.equal(f.calls.editorCommands.length, 0);
+  h.provider.resolve = async selected => ({ request: selected, documents: [{ ...document('converted'), record: selected.record }] });
+  await send('history.open', { ...request('Record'), record: candidates[0] });
+  assert.equal(replies.pop().result.uris.length, 1);
+  h.provider.resolve = async () => { throw Object.assign(new Error('DO-NOT-FORWARD'), { code: 'migrated_alias', details: { candidates } }); };
+  await send('history.open', request('Record'));
+  const error = replies.pop().error;
+  assert.equal(error.code, 'host_failure');
+  assert.equal('details' in error, false);
+  assert.equal(JSON.stringify(error).includes('DO-NOT-FORWARD'), false);
+});
+
 test('full references and an exact workspace/repository/chain binding are mandatory', async t => {
   const h = setup(t);
   h.host.connect(binding(), h.provider);
@@ -162,6 +199,99 @@ test('closing a view aborts its action while keeping the installed history conne
   h.provider.resolve = originalResolve;
   await h.host.open(request('File'));
   assert.equal(f.calls.editorCommands.length, 1);
+});
+
+test('history effects work without AbortSignal.any and remove view listeners after success or failure', async t => {
+  const h = setup(t);
+  h.host.connect(binding(), h.provider);
+  const descriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'any');
+  Object.defineProperty(AbortSignal, 'any', { value: undefined, configurable: true });
+  t.after(() => { if (descriptor) Object.defineProperty(AbortSignal, 'any', descriptor); else delete AbortSignal.any; });
+  const abort = new AbortController();
+  const context = { signal: abort.signal, session: 'view' };
+  await h.effects.execute('history.open', request('File'), context);
+  assert.equal(h.requests.length, 1);
+  assert.equal(getEventListeners(abort.signal, 'abort').length, 0);
+  h.provider.resolve = async () => { throw new HistoryFailure('missing_content', 'Not received.'); };
+  await assert.rejects(h.effects.execute('history.open', request('File'), context), { code: 'missing_content' });
+  assert.equal(getEventListeners(abort.signal, 'abort').length, 0);
+  h.provider.resolve = (_, signal) => new Promise((_, reject) => {
+    signal.addEventListener('abort', () => reject(new Error('Native request aborted.')), { once: true });
+    abort.abort();
+  });
+  await assert.rejects(h.effects.execute('history.open', request('File'), context), { code: 'cancelled' });
+  assert.equal(getEventListeners(abort.signal, 'abort').length, 0);
+  assert.equal(f.calls.editorCommands.length, 1);
+});
+
+test('restart cancels pending reads, waits for native reset and preserves the binding lease', async t => {
+  const h = setup(t);
+  const lease = h.host.connect(binding(), h.provider);
+  const opened = await h.host.open(request('File'));
+  const resolve = h.provider.resolve;
+  let pendingSignal;
+  h.provider.resolve = (_, signal) => {
+    pendingSignal = signal;
+    return new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('Native request aborted.')), { once: true }));
+  };
+  const pending = assert.rejects(h.host.open(request('File')), { code: 'cancelled' });
+  let finish;
+  h.provider.restart = () => new Promise(done => { finish = done; });
+  const restart = h.host.restart();
+  assert.equal(pendingSignal.aborted, true);
+  await pending;
+  await assert.rejects(h.byteProvider.readFile(uri(opened.byteUris[0])), { code: 'unavailable' });
+  h.provider.resolve = resolve;
+  const current = h.host.open(request('File'));
+  await turn();
+  assert.equal(h.requests.length, 1);
+  finish();
+  await restart;
+  const next = await current;
+  assert.notEqual(next.byteUris[0], opened.byteUris[0]);
+  assert.deepEqual(await h.byteProvider.readFile(uri(next.byteUris[0])), Buffer.from('recorded\r\n'));
+  assert.equal(h.provider.closed, 0);
+  lease.dispose();
+  assert.equal(h.provider.closed, 1);
+  await assert.rejects(h.host.open(request('File')), { code: 'unavailable' });
+});
+
+test('restart keeps injected readers usable when they have no owned process to reset', async t => {
+  const h = setup(t);
+  h.host.connect(binding(), h.provider);
+  await h.host.restart();
+  await h.host.open(request('File'));
+  assert.equal(h.provider.closed, 0);
+  assert.equal(h.requests.length, 1);
+});
+
+test('a failed native reset can be retried without selecting the repository again', async t => {
+  const h = setup(t);
+  h.host.connect(binding(), h.provider);
+  h.provider.restart = async () => { throw new Error('reset failed'); };
+  await assert.rejects(h.host.restart(), /reset failed/);
+  await assert.rejects(h.host.open(request('File')), /reset failed/);
+  assert.equal(h.requests.length, 0);
+  h.provider.restart = async () => {};
+  await h.host.restart();
+  await h.host.open(request('File'));
+  assert.equal(h.requests.length, 1);
+});
+
+test('a restart finishing after replacement cannot restore the old binding or release its successor', async t => {
+  const h = setup(t);
+  const lease = h.host.connect(binding(), h.provider);
+  let finish;
+  h.provider.restart = () => new Promise(done => { finish = done; });
+  const restart = assert.rejects(h.host.restart(), { code: 'cancelled' });
+  await turn();
+  const replacement = { async resolve(selected) { return { request: selected, documents: [document('new binding')] }; }, async shutdown() {} };
+  h.host.connect(binding(), replacement);
+  finish();
+  await restart;
+  lease.dispose();
+  const opened = await h.host.open(request('File'));
+  assert.deepEqual(await h.byteProvider.readFile(uri(opened.byteUris[0])), Buffer.from('new binding'));
 });
 
 test('trust and folder membership are rechecked after asynchronous resolution', async t => {
