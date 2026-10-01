@@ -31,10 +31,11 @@ export interface Peer {
   summary: string | null;
   joins: JoinOffer[];
 }
-export interface BranchInvitation { change: "local" | "peer"; peer: Peer }
+export interface BranchInvitation { id: string; change: "local" | "peer"; peer: Peer }
 export interface AwarenessView {
   editor: EditorContext;
   peers: Peer[];
+  join_offers: JoinOffer[];
   invitations: BranchInvitation[];
   valid_for_ms: number;
 }
@@ -50,13 +51,20 @@ export interface PeerAwarenessProvider {
   /** Invalidate on metadata/presence changes, disconnect, revocation or recovery reset. */
   onDidChange: vscode.Event<void>;
   /**
-   * Publish the observed file/branch through the selected provider, reconcile app-core,
-   * and return PeerAwareness::update. Calls are serialized. Reset the Rust baseline on
-   * reconnect/visibility reset. Abort detaches this presence connection; publication
-   * has a bounded lease so a failed call cannot leave stale presence indefinitely.
+   * Publish a changed editor observation and maintain its bounded lease until the
+   * next publication or abort. Renew independently of update, including on recovery.
+   * Abort detaches this presence connection; failed renewal lets its lease expire.
    * Identity and summaries come from coordination, never from Git author/host labels.
    */
-  update(editor: EditorContext, signal: AbortSignal): Promise<AwarenessView>;
+  publish(editor: EditorContext, signal: AbortSignal): Promise<void>;
+  /**
+   * Acknowledge delivered invitation IDs with PeerAwareness::acknowledge_invitations,
+   * reconcile app-core, then return PeerAwareness::update without publishing presence.
+   * Publish and update calls are serialized. Retain one Rust instance per installed
+   * connection, resetting its baseline on reconnect/visibility reset. Invitation IDs
+   * remain unique for that instance, including across resets; only delivery is acked.
+   */
+  update(editor: EditorContext, acknowledgedInvitations: readonly string[], signal: AbortSignal): Promise<AwarenessView>;
   /**
    * Refresh current grants, call prepare_join, then authorize and route this exact
    * intent. Honor cancellation before connecting. Never issue grants implicitly or

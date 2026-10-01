@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { resolveFolder } from "../host/configuration";
 import type { HostDiagnostics } from "../host/diagnostics";
 import { HostError } from "../host/protocol";
-import type { AwarenessView, CheckoutBinding, EditorContext, JoinOffer, Peer, PeerAwarenessProvider } from "./contracts";
+import type { AwarenessView, CheckoutBinding, EditorContext, JoinOffer, JoinRequest, Peer, PeerAwarenessProvider } from "./contracts";
 import { branchLabel, label, offerLabel, peerLabel } from "./display";
 import { EditorObservation, relativeFile } from "./editor";
 
@@ -17,7 +17,10 @@ interface Connection {
   observer: EditorObservation;
   serial: number;
   running: boolean;
+  refresh?: Promise<void>;
   dirty: boolean;
+  publish: boolean;
+  acknowledgedInvitations: Set<string>;
 }
 interface Choice extends vscode.QuickPickItem { offer?: JoinOffer }
 
@@ -58,7 +61,11 @@ export class PeerAwarenessHost implements vscode.CodeLensProvider, vscode.Dispos
     const connection: Connection = {
       binding: { root: binding.root, context: structuredClone(binding.context) }, provider,
       abort: new AbortController(), subscriptions: [], serial: 0, running: false, dirty: false,
-      observer: new EditorObservation(binding.root, () => this.schedule(connection), error => this.diagnostics.failure("Observe Git branch", error)),
+      publish: true, acknowledgedInvitations: new Set(),
+      observer: new EditorObservation(binding.root, () => {
+        connection.publish = true;
+        this.schedule(connection);
+      }, error => this.diagnostics.failure("Observe Git branch", error)),
     };
     this.connection = connection;
     connection.subscriptions.push(provider.onDidChange(() => this.schedule(connection)));
@@ -74,6 +81,7 @@ export class PeerAwarenessHost implements vscode.CodeLensProvider, vscode.Dispos
     connection?.observer.dispose();
     for (const subscription of connection?.subscriptions ?? []) subscription.dispose();
     this.clear();
+    this.cancelJoins();
   }
 
   private clear(): void {
@@ -81,10 +89,15 @@ export class PeerAwarenessHost implements vscode.CodeLensProvider, vscode.Dispos
     this.timer = undefined;
     this.view = undefined;
     this.expiresAt = 0;
-    for (const abort of this.joining.values()) abort.abort();
-    this.joining.clear();
     this.status.hide();
     this.changed.fire();
+  }
+
+  private cancelJoins(view?: AwarenessView): void {
+    const available = new Set(view?.join_offers.filter(offer => validContext(offer.request, view.editor)).map(offer => requestKey(offer.request)));
+    for (const [key, abort] of this.joining) {
+      if (!available.has(key)) { abort.abort(); this.joining.delete(key); }
+    }
   }
 
   private schedule(connection: Connection): void {
@@ -93,7 +106,7 @@ export class PeerAwarenessHost implements vscode.CodeLensProvider, vscode.Dispos
     connection.serial++;
     connection.dirty = true;
     this.clear();
-    if (!connection.running) void this.refresh(connection);
+    if (!connection.running) connection.refresh = this.refresh(connection);
   }
 
   private editor(connection: Connection): EditorContext {
@@ -107,9 +120,19 @@ export class PeerAwarenessHost implements vscode.CodeLensProvider, vscode.Dispos
         connection.dirty = false;
         const serial = connection.serial;
         const editor = this.editor(connection);
-        const started = performance.now();
+        const publish = connection.publish;
+        connection.publish = false;
+        let published = !publish;
         try {
-          const supplied = await connection.provider.update(editor, connection.abort.signal);
+          if (publish) {
+            await connection.provider.publish(editor, connection.abort.signal);
+            published = true;
+          }
+          if (this.connection !== connection || connection.abort.signal.aborted) continue;
+          if (!sameEditor(editor, this.editor(connection))) continue;
+          const acknowledged = [...connection.acknowledgedInvitations];
+          const started = performance.now();
+          const supplied = await connection.provider.update(editor, acknowledged, connection.abort.signal);
           if (this.connection !== connection || connection.serial !== serial || connection.abort.signal.aborted) continue;
           if (!vscode.workspace.isTrusted) { this.disconnect(); return; }
           if (!sameEditor(supplied.editor, editor) || !Number.isSafeInteger(supplied.valid_for_ms) || supplied.valid_for_ms <= 0) {
@@ -118,21 +141,39 @@ export class PeerAwarenessHost implements vscode.CodeLensProvider, vscode.Dispos
           const expiresAt = started + Math.min(supplied.valid_for_ms, 30_000);
           if (performance.now() >= expiresAt) throw new HostError("stale_presence", "The presence response expired before it arrived.");
           this.view = structuredClone(supplied);
+          this.view.invitations = this.view.invitations.filter(invitation => !connection.acknowledgedInvitations.has(invitation.id));
+          for (const id of acknowledged) connection.acknowledgedInvitations.delete(id);
           this.expiresAt = expiresAt;
+          this.cancelJoins(this.view);
           this.renderStatus();
           this.changed.fire();
           this.timer = setTimeout(() => this.schedule(connection), expiresAt - performance.now());
           this.timer.unref();
           void this.notifyBranches(connection, this.view).catch(error => this.diagnostics.failure("Branch invitation", error));
         } catch (error) {
+          if (!published) connection.publish = true;
           if (this.connection !== connection || connection.serial !== serial || connection.abort.signal.aborted) continue;
           this.clear();
+          this.cancelJoins();
           this.diagnostics.failure("Refresh peer awareness", error);
           this.timer = setTimeout(() => this.schedule(connection), 15_000);
           this.timer.unref();
         }
       }
     } finally { connection.running = false; }
+  }
+
+  private async waitForRefresh(connection: Connection): Promise<void> {
+    while (this.connection === connection && connection.running) {
+      await new Promise<void>((resolve, reject) => {
+        const finish = () => { connection.abort.signal.removeEventListener("abort", finish); resolve(); };
+        connection.abort.signal.addEventListener("abort", finish, { once: true });
+        void Promise.resolve(connection.refresh).then(finish, error => {
+          connection.abort.signal.removeEventListener("abort", finish);
+          reject(error);
+        });
+      });
+    }
   }
 
   private current(): AwarenessView | undefined {
@@ -160,8 +201,9 @@ export class PeerAwarenessHost implements vscode.CodeLensProvider, vscode.Dispos
   }
 
   async showPeers(connectionId?: string): Promise<void> {
+    const connection = this.connection;
     const view = this.current();
-    if (!view) {
+    if (!connection || !view) {
       await this.diagnostics.notify("info", this.connection
         ? "Peer awareness is unavailable for this workspace. Try again shortly."
         : "Peer awareness is unavailable. Connect to a workspace to see file peers.");
@@ -169,15 +211,15 @@ export class PeerAwarenessHost implements vscode.CodeLensProvider, vscode.Dispos
     }
     const peers = view.peers.filter(peer => !connectionId || peer.connection_id === connectionId);
     if (!peers.length) { await this.diagnostics.notify("info", "No peers are currently reporting work on this file."); return; }
-    await this.choose(peers, view);
+    await this.choose(connection, peers);
   }
 
-  private async choose(peers: Peer[], view: AwarenessView): Promise<void> {
+  private async choose(connection: Connection, peers: Peer[]): Promise<void> {
     const choices: Choice[] = peers.flatMap(peer => peer.joins.length ? peer.joins.map(offer => ({
       label: offerLabel(offer), description: peerLabel(peer), detail: label(peer.summary ?? "No work summary supplied."), offer,
     })) : [{ label: peerLabel(peer), detail: label(peer.summary ?? "No work summary supplied."), description: "No join invitation is currently available" }]);
     const choice = await vscode.window.showQuickPick(choices, { title: "Idle peer invitations", matchOnDescription: true, matchOnDetail: true });
-    if (choice?.offer) await this.join(choice.offer, view);
+    if (choice?.offer) await this.join(connection, choice.offer);
   }
 
   private async notifyBranches(connection: Connection, view: AwarenessView): Promise<void> {
@@ -186,35 +228,40 @@ export class PeerAwarenessHost implements vscode.CodeLensProvider, vscode.Dispos
     if (!first || this.connection !== connection || this.current() !== view) return;
     const extra = view.invitations.length > 1 ? ` (${view.invitations.length} peers on this branch.)` : "";
     const title = "Show join choices";
-    const result = await vscode.window.showInformationMessage(branchLabel(first) + extra,
+    const shown = vscode.window.showInformationMessage(branchLabel(first) + extra,
       ...(view.invitations.some(invitation => invitation.peer.joins.length) ? [title] : []));
-    if (result === title && this.connection === connection && this.current() === view) {
-      await this.diagnostics.command("Join branch peer", () => this.choose(view.invitations.map(invitation => invitation.peer), view));
+    for (const invitation of view.invitations) connection.acknowledgedInvitations.add(invitation.id);
+    const result = await shown;
+    if (result !== title) return;
+    await this.waitForRefresh(connection);
+    if (this.connection === connection && this.current()) {
+      await this.diagnostics.command("Join branch peer", () => this.choose(connection, view.invitations.map(invitation => invitation.peer)));
     }
   }
 
-  private async join(offer: JoinOffer, view: AwarenessView): Promise<void> {
-    const connection = this.connection;
-    if (!connection || this.current() !== view) throw new HostError("stale_invitation", "This invitation changed. Open the peer list again.");
+  private async join(connection: Connection, offer: JoinOffer): Promise<void> {
+    await this.waitForRefresh(connection);
+    const view = this.connection === connection ? this.current() : undefined;
+    if (!view) throw new HostError("stale_invitation", "This invitation changed. Open the peer list again.");
     const request = offer.request;
-    if (request.mode !== view.editor.mode || request.contributor_id !== view.editor.contributor_id ||
-        request.binding.workspace_id !== view.editor.binding.workspace_id || request.binding.repository_id !== view.editor.binding.repository_id ||
-        request.binding.chain !== view.editor.binding.chain || !request.grant_id ||
-        ![...view.peers, ...view.invitations.map(invitation => invitation.peer)]
-          .some(peer => peer.connection_id === request.connection_id && peer.joins.includes(offer))) {
+    if (!validContext(request, view.editor)) {
       throw new HostError("invalid_invitation", "This invitation does not belong to the selected workspace and contributor.");
     }
-    const key = JSON.stringify(offer.request);
+    const key = requestKey(request);
+    const currentOffer = view.join_offers.find(candidate => requestKey(candidate.request) === key);
+    if (!currentOffer) throw new HostError("stale_invitation", "This invitation changed. Open the peer list again.");
     if (this.joining.has(key)) return;
     const abort = new AbortController();
     this.joining.set(key, abort);
     try {
       const outcome = await connection.provider.join(structuredClone(offer.request), abort.signal);
-      if (abort.signal.aborted || this.connection !== connection || this.current() !== view) return;
+      await this.waitForRefresh(connection);
+      const current = this.connection === connection ? this.current() : undefined;
+      if (abort.signal.aborted || !current || !current.join_offers.some(candidate => requestKey(candidate.request) === key)) return;
       if (outcome !== "connected" && outcome !== "pending") throw new HostError("invalid_join", "The provider returned an unknown join result.");
       await this.diagnostics.notify("info", outcome === "connected"
-        ? `Joined ${offer.request.target.kind}: ${label(offer.label)}.`
-        : `Join requested for ${label(offer.label)}; waiting for the runtime connection.`);
+        ? `Joined ${request.target.kind}: ${label(currentOffer.label)}.`
+        : `Join requested for ${label(currentOffer.label)}; waiting for the runtime connection.`);
     } catch (error) {
       if (!abort.signal.aborted) throw error;
     } finally { if (this.joining.get(key) === abort) this.joining.delete(key); }
@@ -227,6 +274,18 @@ export class PeerAwarenessHost implements vscode.CodeLensProvider, vscode.Dispos
     this.status.dispose();
     this.changed.dispose();
   }
+}
+
+function validContext(request: JoinRequest, editor: EditorContext): boolean {
+  return request.mode === editor.mode && request.contributor_id === editor.contributor_id &&
+    request.binding.workspace_id === editor.binding.workspace_id && request.binding.repository_id === editor.binding.repository_id &&
+    request.binding.chain === editor.binding.chain && !!request.grant_id;
+}
+
+function requestKey(request: JoinRequest): string {
+  return JSON.stringify([request.binding.workspace_id, request.binding.repository_id, request.binding.chain, request.mode,
+    request.contributor_id, request.connection_id, request.target.kind,
+    request.target.kind === "host" ? request.target.host_id : request.target.session_id, request.grant_id]);
 }
 
 function sameEditor(left: EditorContext, right: EditorContext): boolean {

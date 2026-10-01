@@ -23,14 +23,16 @@ function setup(t, mode = 'Standalone') {
     command: async (_, action) => { try { return await action(); } catch (error) { failures.push({ code: error.code }); } },
   };
   const changed = new f.api.EventEmitter();
-  const calls = { updates: [], joins: [] };
+  const calls = { publications: [], updates: [], joins: [] };
   const template = structuredClone(golden);
   template.editor.mode = mode;
-  for (const offer of template.peers.flatMap(peer => peer.joins)) offer.request.mode = mode;
+  for (const offer of [...template.peers.flatMap(peer => peer.joins), ...template.join_offers]) offer.request.mode = mode;
   const provider = {
     onDidChange: changed.event,
-    update: async (editor, signal) => {
-      calls.updates.push({ editor, signal });
+    publish: async (editor, signal) => { calls.publications.push({ editor, signal }); },
+    update: async (editor, acknowledged, signal) => {
+      calls.updates.push({ editor, acknowledged, signal });
+      template.invitations = template.invitations.filter(invitation => !acknowledged.includes(invitation.id));
       return { ...structuredClone(template), editor };
     },
     join: async (request, signal) => { calls.joins.push({ request, signal }); return 'connected'; },
@@ -43,6 +45,25 @@ function setup(t, mode = 'Standalone') {
 }
 
 for (const mode of ['Standalone', 'Managed']) {
+  test(`${mode} publication echoes and heartbeats refresh without republishing`, async t => {
+    const s = setup(t, mode);
+    const publish = s.provider.publish;
+    s.provider.publish = async (...args) => { await publish(...args); s.changed.fire(); };
+    s.host.connect(s.binding, s.provider);
+    await settle();
+    assert.equal(s.calls.publications.length, 1);
+    assert.equal(s.calls.updates.length, 2, 'the echoed publication causes one read-only refresh');
+    assert.equal(s.host.provideCodeLenses(f.api.window.activeTextEditor.document).length, 1);
+    for (let heartbeat = 0; heartbeat < 3; heartbeat++) { s.changed.fire(); await settle(); }
+    assert.equal(s.calls.publications.length, 1, 'lease renewal notifications cannot start another publication');
+    f.api.window.activeTextEditor = { document: { uri: uri('file:///one/other.rs') } };
+    f.events.activeEditor.fire();
+    await settle();
+    assert.equal(s.calls.publications.length, 2);
+    assert.equal(s.calls.publications.at(-1).editor.file, 'other.rs');
+    assert.deepEqual(s.failures, []);
+  });
+
   test(`${mode} renders Rust-supplied user, branch, host and summary, then routes each grant separately`, async t => {
     const s = setup(t, mode);
     s.host.connect(s.binding, s.provider);
@@ -78,6 +99,7 @@ test('missing reports stay unknown and provider text cannot inject commands or c
   peer.branch = null;
   peer.summary = '[click](command:bad)\n$(zap)';
   peer.joins = [];
+  s.template.join_offers = [];
   s.host.connect(s.binding, s.provider);
   await settle();
   const lens = s.host.provideCodeLenses(f.api.window.activeTextEditor.document)[0];
@@ -109,6 +131,7 @@ test('a stale picker cannot join after grant revocation, account change or works
   f.api.window.showQuickPick = choices => new Promise(resolve => { choose = () => resolve(choices[0]); });
   const pending = s.host.showPeers();
   s.template.peers[0].joins = [];
+  s.template.join_offers = [];
   s.changed.fire();
   await settle();
   choose();
@@ -126,8 +149,9 @@ test('a stale picker cannot join after grant revocation, account change or works
 test('single-flight updates discard late editor/context responses and continue with the newest observation', async t => {
   const s = setup(t);
   const pending = [];
-  s.provider.update = (editor, signal) => new Promise(resolve => pending.push({ editor, signal, resolve }));
+  s.provider.update = (editor, acknowledged, signal) => new Promise(resolve => pending.push({ editor, acknowledged, signal, resolve }));
   s.host.connect(s.binding, s.provider);
+  await turn();
   f.api.window.activeTextEditor = { document: { uri: uri('file:///one/other.rs') } };
   f.events.activeEditor.fire();
   assert.equal(pending.length, 1, 'provider updates are serialized');
@@ -245,7 +269,7 @@ test('Git observations track only the explicitly bound checkout, including detac
 
 test('branch invitations require an explicit click and distinguish pending from connected results', async t => {
   const s = setup(t);
-  s.template.invitations = [{ change: 'peer', peer: structuredClone(s.template.peers[0]) }];
+  s.template.invitations = [{ id: 'branch-1', change: 'peer', peer: structuredClone(s.template.peers[0]) }];
   s.template.invitations[0].peer.branch = 'main';
   f.api.window.showInformationMessage = async (message, action) => { s.notifications.push([message, action]); return action; };
   f.api.window.showQuickPick = async choices => choices[0];
@@ -258,7 +282,7 @@ test('branch invitations require an explicit click and distinguish pending from 
   assert.equal(s.notifications.flat().some(value => value?.startsWith('Joined')), false);
 });
 
-test('in-flight joins are deduplicated and cancelled on invalidation or shutdown', async t => {
+test('in-flight joins are deduplicated and cancelled on grant revocation or shutdown', async t => {
   const s = setup(t);
   s.host.connect(s.binding, s.provider);
   await settle();
@@ -269,7 +293,10 @@ test('in-flight joins are deduplicated and cancelled on invalidation or shutdown
   await turn();
   await s.host.showPeers();
   assert.equal(s.calls.joins.length, 1);
+  s.template.peers[0].joins = [];
+  s.template.join_offers = [];
   s.changed.fire();
+  await settle();
   assert.equal(s.calls.joins[0].signal.aborted, true);
   resolve('connected');
   await first;
@@ -277,6 +304,164 @@ test('in-flight joins are deduplicated and cancelled on invalidation or shutdown
   s.host.dispose();
   assert.equal(s.calls.updates.at(-1).signal.aborted, true);
 });
+
+test('pending joins survive heartbeats, expiry refreshes and editor changes with the same grants', async t => {
+  const s = setup(t);
+  s.template.valid_for_ms = 30;
+  const update = s.provider.update;
+  s.provider.update = async (...args) => {
+    const view = await update(...args);
+    s.template.valid_for_ms = 9000;
+    if (view.editor.file !== 'src/lib.rs') view.peers = [];
+    return view;
+  };
+  s.host.connect(s.binding, s.provider);
+  await settle();
+  let finish;
+  s.provider.join = (request, signal) => new Promise(resolve => { s.calls.joins.push({ request, signal }); finish = resolve; });
+  f.api.window.showQuickPick = async choices => choices[0];
+  const pending = s.host.showPeers();
+  await turn();
+  s.changed.fire();
+  await settle();
+  assert.equal(s.calls.joins[0].signal.aborted, false, 'an unchanged heartbeat keeps the handshake alive');
+  // Set another short view lifetime so its timer expires during the handshake.
+  s.template.valid_for_ms = 30;
+  s.changed.fire();
+  await delay(50);
+  assert.equal(s.calls.updates.length, 4, 'the lifetime timer requested a new snapshot');
+  assert.equal(s.calls.joins[0].signal.aborted, false, 'routine expiry refresh is not grant revocation');
+  f.api.window.activeTextEditor = { document: { uri: uri('file:///one/other.rs') } };
+  f.events.activeEditor.fire();
+  await settle();
+  assert.equal(s.calls.joins[0].signal.aborted, false, 'a join remains valid outside the active file');
+  finish('connected');
+  await pending;
+  assert.match(s.notifications.at(-1)[1], /^Joined session:/);
+});
+
+test('an open picker waits for refreshed grants and survives replacement of its view', async t => {
+  const s = setup(t);
+  s.host.connect(s.binding, s.provider);
+  await settle();
+  let choose;
+  f.api.window.showQuickPick = choices => new Promise(resolve => { choose = () => resolve(choices[0]); });
+  const selected = s.host.showPeers();
+  let finishRefresh;
+  s.provider.update = editor => new Promise(resolve => { finishRefresh = () => resolve({ ...structuredClone(s.template), editor }); });
+  s.changed.fire();
+  choose();
+  await turn();
+  assert.deepEqual(s.calls.joins, [], 'selection waits for current grants');
+  finishRefresh();
+  await selected;
+  assert.equal(s.calls.joins.length, 1);
+  assert.match(s.notifications.at(-1)[1], /^Joined session:/);
+});
+
+test('a waiting picker is cancelled promptly when a refreshing connection is replaced', async t => {
+  const s = setup(t);
+  s.host.connect(s.binding, s.provider);
+  await settle();
+  let choose;
+  f.api.window.showQuickPick = choices => new Promise(resolve => { choose = () => resolve(choices[0]); });
+  const selected = s.host.showPeers();
+  const update = s.provider.update;
+  s.provider.update = () => new Promise(() => {});
+  s.changed.fire();
+  choose();
+  await turn();
+  s.provider.update = update;
+  s.host.connect(s.binding, s.provider);
+  await assert.rejects(selected, error => error.code === 'stale_invitation');
+  assert.deepEqual(s.calls.joins, [], 'the same binding still represents a different connection lifetime');
+});
+
+test('a queued picker result cannot join through a connection replaced in the same turn', async t => {
+  const s = setup(t);
+  s.host.connect(s.binding, s.provider);
+  await settle();
+  f.api.window.showQuickPick = async choices => choices[0];
+  const pending = s.host.showPeers();
+  queueMicrotask(() => s.host.connect(s.binding, s.provider));
+  await assert.rejects(pending, error => error.code === 'stale_invitation');
+  assert.deepEqual(s.calls.joins, []);
+});
+
+test('discarded responses leave branch invitations pending until the host displays them once', async t => {
+  const s = setup(t);
+  s.host.connect(s.binding, s.provider);
+  await settle();
+  s.template.invitations = [{ id: 'branch-1', change: 'peer', peer: structuredClone(s.template.peers[0]) }];
+  const update = s.provider.update;
+  const pending = [];
+  s.provider.update = (...args) => new Promise(resolve => {
+    const supplied = update(...args);
+    pending.push(async () => resolve(await supplied));
+  });
+  s.changed.fire();
+  s.changed.fire();
+  await pending[0]();
+  await settle();
+  assert.equal(pending.length, 2);
+  assert.deepEqual(s.notifications, [], 'a superseded snapshot is not displayed');
+  assert.deepEqual(s.calls.updates.at(-1).acknowledged, [], 'discarding a response does not acknowledge delivery');
+  await pending[1]();
+  await settle();
+  assert.equal(s.notifications.length, 1);
+  assert.match(s.notifications[0][0], /switched to your branch/);
+  s.provider.update = update;
+  s.changed.fire();
+  await settle();
+  assert.deepEqual(s.calls.updates.at(-1).acknowledged, ['branch-1']);
+  assert.deepEqual(s.template.invitations, []);
+  s.changed.fire();
+  await settle();
+  assert.equal(s.notifications.length, 1, 'acknowledged transitions do not repeat');
+});
+
+test('branch invitation actions remain usable after acknowledgement and an unrelated refresh', async t => {
+  const s = setup(t);
+  s.template.invitations = [{ id: 'branch-1', change: 'peer', peer: structuredClone(s.template.peers[0]) }];
+  s.template.invitations[0].peer.file = 'another.rs';
+  s.template.peers = [];
+  let showChoices;
+  f.api.window.showInformationMessage = (_, action) => new Promise(resolve => { showChoices = () => resolve(action); });
+  f.api.window.showQuickPick = async choices => choices[0];
+  s.host.connect(s.binding, s.provider);
+  await settle();
+  s.changed.fire();
+  await settle();
+  assert.deepEqual(s.template.invitations, [], 'the displayed event has been acknowledged');
+  showChoices();
+  await settle();
+  assert.equal(s.calls.joins.length, 1, 'off-file join choices remain available in the current snapshot');
+  assert.deepEqual(s.failures, []);
+});
+
+for (const reason of ['revocation', 'provider failure', 'shutdown']) {
+  test(`a pending join still cancels on ${reason}`, async t => {
+    const s = setup(t);
+    s.host.connect(s.binding, s.provider);
+    await settle();
+    let finish;
+    s.provider.join = (request, signal) => new Promise(resolve => { s.calls.joins.push({ request, signal }); finish = resolve; });
+    f.api.window.showQuickPick = async choices => choices[0];
+    const pending = s.host.showPeers();
+    await turn();
+    if (reason === 'shutdown') s.host.dispose();
+    else {
+      if (reason === 'revocation') s.template.join_offers = [];
+      else s.provider.update = async () => { throw new Error('provider unavailable'); };
+      s.changed.fire();
+      await settle();
+    }
+    assert.equal(s.calls.joins[0].signal.aborted, true);
+    finish('connected');
+    await pending;
+    assert.deepEqual(s.notifications, [], 'a cancelled connection cannot report success');
+  });
+}
 
 test('relative editor paths respect host authority, nested roots and virtual documents', () => {
   const root = uri('vscode-remote://ssh-remote+host/home/repo');

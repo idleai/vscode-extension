@@ -92,14 +92,20 @@ work and clears the UI. The returned disposable releases only its own binding.
 Awareness survives closing sidebar/detail views and stops at host shutdown.
 
 The provider implements `PeerAwarenessProvider` in
-`extension/src/presence/contracts.ts`. Its serialized `update` calls receive the
+`extension/src/presence/contracts.ts`. Its serialized `publish` calls receive the
 active repository-relative file and observed branch. The observer uses the
 [built-in Git API](https://github.com/microsoft/vscode/blob/1.85.0/extensions/git/src/api/git.d.ts)
 for the exact checkout, including repository removal and detached HEAD. It does
 not read file contents or derive identity from Git authors. The adapter publishes
-these observations under a bounded presence lease and reconciles its app-core
-workspace view and coordination directory. Pass those accepted inputs to
-`idle_vscode_native::presence::PeerAwareness::update` and return its JSON view.
+these observations under a bounded presence lease, renewing the latest observation
+until the connection is aborted. `update` reconciles its app-core workspace view
+and coordination directory without publishing; subscription echoes therefore
+cannot trigger another publication. Keep one Rust `PeerAwareness` instance for
+the installed connection. Apply the delivered invitation IDs with
+`acknowledge_invitations`, then pass accepted inputs to `update` and return its
+JSON view. Unacknowledged transitions retain their IDs across refreshes, with
+current peer details and grants, until delivered or no longer applicable.
+Reset the Rust baseline on recovery; IDs remain unique across resets.
 Explicit connection/session associations must come from coordination; shared
 ownership or a shared host does not establish a session association.
 

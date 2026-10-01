@@ -131,6 +131,8 @@ pub enum BranchChange {
 /// One observed transition, never generated merely by initial discovery/reconnect.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BranchInvitation {
+    /// Stable until acknowledged; unique for this awareness instance across resets.
+    pub id: String,
     /// Direction of the transition.
     pub change: BranchChange,
     /// Peer and any currently grant-backed join choices.
@@ -144,7 +146,9 @@ pub struct AwarenessView {
     pub editor: EditorContext,
     /// Fresh connections working on exactly the active repository-relative file.
     pub peers: Vec<Peer>,
-    /// Newly observed branch transitions, independent of same-file matching.
+    /// Current grant-backed choices, including peers outside the active file.
+    pub join_offers: Vec<JoinOffer>,
+    /// Unacknowledged branch transitions, refreshed against current visible peers.
     pub invitations: Vec<BranchInvitation>,
     /// Maximum lifetime from request start; refresh or clear when it elapses.
     pub valid_for_ms: u64,

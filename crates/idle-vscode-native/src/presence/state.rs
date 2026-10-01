@@ -14,6 +14,8 @@ pub struct PeerAwareness {
     editor: Option<EditorContext>,
     stream_id: Option<String>,
     previous: BTreeMap<String, PresenceEntry>,
+    pending: BTreeMap<String, BranchInvitation>,
+    next_invitation_id: u64,
     now_ms: u64,
 }
 
@@ -23,10 +25,18 @@ impl PeerAwareness {
         self.editor = None;
         self.stream_id = None;
         self.previous.clear();
+        self.pending.clear();
+        // Retain the ID sequence so late acknowledgements cannot remove new prompts.
         self.now_ms = 0;
     }
 
-    /// Project current peers and newly observed branch transitions.
+    /// Remove only the invitations the native host has displayed to the user.
+    pub fn acknowledge_invitations(&mut self, ids: &[String]) {
+        self.pending
+            .retain(|_connection_id, invitation| !ids.contains(&invitation.id));
+    }
+
+    /// Project current peers and retain branch transitions until acknowledged.
     ///
     /// # Errors
     /// Rejects unavailable, foreign or inconsistent shared state. A subsequent
@@ -72,7 +82,8 @@ impl PeerAwareness {
                 return Err(AwarenessError::Unavailable);
             }
         }
-        let mut invitations = Vec::new();
+        let mut pending = BTreeMap::new();
+        let mut next_invitation_id = self.next_invitation_id;
         if let Some(previous_editor) = previous_editor {
             let local_switched =
                 previous_editor.branch.is_some() && previous_editor.branch != input.editor.branch;
@@ -82,6 +93,22 @@ impl PeerAwareness {
                     || (connection.host_id.is_some() && connection.host_id == input.editor.host_id)
                 {
                     continue;
+                }
+                if let Some(invitation) =
+                    self.pending.get(&peer.connection_id).filter(|invitation| {
+                        invitation.peer.contributor_id == peer.contributor_id
+                            && invitation.peer.host.as_ref().map(|host| &host.id)
+                                == connection.host_id.as_ref()
+                            && invitation.peer.branch == peer.branch
+                    })
+                {
+                    let _previous = pending.insert(
+                        peer.connection_id.clone(),
+                        BranchInvitation {
+                            peer: peer.clone(),
+                            ..invitation.clone()
+                        },
+                    );
                 }
                 let previous = self.previous.get(&peer.connection_id).filter(|previous| {
                     previous.contributor_id == connection.contributor_id
@@ -99,19 +126,38 @@ impl PeerAwareness {
                     None
                 };
                 if let Some(change) = change {
-                    invitations.push(BranchInvitation {
-                        change,
-                        peer: peer.clone(),
-                    });
+                    next_invitation_id = next_invitation_id
+                        .checked_add(1)
+                        .ok_or(AwarenessError::Unavailable)?;
+                    let _previous = pending.insert(
+                        peer.connection_id.clone(),
+                        BranchInvitation {
+                            id: next_invitation_id.to_string(),
+                            change,
+                            peer: peer.clone(),
+                        },
+                    );
                 }
             }
         }
         self.editor = Some(input.editor.clone());
+        self.pending = pending;
+        self.next_invitation_id = next_invitation_id;
         self.stream_id = Some(input.directory.as_of.stream_id.0.clone());
         self.previous = projection
             .peers
             .iter()
             .map(|(_, connection)| (connection.connection_id.clone(), connection.clone()))
+            .collect();
+        let invitations = projection
+            .peers
+            .iter()
+            .filter_map(|(peer, _)| self.pending.get(&peer.connection_id).cloned())
+            .collect();
+        let join_offers = projection
+            .peers
+            .iter()
+            .flat_map(|(peer, _)| peer.joins.iter().cloned())
             .collect();
         let peers = projection
             .peers
@@ -123,6 +169,7 @@ impl PeerAwareness {
         Ok(AwarenessView {
             editor: input.editor.clone(),
             peers,
+            join_offers,
             invitations,
             valid_for_ms: projection.valid_for_ms,
         })
