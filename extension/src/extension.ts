@@ -24,9 +24,10 @@ export function activate(context: vscode.ExtensionContext): HostServices {
     register("idle.openDetail", () => provider.openDetail()),
     register("idle.showOutput", () => host.diagnostics.show()),
     register("idle.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "@ext:idleai.idle")),
-    register("idle.restartNative", () => { host.configuration.assertTrusted(); host.native.reset(); host.diagnostics.append("Native adapters stopped; the next operation will start them again."); }),
+    register("idle.restartNative", async () => { host.configuration.assertTrusted(); host.native.reset(); await host.capture.restart(); host.diagnostics.append("Native adapters restarted."); }),
     register("idle.signIn", async () => {
       const account = await host.credentials.account(true);
+      host.capture.useAccount(account?.label);
       if (account) await host.diagnostics.notify("info", `Signed in to GitHub as ${account.label}.`);
     }),
     register("idle.cleanupTunnels", () => host.cleanupTunnels()),

@@ -1,17 +1,19 @@
 # vscode-extension
 
 The TypeScript host lives in `extension/src/`. The root Cargo workspace contains
-`crates/idle-vscode-native/` and `crates/idle-vscode-webview/`. Build, test and package
+`crates/idle-editor-capture/`, `crates/idle-vscode-native/` and `crates/idle-vscode-webview/`. Build, test and package
 commands still run from the repository root and emit `out/`, `dist/` and `idle.vsix`.
 
 Idle's thin TypeScript workspace host, with application state in `app-core` and
 shared Rust/WASM rendering in `web-ui`. Activation installs commands, configuration,
 sidebar/detail webviews, output/status/notifications, credentials, native IPC and
 Dev Tunnels adapters. Opening either view currently mounts the shared bootstrap
-component; editor capture, history actions and complete workspace UI assembly have
-separate feature owners below.
+component. Editor capture runs independently of these views; history actions and
+complete workspace UI assembly have separate feature owners below.
 
-Activation performs no authentication, native launch or network connection.
+Trusted folders with capture enabled start the packaged editor capture service
+during activation. Capture can silently read an existing account's display label;
+it never prompts for authentication or establishes a network connection.
 Platform services live until extension deactivation, independently of view
 lifetimes. Each view receives a fresh protocol session; closing it cancels its
 pending calls and discards late responses without stopping native services.
@@ -31,8 +33,11 @@ the files in remote SSH, containers and Codespaces. See VS Code's
 [workspace extension host documentation](https://code.visualstudio.com/api/advanced-topics/extension-host).
 `idle.native.servicePath` and `idle.native.peerPath` are absolute paths on that
 host. Empty settings resolve `bin/<platform>-<arch>/editchain-vscode-service`
-and `editchain-peer` (with `.exe` on Windows). **This feature does not yet ship
-native binaries**; configure built compatible executables until f43 packages them.
+and `editchain-peer` (with `.exe` on Windows). These history/peer binaries remain
+with f43; configure built compatible executables until that packaging is ready.
+The package includes `idle-editor-service` for the build host's platform and
+architecture. `idle.native.capturePath` can select an absolute compatible capture
+binary on the workspace host.
 Workspace build directories and the UI machine's PATH are not searched.
 
 `host.effects.register(method, handler, requiresTrust)` installs an explicit
@@ -74,6 +79,25 @@ Commands: **Open Workspace**, **Open Detail View**, **Show Output**, **Open Exte
 Settings**, **Restart Native Adapters**, **Sign In to GitHub**, **Show File Peers**, and **Clean Up Dev
 Tunnels** (all prefixed `Idle:`). Restart closes adapters; their next operation
 starts them again. Cleanup selects inactive resources for the current account.
+
+## Editor capture
+
+Capture records unsaved buffer revisions, saves, input attribution, Git context,
+read indicators and explicit gaps as schema-three operations. Full revision/item
+identities, UTF-8 bytes and native UTF-16 coordinates remain distinct. The recorder
+does not claim authorship of observed edits; later input receipts target the
+earlier changes in immutable notes.
+
+Use **Idle: Pause Editor Capture**, **Start Editor Capture** and **Show Capture
+Status**, or configure `idle.tracking.enabled`, `readDwellMs` and `maxFileBytes`.
+Settings apply per folder and require Workspace Trust. Capture continues with
+all Idle views closed. `host.capture.flush()` drains the ordered outbox without
+opening a view; failed deliveries remain durable for retry.
+
+Enable `idle.tracking.jsonl.enabled` for complete raw JSONL archives. Its
+`directory` setting defaults to extension global storage. Raw event bytes match
+the outbox, so archive replay preserves identities even after lost replies.
+See [the capture contract, archive replay and remaining legacy callers](docs/editor-capture.md).
 
 ## File peers and invitations
 
@@ -240,7 +264,7 @@ The workspace extension runs on the file-owning host (including remote VS Code).
 | Boundary | Owner after f1 |
 | --- | --- |
 | package.json, TypeScript host exports, `extension/src/extension.ts`, `extension/src/host/`, native manifest, CI | f38/extension-host |
-| `extension/src/capture/`, `crates/idle-vscode-native/src/capture.rs` | f39/editor-capture |
+| `extension/src/capture/`, `crates/idle-editor-capture/`, native capture re-export and capture packaging | f39/editor-capture |
 | `extension/src/history/`, `crates/idle-vscode-native/src/history.rs` | f40/native-history-actions |
 | `extension/src/presence/`, `crates/idle-vscode-native/src/presence/` | f41/peer-awareness |
 | `extension/src/provenance/` | f42/provenance-decorations |
@@ -254,9 +278,10 @@ its webview member. Coordinate npm manifest/script changes with f38.
 The host primitives were adapted from EditChain's `stdioClient.ts`,
 `frameDecoder.ts`, activation/commands/account adapters, `multiplayer/relay.ts`,
 `multiplayer/native.ts`, `devTunnels/spike.ts`, and renderer `shell/runtime.rs`.
-The complete legacy extension remains temporarily executable for its capture and
-history consumers. Its `HOST-MIGRATION.md` records the source mappings and cleanup
-owners. f39 moves capture/conversion, f40 moves document/history actions, f43
+The complete legacy extension remains temporarily executable for existing capture
+and history consumers. Its `HOST-MIGRATION.md` and this repo's
+[capture handoff](docs/editor-capture.md) record the source mappings and cleanup
+owners. f39 supplies the editor-owned capture/conversion path; f40 moves document/history actions, and f43
 switches UI consumers and retires the old host; f18/f23/f28 own coordination and
 shared Rust state. No legacy domain or rendering state was copied into TypeScript.
 

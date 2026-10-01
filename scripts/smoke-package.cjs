@@ -7,6 +7,7 @@ const { tmpdir } = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { fixture, uri } = require('../test/helpers/vscode.cjs');
+const { smokeCapture } = require('./smoke-capture.cjs');
 
 async function main() {
   const temporary = mkdtempSync(path.join(tmpdir(), 'idle-package-smoke-'));
@@ -18,6 +19,8 @@ async function main() {
     const archive = path.resolve(process.argv[2] ?? 'idle.vsix');
     const files = execFileSync('unzip', ['-Z1', archive], { encoding: 'utf8' }).trim().split('\n');
     assert.ok(files.includes('extension/dist/pkg/idle_vscode_webview_bg.wasm'));
+    const captureBinary = `bin/${process.platform}-${process.arch}/idle-editor-service${process.platform === 'win32' ? '.exe' : ''}`;
+    assert.ok(files.includes(`extension/${captureBinary}`));
     assert.ok(!files.some(file => file.includes('/node_modules/') || file.includes('/out/host/') || file.endsWith('.map')));
     execFileSync('unzip', ['-q', archive, '-d', temporary]);
     const entry = path.join(temporary, 'extension/out/extension.js');
@@ -42,6 +45,8 @@ async function main() {
     adapters.createHost({ port: 43187, incoming() {} });
     await extension.deactivate();
     assert.deepEqual(external, []);
+    Module._load = original;
+    await smokeCapture(path.join(temporary, 'extension', captureBinary));
     console.log('PASS: isolated VSIX host activation and lazy tunnel SDK loading, with no external runtime packages.');
   } finally {
     await extension?.deactivate();

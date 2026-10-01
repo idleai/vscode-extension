@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { PeerAwarenessHost } from "../presence";
+import { CaptureHost } from "../capture";
 import { HostConfiguration } from "./configuration";
 import { HostCredentials } from "./credentials";
 import type { DevTunnelsAdapters } from "./devTunnels";
@@ -18,6 +19,7 @@ export class HostServices implements vscode.Disposable {
   readonly effects = new HostEffects(() => vscode.workspace.isTrusted);
   readonly presence = new PeerAwarenessHost(this.diagnostics);
   readonly native: NativeServices;
+  readonly capture: CaptureHost;
   /** Byte adapters; the caller/Rust runtime owns protocol interpretation. */
   readonly transport = { bridgeDuplex, consumeTransport, writeTransport };
   private tunnels: Promise<DevTunnelsAdapters> | undefined;
@@ -31,7 +33,12 @@ export class HostServices implements vscode.Disposable {
     this.configuration = new HostConfiguration(context.extensionUri.fsPath);
     this.credentials = new HostCredentials(context.secrets, () => vscode.workspace.isTrusted);
     this.native = new NativeServices(this.configuration);
+    this.capture = new CaptureHost(context, this.configuration, this.diagnostics);
+    const refreshCaptureAccount = () => { void this.capture.refreshAccount(async () => (await this.credentials.account())?.label); };
+    refreshCaptureAccount();
     this.accountChanged = this.credentials.onDidChange(() => {
+      this.capture.useAccount(undefined);
+      refreshCaptureAccount();
       this.presence.disconnect();
       this.retireTunnels();
     });
@@ -120,7 +127,7 @@ export class HostServices implements vscode.Disposable {
     this.presence.dispose();
     this.effects.dispose();
     this.retireTunnels();
-    try { await Promise.all([this.native.shutdown(), ...this.retiring]); }
+    try { await Promise.all([this.capture.shutdown(), this.native.shutdown(), ...this.retiring]); }
     finally { this.credentials.dispose(); }
   }
 

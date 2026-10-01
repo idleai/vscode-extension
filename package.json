@@ -30,7 +30,9 @@
       "restrictedConfigurations": [
         "idle.native.servicePath",
         "idle.native.peerPath",
-        "idle.chainDirectory"
+        "idle.chainDirectory",
+        "idle.native.capturePath",
+        "idle.tracking.jsonl.directory"
       ]
     },
     "virtualWorkspaces": {
@@ -75,6 +77,21 @@
         "command": "idle.cleanupTunnels",
         "title": "Idle: Clean Up Dev Tunnels",
         "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.tracking.start",
+        "title": "Idle: Start Editor Capture",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.tracking.stop",
+        "title": "Idle: Pause Editor Capture",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.tracking.status",
+        "title": "Idle: Show Capture Status",
+        "enablement": "isWorkspaceTrusted"
       }
     ],
     "configuration": {
@@ -97,6 +114,46 @@
           "default": ".editchain",
           "scope": "resource",
           "description": "Folder-local chain binding. Relative paths resolve against the explicitly selected workspace folder on the file-owning host."
+        },
+        "idle.native.capturePath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Absolute idle-editor-service path on the workspace host. Empty uses the packaged capture service."
+        },
+        "idle.tracking.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Record buffer revisions, unsaved edits, input indicators, Git context and reading indicators into the folder chain. Requires Workspace Trust."
+        },
+        "idle.tracking.readDwellMs": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 500,
+          "maximum": 30000,
+          "scope": "resource",
+          "description": "Continuous foreground visibility required for a reading indicator, in milliseconds."
+        },
+        "idle.tracking.maxFileBytes": {
+          "type": "number",
+          "default": 8388608,
+          "minimum": 1024,
+          "maximum": 8388608,
+          "scope": "resource",
+          "description": "Maximum UTF-8 buffer size to capture. Skipped buffers produce an explicit capture gap."
+        },
+        "idle.tracking.jsonl.enabled": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "description": "Retain complete raw capture events in a portable JSONL archive in addition to the chain."
+        },
+        "idle.tracking.jsonl.directory": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "description": "Raw archive directory on the workspace host. Empty uses extension global storage; relative paths require one unambiguous folder."
         }
       }
     },
@@ -118,9 +175,10 @@
     "test:webview": "node scripts/smoke-webview.mjs idle.vsix",
     "build:host": "node scripts/build-host.mjs",
     "build:wasm": "node scripts/build-wasm.mjs",
-    "build": "npm run compile && npm run build:host && npm run build:wasm",
+    "build": "npm run compile && npm run build:host && npm run build:wasm && npm run build:capture",
     "check": "bash scripts/check.sh",
-    "package": "vsce package --no-dependencies --out idle.vsix"
+    "package": "vsce package --no-dependencies --out idle.vsix",
+    "build:capture": "node scripts/build-capture.mjs"
   },
   "devDependencies": {
     "@types/node": "22.19.17",
