@@ -1,1 +1,3 @@
-//! Reserved native capture adapter boundary; no implementation in f1.
+//! Native capture runs independently of views and shared application state.
+
+pub use idle_editor_capture::{CaptureWriter, observe_context, wire};

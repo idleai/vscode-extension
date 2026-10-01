@@ -2,6 +2,7 @@
 /dist/
 /node_modules/
 /out/
+/bin/
 *.vsix
 .DS_Store
 .env

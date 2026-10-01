@@ -9,6 +9,7 @@ export interface FolderConfiguration {
   readonly chainDirectory: string;
   readonly servicePath: string;
   readonly peerPath: string;
+  readonly capturePath: string;
 }
 
 /** Explicit folder resolution; never guess the first root in a multi-root window. */
@@ -52,6 +53,7 @@ export class HostConfiguration {
       chainDirectory: path.resolve(folder.uri.fsPath, chain),
       servicePath: config.get<string>("native.servicePath", ""),
       peerPath: config.get<string>("native.peerPath", ""),
+      capturePath: config.get<string>("native.capturePath", ""),
     };
   }
 
@@ -67,5 +69,10 @@ export class HostConfiguration {
       remoteName: vscode.env.remoteName ?? null,
       folders: (vscode.workspace.workspaceFolders ?? []).map(folder => ({ uri: folder.uri.toString(), name: folder.name })),
     };
+  }
+
+  captureBinary(config: FolderConfiguration): string {
+    this.assertTrusted();
+    return resolveNativePath(config.capturePath, this.extensionPath, "idle-editor-service");
   }
 }

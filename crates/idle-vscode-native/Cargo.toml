@@ -8,6 +8,7 @@ publish = false
 description = "VS Code-specific native observation and bridge adapters"
 
 [dependencies]
+idle-editor-capture = { path = "../idle-editor-capture", version = "0.1.0" }
 app-core = { path = "../../../app-core/crates/app-core", version = "0.1.0" }
 idle-protocol = { path = "../../../app-core/crates/idle-protocol", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
