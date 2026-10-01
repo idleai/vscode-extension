@@ -33,6 +33,13 @@ async function smokeCapture(binary) {
         changes: [{ offset: 1, length: 2, text: 'é' }], reason: null }),
       event(5, { type: 'human_edit_batch', group: 4, edits: [{ change: 4, signal: 'keyboard_selection' }] }),
       event(6, { type: 'code_read', document: document(2), editor: '1', ranges: [{ start: [0, 1], end: [0, 2] }], started_ms: 5500, duration_ms: 500 })];
+    const count = 10001;
+    const multi = version => ({ ...document(version), id: 'multi', path: 'multi.ts', uri: `file://${directory}/multi.ts` });
+    const before = '😀'.repeat(count), after = '😀x'.repeat(count);
+    events.push(event(7, { type: 'document_snapshot', document: multi(1), text: before }),
+      event(8, { type: 'document_changed', document: multi(2), before_version: 1, before, after, reason: null,
+        changes: Array.from({ length: count }, (_, index) => ({ offset: 2 * (count - index), length: 0, text: 'x' })) }),
+      event(9, { type: 'document_saved', document: multi(2) }));
     let lost = false;
     outbox = new EditorOutbox(journal, directory, '.editchain', async parts => {
       if (lost) throw new Error('offline after lost acknowledgement');
@@ -63,7 +70,7 @@ async function smokeCapture(binary) {
     const lines = (await fs.readFile(archive.location, 'utf8')).trim().split('\n').map(JSON.parse);
     assert.deepEqual(lines.map(line => line.event), [...events, fresh], 'raw archive is independent of acknowledgement loss');
     await assert.rejects(fs.readFile(path.join(directory, 'unsaved.ts')), { code: 'ENOENT' });
-    console.log('PASS: native schema-three capture, Git context, unsaved Unicode, raw archive and ordered recovery after a lost acknowledgement.');
+    console.log('PASS: native schema-three capture, Git context, unsaved Unicode, 10,001 replacements, raw archive and ordered recovery after a lost acknowledgement.');
   } finally {
     await outbox?.stop(); await client.shutdown(); await archive.stop();
     await fs.rm(directory, { recursive: true, force: true });

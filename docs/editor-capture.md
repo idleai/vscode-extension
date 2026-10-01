@@ -13,6 +13,11 @@ folders keep their own settings. Untitled buffers are captured only when one
 workspace folder makes their destination unambiguous. Remote URIs must belong
 to the same file-owning authority. Virtual filesystems are unsupported.
 
+The Start and Pause commands apply to the whole window: they update the
+workspace setting and any existing folder overrides. Pause stops buffer reads
+before those settings writes complete, and stays stopped if a write fails.
+Use the folder settings directly when only selected roots should be captured.
+
 ## Recorded contract
 
 Operation schema **3**, raw editor observation schema **1**, portable JSONL
@@ -46,6 +51,8 @@ Snapshots include unsaved text. Configured size limits, the existing binary
 heuristic, missing baselines, capacity pauses and configuration changes retain
 explicit gaps. Pause/resume starts a new recorder and captures the current
 unsaved baseline. Intermediate changes while tracking is off are unobserved.
+Each skipped interval gets its own gap, including when a buffer becomes too
+large or binary again after a successful baseline.
 
 ## Durability and raw archives
 
@@ -62,6 +69,9 @@ identities and unavailable revisions fail explicitly. Conflicting source bytes
 remain stored and quarantined. Duplicate delivery can repair missing blobs.
 Lookups rebuild from recorded source sequences and immutable records; hash order
 does not establish progress or chronology.
+Large multi-cursor edits retain every native replacement within the existing
+snapshot and transport byte bounds. Descending, disjoint edits replay in one
+pass without repeatedly copying the rest of the buffer.
 
 `idle.tracking.jsonl.enabled` additionally records the admitted event's exact
 JSON slice in `editchain-human-history` lines. The archive is independent of
@@ -72,7 +82,11 @@ failures are reported; they do not claim that later events were archived.
 
 `CaptureWriter::record_archive_line` replays these lines into an explicitly
 chosen chain. The same event slice yields the same Original and converted
-identities, including when archive replay overlaps live capture. Use this
+identities, including when archive replay overlaps live capture. Select an
+absolute destination on the importing host to replay archives from another
+platform; Windows drive and UNC source paths and POSIX source paths remain
+unchanged. A relative destination resolves against the original workspace only
+when that workspace is absolute on the importing platform. Use this
 editor-owned adapter for new archives. The old EditChain editor importer remains
 a legacy consumer until its compatibility wiring is switched.
 
@@ -100,12 +114,10 @@ native-history switch. Keep the old importer available for old archives until
 its callers use the editor-owned replay adapter.
 
 f39 owns the new capture crate, capture executable, manifest settings,
-activation/shutdown hooks and capture packaging script. The only webview change
-is the explicit unavailable response required by the current sibling
-`app-core::Effect::Projection` interface. That interface is present in the local
-f25 work; publish that dependency before building this combination in CI, which
-checks out sibling `main` branches. Production projection connections remain
-with f43.
+activation/shutdown hooks and capture packaging script. Its webview uses the
+published `app-core` interface; the f25 projection API is not a prerequisite.
+Use the sibling `main` revisions for the same build as CI. Production projection
+connections remain with f43.
 
 ## Verification
 
@@ -118,6 +130,7 @@ blob repair and reordered/duplicate deliveries.
 `./scripts/lint.sh` is the canonical Rust gate. `./scripts/check.sh` additionally
 builds and packages the extension, extracts the VSIX, and runs its actual native
 capture executable against a temporary Git checkout. The native smoke covers
-unsaved Unicode, Git context, raw archives and a lost acknowledgement followed
-by process restart and ordered replay. Editor events in automated tests use the
-VS Code API harness; they do not claim a desktop or second-machine UI run.
+unsaved Unicode, 10,001 native replacements, Git context, raw archives and a lost
+acknowledgement followed by process restart and ordered replay. Editor events
+in automated tests use the VS Code API harness; they do not claim a desktop or
+second-machine UI run.

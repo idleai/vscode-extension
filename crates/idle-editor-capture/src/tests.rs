@@ -334,6 +334,195 @@ fn raw_slices_archive_replay_and_blob_repair_are_exact() {
 }
 
 #[test]
+fn archives_from_other_platforms_keep_source_paths_and_replay_into_a_local_chain() {
+    for source in [
+        r"C:\work\repo",
+        r"\\server\share\repo",
+        "/original/checkout",
+    ] {
+        let root = tempfile::tempdir().expect("local archive destination");
+        let destination = root.path().join(".editchain");
+        let events = [
+            start(),
+            event(
+                2,
+                json!({"type":"workspace_context", "observed_ms":1500,
+                "workspace_path":source, "repositories":[{"repository":"42", "root":source, "head":null}]}),
+            ),
+            snapshot(3),
+            change(4),
+        ];
+        let mut writer = CaptureWriter::default();
+        for value in &events {
+            let raw = serde_json::to_string_pretty(value).expect("raw event slice");
+            let line = format!(
+                "{{\"format\":\"editchain-human-history\",\"schema\":1,\"workspace_path\":{},\"event\":{raw}}}\n",
+                serde_json::to_string(source).expect("source workspace")
+            );
+            let result = writer
+                .record_archive_line(line.as_bytes(), destination.to_str().expect("local path"))
+                .expect("portable replay");
+            assert_eq!(
+                result.get("accepted"),
+                Some(&json!(1)),
+                "source path never selects the destination"
+            );
+            let retry = CaptureWriter::default()
+                .record_archive_line(line.as_bytes(), destination.to_str().expect("local path"))
+                .expect("portable retry");
+            assert_eq!(
+                retry.get("replayed"),
+                Some(&json!(1)),
+                "archive retry uses the original identity"
+            );
+            let recorded = records(root.path()).expect("local records");
+            let sequence = value
+                .get("sequence")
+                .and_then(Value::as_u64)
+                .expect("event sequence");
+            let original =
+                original_payload(activity(&recorded, sequence, "raw").expect("source record"))
+                    .expect("original");
+            let reader = BlobReader::open(&destination).expect("local blobs");
+            assert_eq!(
+                bytes(&reader, &original.bytes).expect("stored source bytes"),
+                raw.as_bytes(),
+                "original paths and JSON formatting survive replay"
+            );
+            if !Path::new(source).is_absolute() {
+                assert!(
+                    writer
+                        .record_archive_line(line.as_bytes(), ".relative")
+                        .is_err(),
+                    "foreign workspaces require an explicit local absolute destination"
+                );
+            }
+        }
+        let recorded = records(root.path()).expect("local records");
+        assert!(
+            file_payload(activity(&recorded, 4, "activity").expect("change")).is_some(),
+            "source context does not block the following file change"
+        );
+    }
+}
+
+#[test]
+fn recorded_paths_accept_native_absolute_forms_without_accepting_relative_paths() {
+    for root in [
+        "/checkout",
+        "C:/work/repo",
+        r"D:\work\repo",
+        r"\\server\share\repo",
+    ] {
+        assert!(
+            crate::wire::absolute_source_path(root),
+            "valid absolute source {root}"
+        );
+    }
+    for root in [
+        "",
+        "relative",
+        "../work",
+        "C:relative",
+        r"\relative",
+        r"\\server",
+        r"\\server\",
+        "/bad\0path",
+    ] {
+        assert!(
+            !crate::wire::absolute_source_path(root),
+            "invalid source {root}"
+        );
+    }
+    let root = tempfile::tempdir().expect("local archive destination");
+    let invalid_context = event(
+        2,
+        json!({"type":"workspace_context", "observed_ms":1500,
+        "workspace_path":"C:relative", "repositories":[]}),
+    );
+    assert!(
+        CaptureWriter::default()
+            .record_json(&batch(root.path(), &[start(), invalid_context]).expect("batch"))
+            .is_err(),
+        "relative source context remains invalid"
+    );
+    let line = serde_json::to_vec(&json!({"format":"editchain-human-history", "schema":1,
+        "workspace_path":"C:relative", "event":start()}))
+    .expect("archive");
+    assert!(
+        CaptureWriter::default()
+            .record_archive_line(&line, root.path().to_str().expect("local path"))
+            .is_err(),
+        "an absolute destination does not legitimize an invalid source path"
+    );
+}
+
+#[test]
+fn large_multi_cursor_edits_preserve_every_replacement_and_allow_following_events() {
+    let count = 100_001_u32;
+    let length = usize::try_from(count).expect("cursor count");
+    let before = "😀".repeat(length);
+    let after = "😀x".repeat(length);
+    let changes: Vec<_> = (1..=count)
+        .rev()
+        .map(|offset| json!({"offset":offset.saturating_mul(2), "length":0, "text":"x"}))
+        .collect();
+    let events = [
+        start(),
+        event(
+            2,
+            json!({"type":"document_snapshot", "document":document(1), "text":before}),
+        ),
+        event(
+            3,
+            json!({"type":"document_changed", "document":document(2), "before_version":1,
+            "before":before, "after":after, "changes":changes, "reason":null}),
+        ),
+        event(4, json!({"type":"document_saved", "document":document(2)})),
+    ];
+    let root = tempfile::tempdir().expect("multi-cursor chain");
+    let request = batch(root.path(), &events).expect("batch");
+    let result = CaptureWriter::default()
+        .record_json(&request)
+        .expect("large edit admission");
+    assert_eq!(
+        result.get("accepted"),
+        Some(&json!(4)),
+        "large edits cannot strand the following save"
+    );
+    let result = CaptureWriter::default()
+        .record_json(&request)
+        .expect("large edit retry");
+    assert_eq!(
+        result.get("replayed"),
+        Some(&json!(4)),
+        "durable large batches recover after restart"
+    );
+    let recorded = records(root.path()).expect("recorded multi-cursor change");
+    let file = file_payload(activity(&recorded, 3, "activity").expect("change record"))
+        .expect("file change");
+    assert_eq!(
+        file.text_edits.len(),
+        length,
+        "every native replacement survives conversion"
+    );
+    for (edit, offset) in file.text_edits.iter().zip((1..=count).rev()) {
+        assert_eq!(
+            edit.offset_utf16,
+            u64::from(offset).saturating_mul(2),
+            "UTF-16 offsets keep emitted order"
+        );
+    }
+    let reader = BlobReader::open(&root.path().join(".editchain")).expect("change blobs");
+    let (_, replacement) = replacement(&file.edit).expect("replacement bytes");
+    assert_eq!(
+        bytes(&reader, replacement).expect("after bytes"),
+        after.as_bytes(),
+        "the complete Unicode result survives"
+    );
+}
+
+#[test]
 fn reordered_batches_recover_without_skipping_predecessors_or_using_hash_order() {
     let root = tempfile::tempdir().expect("capture test data");
     let mut writer = CaptureWriter::default();

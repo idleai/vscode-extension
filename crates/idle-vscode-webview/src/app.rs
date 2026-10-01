@@ -82,17 +82,6 @@ fn resolve_effects(core: &Core, mut effects: Vec<Effect>) -> Result<(), String> 
                     .map_err(|error| error.to_string())?,
                 );
             }
-            Effect::Projection(mut request) => {
-                effects.extend(
-                    core.resolve(
-                        request.as_mut(),
-                        Err(app_core::module::EffectError {
-                            message: "Projection adapter is not connected.".to_owned(),
-                        }),
-                    )
-                    .map_err(|error| error.to_string())?,
-                );
-            }
         }
     }
     Ok(())

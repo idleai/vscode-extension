@@ -8,7 +8,7 @@ const f = fixture();
 const extra = ['open', 'close', 'change', 'save', 'rename', 'visible', 'viewport', 'selection', 'focus', 'tabs'];
 for (const name of extra) f.events[name] = new f.api.EventEmitter();
 Object.assign(f.api, {
-  version: '1.85.0', ConfigurationTarget: { Workspace: 2 },
+  version: '1.85.0', ConfigurationTarget: { Workspace: 2, WorkspaceFolder: 3 },
   TextDocumentChangeReason: { Undo: 1, Redo: 2 }, TextEditorSelectionChangeKind: { Keyboard: 1 },
   TabInputText: class { constructor(uri) { this.uri = uri; } },
 });
@@ -18,8 +18,11 @@ Object.assign(f.api.workspace, {
   onDidRenameFiles: f.events.rename.event,
   getConfiguration: (_, resource) => ({
     get: (key, fallback) => f.configuration.get(resource?.toString())?.[key] ?? f.configuration.get(undefined)?.[key] ?? fallback,
-    update: async (key, value) => {
-      f.configuration.set(undefined, { ...f.configuration.get(undefined), [key]: value });
+    inspect: key => ({ workspaceValue: f.configuration.get(undefined)?.[key],
+      workspaceFolderValue: resource ? f.configuration.get(resource.toString())?.[key] : undefined }),
+    update: async (key, value, target) => {
+      const scope = target === f.api.ConfigurationTarget.WorkspaceFolder ? resource.toString() : undefined;
+      f.configuration.set(scope, { ...f.configuration.get(scope), [key]: value });
       f.events.configuration.fire({ affectsConfiguration: section => section === 'idle' || `idle.${key}`.startsWith(section) });
     },
   }),
@@ -167,6 +170,71 @@ test('folder settings isolate capture and multi-root windows do not assign untit
     const events = delivered.flatMap(batch => batch.events);
     assert.ok(events.some(event => event.event.after === 'selected root'));
     assert.ok(!events.some(event => event.event.after === 'ignored root' || event.event.after === 'ambiguous untitled'));
+  } finally { await s.cleanup(); }
+});
+
+test('pause and start update existing folder overrides and remain effective after reload', async () => {
+  const s = await setup({ folders: 3, enabled: false });
+  try {
+    const [enabled, disabled, inherited] = f.api.workspace.workspaceFolders;
+    f.configuration.set(enabled.uri.toString(), { 'tracking.enabled': true, chainDirectory: 'local-chain' });
+    f.configuration.set(disabled.uri.toString(), { 'tracking.enabled': false });
+    await s.host.capture.restart();
+    assert.equal((await s.host.capture.snapshot()).length, 1);
+    const stopping = f.commands.get('idle.tracking.stop')();
+    const reads = s.reads();
+    s.edit('immediately after pause');
+    assert.equal(s.reads(), reads, 'reads stop before any asynchronous settings update');
+    await stopping;
+    assert.deepEqual(await s.host.capture.snapshot(), []);
+    assert.deepEqual(f.configuration.get(enabled.uri.toString()), { 'tracking.enabled': false, chainDirectory: 'local-chain' });
+    assert.equal(f.configuration.get(inherited.uri.toString()), undefined, 'no folder override is invented');
+    await extension.deactivate();
+    for (const disposable of f.context.subscriptions) disposable.dispose();
+    f.context.subscriptions = [];
+    const reloaded = extension.activate(f.context);
+    assert.deepEqual(await reloaded.capture.snapshot(), [], 'persisted folder overrides cannot restart capture');
+    s.edit('after reload while paused');
+    assert.equal(s.reads(), reads);
+    await f.commands.get('idle.tracking.start')();
+    assert.equal((await reloaded.capture.snapshot()).length, 3, 'start applies to the whole window too');
+    assert.equal(await reloaded.capture.flush(), true);
+    assert.ok(delivered.flatMap(batch => batch.events).some(event => event.event.text === 'after reload while paused'));
+  } finally { await s.cleanup(); }
+});
+
+test('a failed pause settings write leaves all capture stopped until a successful command', async () => {
+  const s = await setup();
+  const getConfiguration = f.api.workspace.getConfiguration;
+  try {
+    f.api.workspace.getConfiguration = (...args) => ({ ...getConfiguration(...args),
+      update: async () => { throw new Error('settings write failed'); } });
+    await assert.rejects(f.commands.get('idle.tracking.stop')(), /settings write failed/);
+    const reads = s.reads();
+    s.edit('while settings cannot be written');
+    await s.host.capture.restart();
+    assert.equal(s.reads(), reads);
+    assert.deepEqual(await s.host.capture.snapshot(), []);
+    f.api.workspace.getConfiguration = getConfiguration;
+    await f.commands.get('idle.tracking.start')();
+    assert.equal((await s.host.capture.snapshot()).length, 1, 'a failed command does not poison the command queue');
+  } finally { f.api.workspace.getConfiguration = getConfiguration; await s.cleanup(); }
+});
+
+test('overlapping tracking commands persist in invocation order without admitting intermediate edits', async () => {
+  const s = await setup({ folders: 2 });
+  try {
+    f.configuration.set(f.api.workspace.workspaceFolders[0].uri.toString(), { 'tracking.enabled': true });
+    const reads = s.reads();
+    const stopping = f.commands.get('idle.tracking.stop')();
+    const starting = f.commands.get('idle.tracking.start')();
+    const paused = f.commands.get('idle.tracking.stop')();
+    s.edit('between commands');
+    await Promise.all([stopping, starting, paused]);
+    assert.equal(s.reads(), reads);
+    assert.deepEqual(await s.host.capture.snapshot(), []);
+    assert.equal(f.configuration.get(undefined)['tracking.enabled'], false);
+    assert.equal(f.configuration.get(f.api.workspace.workspaceFolders[0].uri.toString())['tracking.enabled'], false);
   } finally { await s.cleanup(); }
 });
 

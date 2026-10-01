@@ -208,6 +208,27 @@ test('a symlinked archive directory is excluded at every alias of its real path'
   } finally { await fs.rm(base, { recursive: true, force: true }); }
 });
 
+test('a new destination under a symlink resolves its physical path before its first write', async () => {
+  const base = await directory();
+  const physical = path.join(base, 'real');
+  const alias = path.join(base, 'alias');
+  await fs.mkdir(physical);
+  await linkDirectory(physical, alias);
+  const { archive, reports } = writer(path.join(alias, 'new-archive'));
+  try {
+    await archive.setup();
+    await assert.rejects(fs.stat(path.join(physical, 'new-archive')), { code: 'ENOENT' });
+    archive.append(WORKSPACE, event(1));
+    const file = await allocated(archive);
+    const realFile = await fs.realpath(file);
+    assert.equal(archive.excludes(file), true);
+    assert.equal(archive.excludes(realFile), true, 'the first output file is excluded at the path VS Code sees');
+    await archive.stop();
+    assert.equal((await records(realFile)).length, 1);
+    assert.deepEqual(reports, []);
+  } finally { await archive.stop(); await fs.rm(base, { recursive: true, force: true }); }
+});
+
 test('exclusion follows a symlinked workspace, including when it is the destination root', async () => {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'editchain-archive-link-'));
   const realWorkspace = path.join(base, 'real');

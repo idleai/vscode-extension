@@ -52,6 +52,7 @@ export class EditorCapture {
         this.edits.interrupt(document);
         if (this.exposure?.document.id === this.documents.get(document)?.document.id) this.endExposure();
         this.documents.delete(document);
+        this.skipped.delete(document.uri.toString());
       }),
       vscode.workspace.onDidChangeTextDocument(event => this.changed(event)),
       vscode.workspace.onDidSaveTextDocument(document => {
@@ -135,8 +136,11 @@ export class EditorCapture {
   private withinLimit(document: vscode.TextDocument, text: string): boolean {
     const bytes = Buffer.byteLength(text);
     const binary = text.includes('\0');
-    if (bytes <= this.maxFileBytes && !binary) return true;
     const uri = document.uri.toString();
+    if (bytes <= this.maxFileBytes && !binary) {
+      this.skipped.delete(uri);
+      return true;
+    }
     if (!this.skipped.has(uri)) {
       this.skipped.add(uri);
       this.edits.flush();

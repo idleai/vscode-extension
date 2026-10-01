@@ -407,13 +407,13 @@ impl EditorEvent {
                 workspace_path,
                 ..
             } => {
-                if workspace_path.as_ref().is_some_and(|root| {
-                    root.len() > 4096 || !std::path::Path::new(root).is_absolute()
-                }) || repositories.len() > 64
+                if workspace_path
+                    .as_ref()
+                    .is_some_and(|root| !absolute_source_path(root))
+                    || repositories.len() > 64
                     || repositories.iter().any(|repo| {
                         repo.repository.parse::<u64>().is_err()
-                            || repo.root.len() > 4096
-                            || !std::path::Path::new(&repo.root).is_absolute()
+                            || !absolute_source_path(&repo.root)
                             || repo.head.as_ref().is_some_and(|head| {
                                 editchain_core::GitOid::from_hex(head).is_none()
                             })
@@ -459,7 +459,6 @@ impl EditorEvent {
                 }
                 if *before_version >= document.version
                     || changes.is_empty()
-                    || changes.len() > 10000
                     || reason
                         .as_deref()
                         .is_some_and(|reason| !matches!(reason, "undo" | "redo"))
@@ -600,4 +599,24 @@ fn validate_snapshot(text: &str) -> Result<(), &'static str> {
         return Err("editor snapshot exceeds 8 MiB capture limit");
     }
     Ok(())
+}
+
+/// Source paths describe the recording host, which may use another platform.
+pub(crate) fn absolute_source_path(value: &str) -> bool {
+    if value.len() > 4096 || value.contains('\0') {
+        return false;
+    }
+    if value.starts_with('/') {
+        return true;
+    }
+    if let [drive, b':', b'\\' | b'/', ..] = value.as_bytes()
+        && drive.is_ascii_alphabetic()
+    {
+        return true;
+    }
+    value.strip_prefix("\\\\").is_some_and(|rest| {
+        let mut parts = rest.split(['\\', '/']);
+        parts.next().is_some_and(|server| !server.is_empty())
+            && parts.next().is_some_and(|share| !share.is_empty())
+    })
 }

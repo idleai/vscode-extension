@@ -110,7 +110,10 @@ export class HistoryArchive {
    */
   async setup(): Promise<void> {
     this.ready ??= this.prepare();
-    return this.ready;
+    const ready = this.ready;
+    await ready;
+    // A missing directory can appear on the first append or outside this host.
+    if (!this.canonical && this.ready === ready) this.ready = undefined;
   }
 
   private async prepare(): Promise<void> {

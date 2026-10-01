@@ -19,7 +19,7 @@ use std::{
 use crate::{
     convert, identity,
     state::State,
-    wire::{EditorEvent, RecordEditorEvents},
+    wire::{EditorEvent, RecordEditorEvents, absolute_source_path},
 };
 
 #[derive(Debug)]
@@ -107,19 +107,39 @@ struct ArchiveLine {
 impl CaptureWriter {
     /// Replay a portable archive line into an explicitly selected chain.
     /// The event's exact JSON slice, source order and identities are retained.
+    /// An absolute chain directory is independent of the recording platform.
+    /// Relative destinations use the original workspace only on its native platform.
     /// # Errors
-    /// Rejects unsupported archive formats and the same errors as live capture.
+    /// Rejects invalid source paths, ambiguous relative destinations, unsupported
+    /// archive formats and the same event/write errors as live capture.
     pub fn record_archive_line(&mut self, line: &[u8], chain_dir: &str) -> crate::Result<Value> {
         let line: ArchiveLine = serde_json::from_slice(line)?;
         if line.format != "editchain-human-history" || line.schema != 1 {
             return Err("unsupported human capture archive".into());
         }
-        let prefix = serde_json::to_string(
-            &serde_json::json!({"workspace_path": line.workspace_path, "chain_dir": chain_dir}),
-        )?;
-        let prefix = prefix.strip_suffix('}').ok_or("invalid archive envelope")?;
-        let batch = format!("{prefix},\"events\":[{}]}}", line.event.get());
-        self.record_json(batch.as_bytes())
+        if !absolute_source_path(&line.workspace_path) || chain_dir.is_empty() {
+            return Err(
+                "archive requires an absolute source workspace and explicit chain directory".into(),
+            );
+        }
+        let workspace = Path::new(&line.workspace_path);
+        let root = if Path::new(chain_dir).is_absolute() {
+            PathBuf::from(chain_dir)
+        } else if workspace.is_absolute() {
+            workspace.join(chain_dir)
+        } else {
+            return Err(
+                "archives from another platform require an absolute chain directory".into(),
+            );
+        };
+        self.record_batch(
+            RawBatch {
+                workspace_path: line.workspace_path,
+                chain_dir: chain_dir.to_owned(),
+                events: vec![line.event],
+            },
+            &root,
+        )
     }
 
     /// Admit the exact JSON event slices supplied by the host's durable outbox.
@@ -128,6 +148,17 @@ impl CaptureWriter {
     /// No acknowledgement is returned until all referenced bytes and records sync.
     pub fn record_json(&mut self, bytes: &[u8]) -> crate::Result<Value> {
         let raw: RawBatch = serde_json::from_slice(bytes)?;
+        let workspace = Path::new(&raw.workspace_path);
+        if !workspace.is_absolute() || raw.chain_dir.is_empty() {
+            return Err(
+                "capture requires an absolute workspace and explicit chain directory".into(),
+            );
+        }
+        let root = workspace.join(&raw.chain_dir);
+        self.record_batch(raw, &root)
+    }
+
+    fn record_batch(&mut self, raw: RawBatch, root: &Path) -> crate::Result<Value> {
         let request = RecordEditorEvents {
             workspace_path: raw.workspace_path,
             chain_dir: raw.chain_dir,
@@ -138,22 +169,15 @@ impl CaptureWriter {
                 .collect::<Result<_, _>>()?,
         };
         request.validate()?;
-        let workspace = Path::new(&request.workspace_path);
-        if !workspace.is_absolute() || request.chain_dir.is_empty() {
-            return Err(
-                "capture requires an absolute workspace and explicit chain directory".into(),
-            );
-        }
-        let root = workspace.join(&request.chain_dir);
         // Open the writer before reading the tail: other capture/import processes
         // may have appended while this service waited for exclusive access.
-        let mut store = SegmentStore::open_wait(&root, Duration::from_secs(2))?;
-        if !self.chains.contains_key(&root) {
-            let _old = self.chains.insert(root.clone(), Chain::open(&root)?);
+        let mut store = SegmentStore::open_wait(root, Duration::from_secs(2))?;
+        if !self.chains.contains_key(root) {
+            let _old = self.chains.insert(root.to_path_buf(), Chain::open(root)?);
         }
         let chain = self
             .chains
-            .get_mut(&root)
+            .get_mut(root)
             .ok_or("capture chain lookup failed")?;
         chain.refresh()?;
         let mut blobs = BlobStore::new(root.join("blobs"))?;

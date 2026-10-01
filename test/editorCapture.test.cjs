@@ -135,6 +135,47 @@ test('the exact byte limit is accepted and skip diagnostics distinguish size fro
   }
 });
 
+test('every skipped interval is reported again after recovery or document close', () => {
+  for (const skipped of ['x'.repeat(13), 'small\0buffer']) {
+    const env = harness(2000, undefined, { text: skipped, maxBytes: 12 });
+    const gaps = () => env.events.filter(event => event.event.type === 'tracking_gap' && event.event.reason.startsWith('Buffer skipped:'));
+    const replace = text => {
+      const before = env.document.text;
+      env.document.text = text; env.document.version++;
+      env.signals.change({ document: env.document, contentChanges: [{ rangeOffset: 0, rangeLength: before.length, text }] });
+    };
+    try {
+      assert.equal(gaps().length, 1);
+      env.signals.open(env.document);
+      assert.equal(gaps().length, 1, 'one gap during a continuous skipped interval');
+      replace('small');
+      assert.ok(env.events.some(event => event.event.type === 'document_snapshot' && event.event.text === 'small'));
+      replace(skipped);
+      assert.equal(gaps().length, 2, 'recovery ends the first skipped interval');
+      env.signals.close(env.document);
+      env.signals.open(env.document);
+      assert.equal(gaps().length, 3, 'a new document lifetime reports its own gap');
+    } finally { env.capture.dispose(); }
+  }
+});
+
+test('a large multi-cursor edit preserves every native replacement in emitted order', () => {
+  const count = 10001;
+  const before = '😀'.repeat(count), after = '😀x'.repeat(count);
+  const changes = Array.from({ length: count }, (_, index) => ({ rangeOffset: 2 * (count - index), rangeLength: 0, text: 'x' }));
+  const env = harness(2000, undefined, { text: before });
+  try {
+    env.document.text = after; env.document.version++;
+    env.signals.change({ document: env.document, contentChanges: changes });
+    env.capture.checkpoint();
+    const recorded = env.events.find(event => event.event.type === 'document_changed').event;
+    assert.equal(recorded.before, before);
+    assert.equal(recorded.after, after);
+    assert.deepEqual(recorded.changes, changes.map(change => ({ offset: change.rangeOffset, length: change.rangeLength, text: change.text })));
+    assert.ok(!env.events.some(event => event.event.type === 'tracking_gap'));
+  } finally { env.capture.dispose(); }
+});
+
 test('deleting existing code uses direct events without selections or stays visible as unattributed', () => {
   for (const direct of [false, true]) {
     const env = harness();

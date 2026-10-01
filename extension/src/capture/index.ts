@@ -28,6 +28,9 @@ export class CaptureHost implements vscode.Disposable {
   private readonly status: vscode.StatusBarItem;
   private name: string | undefined;
   private accountGeneration = 0;
+  private trackingUpdates = Promise.resolve();
+  private trackingGeneration = 0;
+  private trackingBlocked = false;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly configuration: HostConfiguration,
     private readonly diagnostics: HostDiagnostics,
@@ -77,8 +80,24 @@ export class CaptureHost implements vscode.Disposable {
 
   private async setTracking(enabled: boolean): Promise<void> {
     this.configuration.assertTrusted();
-    await vscode.workspace.getConfiguration('idle').update('tracking.enabled', enabled, vscode.ConfigurationTarget.Workspace);
-    await this.restart();
+    const generation = ++this.trackingGeneration;
+    // Stop reads before asynchronous settings writes, including failed writes.
+    this.trackingBlocked = true;
+    void this.restart();
+    const update = this.trackingUpdates.then(async () => {
+      this.configuration.assertTrusted();
+      await vscode.workspace.getConfiguration('idle').update('tracking.enabled', enabled, vscode.ConfigurationTarget.Workspace);
+      for (const folder of vscode.workspace.workspaceFolders ?? []) {
+        const settings = vscode.workspace.getConfiguration('idle', folder.uri);
+        if (settings.inspect<boolean>('tracking.enabled')?.workspaceFolderValue !== undefined) {
+          await settings.update('tracking.enabled', enabled, vscode.ConfigurationTarget.WorkspaceFolder);
+        }
+      }
+      if (generation === this.trackingGeneration) this.trackingBlocked = false;
+      await this.restart();
+    });
+    this.trackingUpdates = update.catch(() => {});
+    return update;
   }
 
   restart(): Promise<void> {
@@ -110,7 +129,7 @@ export class CaptureHost implements vscode.Disposable {
 
   private enabled(folder: vscode.WorkspaceFolder): boolean {
     const native = folder.uri.scheme === 'file' || (folder.uri.scheme === 'vscode-remote' && !!vscode.env.remoteName);
-    return !this.closed && vscode.workspace.isTrusted && native
+    return !this.closed && !this.trackingBlocked && vscode.workspace.isTrusted && native
       && (vscode.workspace.workspaceFolders ?? []).some(current => current.uri.toString() === folder.uri.toString())
       && vscode.workspace.getConfiguration('idle', folder.uri).get<boolean>('tracking.enabled', true);
   }

@@ -9,13 +9,18 @@ pub(super) fn validate(
 ) -> Result<(), &'static str> {
     // Ordinary typing changes one range. Compare the complete prefix, inserted
     // text, and suffix directly, avoiding two whole-buffer UTF-16 conversions.
-    // Multi-range edits and surrogate-interior offsets keep the general replay.
+    // Surrogate-interior offsets keep the exact UTF-16 replay below.
     if let [change] = changes
         && let Some(matches) = single(before, after, change)
     {
         return result(matches);
     }
     let mut text: Vec<_> = before.encode_utf16().collect();
+    // Native multi-cursor changes run from the end toward the start. Compare
+    // their disjoint pieces once instead of moving the suffix for every cursor.
+    if let Some(matches) = descending(&text, after, changes) {
+        return result(matches);
+    }
     for change in changes {
         let start = usize::try_from(change.offset).map_err(|_error| "invalid edit offset")?;
         let end = start
@@ -30,6 +35,36 @@ pub(super) fn validate(
         }
     }
     result(text.iter().copied().eq(after.encode_utf16()))
+}
+
+fn descending(before: &[u16], after: &str, changes: &[EditorChange]) -> Option<bool> {
+    let mut boundary = before.len();
+    for change in changes {
+        let start = usize::try_from(change.offset).ok()?;
+        let end = start.checked_add(usize::try_from(change.length).ok()?)?;
+        if end > boundary {
+            return None;
+        }
+        boundary = start;
+    }
+    let mut actual = after.encode_utf16();
+    let mut cursor = 0;
+    for change in changes.iter().rev() {
+        let start = usize::try_from(change.offset).ok()?;
+        let end = start.checked_add(usize::try_from(change.length).ok()?)?;
+        let expected = before
+            .get(cursor..start)?
+            .iter()
+            .copied()
+            .chain(change.text.encode_utf16());
+        for unit in expected {
+            if actual.next() != Some(unit) {
+                return Some(false);
+            }
+        }
+        cursor = end;
+    }
+    Some(before.get(cursor..)?.iter().copied().eq(actual))
 }
 
 fn single(before: &str, after: &str, change: &EditorChange) -> Option<bool> {
@@ -156,5 +191,50 @@ mod tests {
             validate("a😀b", "a😀b", &outside).is_err(),
             "out-of-range empty changes still fail"
         );
+    }
+
+    #[test]
+    fn disjoint_changes_match_ordered_utf16_splices_including_adjacent_insertions() {
+        let before = "a😀b🦀éz";
+        let units: Vec<_> = before.encode_utf16().collect();
+        for split in 0..=units.len() {
+            for start in 0..=split {
+                for end in split..=units.len() {
+                    for text in ["", "X", "🙂"] {
+                        let changes = [
+                            EditorChange {
+                                offset: u32::try_from(split).expect("offset"),
+                                length: u32::try_from(end.saturating_sub(split)).expect("length"),
+                                text: text.into(),
+                            },
+                            EditorChange {
+                                offset: u32::try_from(start).expect("offset"),
+                                length: u32::try_from(split.saturating_sub(start)).expect("length"),
+                                text: "Y".into(),
+                            },
+                        ];
+                        let mut expected = units.clone();
+                        drop(expected.splice(split..end, text.encode_utf16()));
+                        drop(expected.splice(start..split, "Y".encode_utf16()));
+                        match String::from_utf16(&expected) {
+                            Ok(after) => {
+                                assert!(
+                                    validate(before, &after, &changes).is_ok(),
+                                    "exact ordered replacements {start}..{split}..{end}"
+                                );
+                                assert!(
+                                    validate(before, &format!("{after}!"), &changes).is_err(),
+                                    "complete after-text comparison"
+                                );
+                            }
+                            Err(_) => assert!(
+                                validate(before, before, &changes).is_err(),
+                                "surrogate fragments cannot silently change encoding"
+                            ),
+                        }
+                    }
+                }
+            }
+        }
     }
 }
