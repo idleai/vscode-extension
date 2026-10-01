@@ -996,6 +996,12 @@ dependencies = [
 [[package]]
 name = "idle-vscode-native"
 version = "0.1.0"
+dependencies = [
+ "app-core",
+ "idle-protocol",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "idle-vscode-webview"

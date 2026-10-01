@@ -151,6 +151,8 @@ test('activation and views share extension-lifetime services without acquiring c
   assert.equal(f.commands.has('idle.signIn'), true);
   assert.equal(typeof host.native.startPeer, 'function');
   assert.equal(typeof host.transport.bridgeDuplex, 'function');
+  assert.equal(typeof host.presence.connect, 'function');
+  assert.equal(f.commands.has('idle.presence.showPeers'), true);
   const first = view();
   f.calls.providers[0].provider.resolveWebviewView(first);
   const session = first.webview.html.match(/data-host-session="([^"]+)"/)[1];

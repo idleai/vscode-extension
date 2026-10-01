@@ -9,20 +9,24 @@ class Emitter {
 
 function uri(value) {
   const parsed = new URL(value);
-  return { scheme: parsed.protocol.slice(0, -1), authority: parsed.host, fsPath: decodeURIComponent(parsed.pathname), toString: () => value };
+  return { scheme: parsed.protocol.slice(0, -1), authority: parsed.host, path: decodeURIComponent(parsed.pathname), fsPath: decodeURIComponent(parsed.pathname), query: parsed.search.slice(1), fragment: parsed.hash.slice(1), toString: () => value };
 }
 
 function fixture() {
   const commands = new Map();
-  const events = Object.fromEntries(['configuration', 'folders', 'trust', 'authentication'].map(key => [key, new Emitter()]));
-  const calls = { auth: [], output: [], notifications: [], external: [], clipboard: [], providers: [], panels: [] };
+  const events = Object.fromEntries(['configuration', 'folders', 'trust', 'authentication', 'activeEditor'].map(key => [key, new Emitter()]));
+  const calls = { auth: [], output: [], notifications: [], external: [], clipboard: [], providers: [], panels: [], lenses: [], statuses: [], choices: [] };
   const secrets = new Map();
   const state = new Map();
   const configuration = new Map();
   const api = {
     EventEmitter: Emitter,
     Uri: { parse: uri, joinPath: (base, ...parts) => uri(`${base.toString()}/${parts.join('/')}`) },
-    StatusBarAlignment: { Left: 1 }, ViewColumn: { Active: 1 },
+    StatusBarAlignment: { Left: 1, Right: 2 }, ViewColumn: { Active: 1 },
+    CodeLens: class { constructor(range, command) { this.range = range; this.command = command; } },
+    Range: class { constructor(...coordinates) { this.coordinates = coordinates; } },
+    languages: { registerCodeLensProvider: (selector, provider) => { calls.lenses.push({ selector, provider }); return { dispose() {} }; } },
+    extensions: { getExtension: () => undefined },
     workspace: {
       isTrusted: true,
       workspaceFolders: ['/one', '/two'].map((path, index) => ({ name: path.slice(1), index, uri: uri(`file://${path}`) })),
@@ -40,7 +44,9 @@ function fixture() {
     },
     window: {
       createOutputChannel: () => ({ appendLine: line => calls.output.push(line), show() {}, dispose() {} }),
-      createStatusBarItem: () => ({ show() {}, dispose() {} }),
+      createStatusBarItem: () => { const status = { visible: false, show() { this.visible = true; }, hide() { this.visible = false; }, dispose() {} }; calls.statuses.push(status); return status; },
+      onDidChangeActiveTextEditor: events.activeEditor.event,
+      showQuickPick: async (choices, options) => { calls.choices.push({ choices, options }); },
       showInformationMessage: async message => { calls.notifications.push(message); },
       showWarningMessage: async message => { calls.notifications.push(message); },
       showErrorMessage: async message => { calls.notifications.push(message); },

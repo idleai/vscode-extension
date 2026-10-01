@@ -35,6 +35,8 @@ async function main() {
     assert.equal(f.calls.auth.length, 0);
     assert.equal(typeof host.native.startPeer, 'function');
     assert.equal(typeof host.transport.bridgeDuplex, 'function');
+    assert.equal(typeof host.presence.connect, 'function');
+    assert.equal(f.commands.has('idle.presence.showPeers'), true);
     const adapters = await host.devTunnels();
     adapters.createClient();
     adapters.createHost({ port: 43187, incoming() {} });
