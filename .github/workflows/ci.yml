@@ -30,6 +30,11 @@ jobs:
           ref: main
           path: web-ui
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: idleai/editchain
+          path: editchain
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.0

@@ -30,6 +30,41 @@ fn initial_view() -> Result<ViewModel, String> {
                         .map_err(|error| error.to_string())?,
                 );
             }
+            Effect::Workspace(mut request) => {
+                effects.extend(
+                    core.resolve(
+                        request.as_mut(),
+                        Err(app_core::workspace::WorkspaceError {
+                            kind: app_core::workspace::WorkspaceErrorKind::Unavailable,
+                            message: "Workspace adapter is not connected.".to_owned(),
+                        }),
+                    )
+                    .map_err(|error| error.to_string())?,
+                );
+            }
+            Effect::Subscription(mut request) => {
+                effects.extend(
+                    core.resolve(
+                        request.as_mut(),
+                        Err(app_core::subscriptions::SubscriptionError {
+                            kind: app_core::subscriptions::SubscriptionErrorKind::Unavailable,
+                            message: "Subscription adapter is not connected.".to_owned(),
+                        }),
+                    )
+                    .map_err(|error| error.to_string())?,
+                );
+            }
+            Effect::History(mut request) => {
+                effects.extend(
+                    core.resolve(
+                        request.as_mut(),
+                        Err(app_core::module::EffectError {
+                            message: "History adapter is not connected.".to_owned(),
+                        }),
+                    )
+                    .map_err(|error| error.to_string())?,
+                );
+            }
         }
     }
     Ok(core.view())
