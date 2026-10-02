@@ -376,7 +376,8 @@ Set `editchain-history.live.enabled` to `false` to open static history by defaul
   or `~/.codex/sessions`). Use the same root as earlier imports so provider-relative
   cursor identities remain consistent.
 - `live.codexHelperPath` selects `codex-session-exporter`, defaulting to the
-  workspace helper release build, then PATH. It must support `--stream`.
+  sibling Codex exporter release build, then the older workspace-local build
+  and PATH. It must support `--stream`.
   `live.cliPath` is retained for compatibility with the earlier prototype;
   the resident native service now owns live imports.
 - Collection polls every 250 ms after the previous pass. It notices new,

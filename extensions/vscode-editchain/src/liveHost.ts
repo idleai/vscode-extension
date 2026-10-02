@@ -25,14 +25,17 @@ export function createLiveSync(service: string, synchronize: (provider?: LivePro
   const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!workspace) throw new Error('Open a workspace folder to follow Codex sessions.');
   const helperName = process.platform === 'win32' ? 'codex-session-exporter.exe' : 'codex-session-exporter';
-  const helper = path.join(workspace, 'tools', 'codex-session-exporter', 'target', 'release', helperName);
+  const helperLocations = [
+    path.resolve(workspace, '../codex/tools/codex-session-exporter/target/release', helperName),
+    path.join(workspace, 'tools', 'codex-session-exporter', 'target', 'release', helperName),
+  ];
   const paths: LivePaths = {
     workspace,
     chain: path.resolve(workspace, config.get<string>('chainDir', '.editchain')),
     sessions: path.resolve(workspace, config.get<string>('live.sessionsPath', '') ||
       path.join(process.env.CODEX_HOME || path.join(homedir(), '.codex'), 'sessions')),
     cli: config.get<string>('live.cliPath', '') || path.join(path.dirname(service), process.platform === 'win32' ? 'editchain-legacy.exe' : 'editchain-legacy'),
-    helper: config.get<string>('live.codexHelperPath', '') || (existsSync(helper) ? helper : helperName),
+    helper: config.get<string>('live.codexHelperPath', '') || helperLocations.find(existsSync) || helperName,
   };
   for (const [name, value] of Object.entries(paths)) log(`${name}: ${value}`);
   return new LiveSync({
