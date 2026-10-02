@@ -1,7 +1,9 @@
 # EditChain multiplayer: GitHub discovery and VS Code peer streaming
 
-**Research and architecture notes — September 10, 2026**  
-**Status:** Proposed architecture; not an end-to-end tested implementation.  
+**Research and architecture notes — September 10, 2026**
+
+**Status:** Proposed architecture; not an end-to-end tested implementation.
+
 **Scope:** Consolidation of the research and design decisions from this conversation.
 
 > **Recommended starting point:** Reuse VS Code's authorized GitHub sign-in for a small repository-backed discovery directory. Bundle Microsoft's Dev Tunnels SDK in the extension to establish an EditChain-only duplex connection. Authenticate peers separately, then replicate immutable EditChain operations and referenced blobs through the Rust synchronization engine.

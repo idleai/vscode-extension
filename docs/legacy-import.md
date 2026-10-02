@@ -70,4 +70,3 @@ absolute workspace, and the import does not relocate it. Then point the extensio
 at the new chain with `editchain-history.chainDir` (or move it into place) and run
 **EditChain: Open History Explorer**. Importing does not delete the archives, so
 the old chain can be removed once the new one is verified.
-
