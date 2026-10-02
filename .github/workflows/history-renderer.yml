@@ -35,14 +35,14 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: idleai/app-core
-          ref: 52fb6d73a0f4f2e0fe3e57ef0fe9a3e03218a1b5
+          ref: 18e9c7d98f87a3a44f98374fa187393221c30572
           path: app-core
           persist-credentials: false
 
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: idleai/web-ui
-          ref: a06a207fc6fc3a7f8657ff449957c3db04857258
+          ref: 808464f2c2f4c0e5029b3503ce42b3041ffd5ff9
           path: web-ui
           persist-credentials: false
 
@@ -56,7 +56,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: idleai/codex-evo
-          ref: e4c18da409ea2e50226b77d973b380eff5584496
+          ref: bbe45b3f58b7d1eb204dee983a44c4e7e76ecca1
           path: codex
           persist-credentials: false
 
