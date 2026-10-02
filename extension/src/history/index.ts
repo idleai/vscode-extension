@@ -97,6 +97,26 @@ export class HistoryHost implements vscode.Disposable {
     await Promise.all(work);
   }
 
+  /** Shared history reads use only host-installed repository and storage bindings. */
+  async query(params: unknown, signal?: AbortSignal): Promise<unknown> {
+    if (!record(params) || !record(params.operation)) throw new HostError("invalid_request", "Expected a bound history query.");
+    const connection = this.connection(parseBinding(params.binding));
+    if (params.operation.chain !== connection.binding.repository.chain) throw new HostError("binding_mismatch", "The query belongs to a different chain.");
+    if (record(params.operation.action) && record(params.operation.action.Open)) {
+      return { Ok: await this.openQuery({ binding: params.binding, query: params.operation }, signal) };
+    }
+    if (!connection.provider.query) throw new HostError("unavailable", "History reads are unavailable on this connection.");
+    this.assertCurrent(connection, signal);
+    if (connection.ready) await connection.ready;
+    this.assertCurrent(connection, signal);
+    const linked = linkCancellation(connection.abort.signal, signal);
+    try {
+      const result = await connection.provider.query(params.operation, linked.signal);
+      this.assertCurrent(connection, signal);
+      return result;
+    } finally { linked.dispose(); }
+  }
+
   /** Adapter for app-core QueryAction::Open; the reducer receives Opened after editor success. */
   async openQuery(params: unknown, signal?: AbortSignal): Promise<"Opened"> {
     if (!record(params) || !record(params.query) || !record(params.query.action) || !record(params.query.action.Open)) {

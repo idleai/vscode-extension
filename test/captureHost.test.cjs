@@ -103,6 +103,16 @@ test('activation captures unsaved input before views open and after all views cl
     const changed = delivered.flatMap(batch => batch.events).find(event => event.event.type === 'document_changed');
     assert.equal(changed.event.before, 'unsaved 😀');
     assert.equal(changed.event.after, 'edited while every Idle view is closed');
+    const launchesBeforeReopen = launches.length;
+    const reopened = view();
+    f.calls.providers.at(-1).provider.resolveWebviewView(reopened);
+    assert.equal(launches.length, launchesBeforeReopen, 'reopening alone starts no native work');
+    s.edit('capture continues after reopening');
+    assert.equal(await s.host.capture.flush(), true);
+    const afterReopen = delivered.flatMap(batch => batch.events).filter(event => event.event.type === 'document_changed').at(-1);
+    assert.equal(afterReopen.session, changed.session, 'the capture session survives view replacement');
+    assert.equal(afterReopen.event.after, 'capture continues after reopening');
+    reopened.dispose();
     assert.ok(launches.every(call => call.options.cwd === f.api.workspace.workspaceFolders[0].uri.fsPath));
     await s.host.capture.shutdown();
     const [name] = await fs.readdir(path.join(s.root, 'archive'));

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,4 +31,5 @@ run("wasm-bindgen", [
   join(metadata.target_directory, "wasm32-unknown-unknown", "release", "idle_vscode_webview.wasm"),
 ]);
 cpSync(join(root, "static"), output, { recursive: true });
-cpSync(join(root, "../web-ui/crates/web-ui/assets/theme.css"), join(output, "theme.css"));
+writeFileSync(join(output, "theme.css"), ["theme.css", "history.css", "history-details.css", "sessions.css"]
+  .map(file => readFileSync(join(root, "../web-ui/crates/web-ui/assets", file), "utf8")).join("\n"));

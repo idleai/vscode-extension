@@ -15,6 +15,8 @@ app-core = { path = "../../../app-core/crates/app-core", version = "0.1.0" }
 web-ui = { path = "../../../web-ui/crates/web-ui", version = "0.1.0" }
 dioxus = { version = "=0.7.7", default-features = false, features = ["macro", "html", "hooks", "signals"] }
 serde_json = "=1.0.151"
+serde = { version = "1", features = ["derive"] }
+crux_core = { version = "=0.20.0", default-features = false }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 dioxus-web = { version = "=0.7.7", default-features = false }
@@ -22,6 +24,9 @@ js-sys = "=0.3.104"
 wasm-bindgen = "=0.2.127"
 wasm-bindgen-futures = "=0.4.77"
 web-sys = { version = "=0.3.104", features = ["Window", "Document", "Element", "EventTarget", "MessageEvent", "console"] }
+
+[dev-dependencies]
+app-core = { path = "../../../app-core/crates/app-core", version = "0.1.0", features = ["session-fixtures"] }
 
 [lints]
 workspace = true

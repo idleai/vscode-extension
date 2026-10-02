@@ -1,293 +1,68 @@
-//! Minimal host composition; domain reducers remain in app-core.
+//! Document composition; semantic state and rendering stay in the shared crates.
 
-use app_core::{Core, Effect, Event, ViewModel, effects::HostInfo};
 use dioxus::prelude::*;
-use web_ui::Scaffold;
+use web_ui::assembly::{Surface, WorkspaceSurface};
 
-/// Render the extension webview's initial application view.
+/// Mount one persistent application and its disposable host message listener.
 #[component]
 pub fn App() -> Element {
-    let view = use_hook(initial_view);
-    match view {
-        Ok(view) => rsx! { Scaffold { view } },
-        Err(_error) => rsx! { p { role: "alert", "Unable to start Idle." } },
-    }
+    let revision = use_signal(|| 0_u64);
+    let mut error = use_signal(|| None::<String>);
+    let _revision = *revision.read();
+    #[cfg(target_arch = "wasm32")]
+    let connection = use_hook(
+        || match crate::connection::Connection::new(revision, error) {
+            Ok(connection) => Some(connection),
+            Err(message) => {
+                error.set(Some(message));
+                None
+            }
+        },
+    );
+    #[cfg(target_arch = "wasm32")]
+    let (view, capabilities) = connection.as_ref().map_or_else(
+        || {
+            (
+                app_core::ViewModel::default(),
+                web_ui::host::HostCapabilities::new(web_ui::host::HostKind::VsCode),
+            )
+        },
+        |connection| {
+            let runtime = connection.runtime.borrow();
+            (runtime.view(), runtime.capabilities())
+        },
+    );
+    #[cfg(not(target_arch = "wasm32"))]
+    let runtime =
+        use_hook(|| std::rc::Rc::new(std::cell::RefCell::new(crate::adapters::Runtime::default())));
+    #[cfg(not(target_arch = "wasm32"))]
+    let (view, capabilities) = (runtime.borrow().view(), runtime.borrow().capabilities());
+    rsx! { WorkspaceSurface {
+        view, capabilities, surface: surface(), error: error(),
+        onaction: move |event| {
+            #[cfg(target_arch = "wasm32")]
+            if let Some(connection) = &connection { connection.dispatch(event); }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                if let Err(message) = runtime.borrow_mut().dispatch(event) { error.set(Some(message)); }
+                let mut revision = revision;
+                let next = revision.peek().wrapping_add(1);
+                revision.set(next);
+            }
+        },
+    } }
 }
 
-fn initial_view() -> Result<ViewModel, String> {
-    let core = Core::new();
-    resolve_effects(&core, core.process_event(Event::Start))?;
-    Ok(core.view())
-}
-
-fn resolve_effects(core: &Core, mut effects: Vec<Effect>) -> Result<(), String> {
-    while let Some(effect) = effects.pop() {
-        match effect {
-            Effect::Render(_) => {}
-            Effect::HostInfo(mut request) => {
-                let info = HostInfo {
-                    name: "Idle VS Code".to_owned(),
-                    version: env!("CARGO_PKG_VERSION").to_owned(),
-                };
-                effects.extend(
-                    core.resolve(&mut request, Ok(info))
-                        .map_err(|error| error.to_string())?,
-                );
-            }
-            Effect::Workspace(mut request) => {
-                effects.extend(
-                    core.resolve(
-                        request.as_mut(),
-                        Err(app_core::workspace::WorkspaceError {
-                            kind: app_core::workspace::WorkspaceErrorKind::Unavailable,
-                            message: "Workspace adapter is not connected.".to_owned(),
-                        }),
-                    )
-                    .map_err(|error| error.to_string())?,
-                );
-            }
-            Effect::Subscription(mut request) => {
-                effects.extend(
-                    core.resolve(
-                        request.as_mut(),
-                        Err(app_core::subscriptions::SubscriptionError {
-                            kind: app_core::subscriptions::SubscriptionErrorKind::Unavailable,
-                            message: "Subscription adapter is not connected.".to_owned(),
-                        }),
-                    )
-                    .map_err(|error| error.to_string())?,
-                );
-            }
-            Effect::History(mut request) => {
-                effects.extend(
-                    core.resolve(
-                        request.as_mut(),
-                        Err(app_core::module::EffectError {
-                            message: "History adapter is not connected.".to_owned(),
-                        }),
-                    )
-                    .map_err(|error| error.to_string())?,
-                );
-            }
-            Effect::Projection(mut request) => {
-                effects.extend(
-                    core.resolve(
-                        request.as_mut(),
-                        Err(app_core::module::EffectError {
-                            message: "Projection adapter is not connected.".to_owned(),
-                        }),
-                    )
-                    .map_err(|error| error.to_string())?,
-                );
-            }
-            Effect::Resource(mut request) => {
-                effects.extend(
-                    core.resolve(
-                        request.as_mut(),
-                        Err(app_core::resources::ResourceError {
-                            code: app_core::resources::ResourceErrorCode::Unavailable,
-                            message: "Resource adapter is not connected.".to_owned(),
-                            retry: app_core::resources::ResourceRetryAdvice::Never,
-                        }),
-                    )
-                    .map_err(|error| error.to_string())?,
-                );
-            }
-            Effect::Session(mut request) => {
-                effects.extend(
-                    core.resolve(
-                        request.as_mut(),
-                        Err(app_core::sessions::SessionError {
-                            code: app_core::sessions::SessionErrorCode::Unavailable,
-                            message: "Session adapter is not connected.".to_owned(),
-                            retry: app_core::sessions::SessionRetryAdvice::Never,
-                        }),
-                    )
-                    .map_err(|error| error.to_string())?,
-                );
-            }
-            Effect::Configuration(mut request) => {
-                effects.extend(
-                    core.resolve(
-                        request.as_mut(),
-                        Err(app_core::configuration::ConfigurationError {
-                            kind: app_core::configuration::ConfigurationErrorKind::Unavailable,
-                            message: "Configuration adapter is not connected.".to_owned(),
-                        }),
-                    )
-                    .map_err(|error| error.to_string())?,
-                );
-            }
-        }
+fn surface() -> Surface {
+    #[cfg(target_arch = "wasm32")]
+    if web_sys::window()
+        .and_then(|window| window.document())
+        .and_then(|document| document.get_element_by_id("main"))
+        .and_then(|element| element.get_attribute("data-view-kind"))
+        .as_deref()
+        == Some("detail")
+    {
+        return Surface::Detail;
     }
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn configuration_requests_complete_both_editors_without_a_connected_adapter() {
-        use app_core::configuration::{
-            ConfigurationContext, ConfigurationError, ConfigurationErrorKind,
-            ConfigurationLoadState, Event,
-        };
-        use app_core::workspace::WorkspaceMode;
-
-        for mode in [WorkspaceMode::Standalone, WorkspaceMode::Managed] {
-            let core = app_core::Core::new();
-            let context = ConfigurationContext {
-                provider: "provider".to_owned(),
-                workspace_id: "workspace".to_owned(),
-                contributor_id: "contributor".to_owned(),
-                chain: "chain".to_owned(),
-                mode,
-            };
-            let effects = core.process_event(app_core::Event::Configuration(Event::Connect(
-                context.clone(),
-            )));
-            assert_eq!(
-                effects
-                    .iter()
-                    .filter(|effect| matches!(effect, app_core::Effect::Configuration(_)))
-                    .count(),
-                2,
-                "settings and rules each request their document"
-            );
-            super::resolve_effects(&core, effects).expect("resolve configuration operations");
-            let view = core.view().configuration;
-            assert_eq!(view.context, Some(context), "the selected context remains");
-            for editor in [view.settings, view.agent_rules] {
-                assert_eq!(
-                    editor.load,
-                    ConfigurationLoadState::Failed(ConfigurationError {
-                        kind: ConfigurationErrorKind::Unavailable,
-                        message: "Configuration adapter is not connected.".to_owned(),
-                    }),
-                    "each document finishes loading with an explicit failure"
-                );
-                assert!(editor.current.is_none(), "no document is fabricated");
-                assert!(
-                    editor.actions.is_empty(),
-                    "unloaded documents cannot be edited"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn resource_requests_resolve_as_unavailable_without_a_connected_adapter() {
-        use app_core::resources::{
-            ResourceCapabilities, ResourceContext, ResourceError, ResourceErrorCode,
-            ResourceLoadState, ResourceRetryAdvice,
-        };
-        use app_core::workspace::WorkspaceMode;
-
-        for mode in [WorkspaceMode::Standalone, WorkspaceMode::Managed] {
-            let core = app_core::Core::new();
-            let context = ResourceContext {
-                provider: "provider".to_owned(),
-                workspace_id: "workspace".to_owned(),
-                contributor_id: "contributor".to_owned(),
-                chain: "chain".to_owned(),
-                mode,
-            };
-            let effects = core.process_event(app_core::Event::Resources(
-                app_core::resources::Event::Connect(context.clone()),
-            ));
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, app_core::Effect::Resource(_))),
-                "connecting resources must request the host adapter"
-            );
-            super::resolve_effects(&core, effects).expect("resolve resource operation");
-            let view = core.view().resources;
-            assert_eq!(
-                view.context,
-                Some(context),
-                "the failure retains its selected context"
-            );
-            assert_eq!(
-                view.load,
-                ResourceLoadState::Failed(ResourceError {
-                    code: ResourceErrorCode::Unavailable,
-                    message: "Resource adapter is not connected.".to_owned(),
-                    retry: ResourceRetryAdvice::Never,
-                }),
-                "an absent adapter must finish the request with an explicit failure"
-            );
-            assert_eq!(
-                view.capabilities,
-                ResourceCapabilities::default(),
-                "an absent adapter cannot enable runtime capabilities"
-            );
-        }
-    }
-
-    #[test]
-    fn session_requests_resolve_as_unavailable_without_a_connected_adapter() {
-        use app_core::sessions::{
-            SessionContext, SessionError, SessionErrorCode, SessionLoadState, SessionRetryAdvice,
-        };
-        use app_core::workspace::WorkspaceMode;
-
-        for mode in [WorkspaceMode::Standalone, WorkspaceMode::Managed] {
-            let core = app_core::Core::new();
-            let context = SessionContext {
-                provider: "provider".to_owned(),
-                workspace_id: "workspace".to_owned(),
-                contributor_id: "contributor".to_owned(),
-                chain: "chain".to_owned(),
-                mode,
-            };
-            let effects = core.process_event(app_core::Event::Sessions(
-                app_core::sessions::Event::Connect(context.clone()),
-            ));
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, app_core::Effect::Session(_))),
-                "connecting sessions must request the host adapter"
-            );
-            super::resolve_effects(&core, effects).expect("resolve session operation");
-            let view = core.view().sessions;
-            assert_eq!(
-                view.context,
-                Some(context),
-                "the failure retains its selected context"
-            );
-            assert_eq!(
-                view.load,
-                SessionLoadState::Failed(SessionError {
-                    code: SessionErrorCode::Unavailable,
-                    message: "Session adapter is not connected.".to_owned(),
-                    retry: SessionRetryAdvice::Never,
-                }),
-                "an absent adapter must finish the request with an explicit failure"
-            );
-            assert!(
-                view.sessions.is_empty(),
-                "an absent adapter cannot fabricate sessions"
-            );
-        }
-    }
-
-    #[test]
-    fn bootstrap_resolves_host_information() {
-        let view = super::initial_view();
-        assert!(
-            view.as_ref().is_ok_and(|view| view.initialized),
-            "the shared core must initialize"
-        );
-        assert_eq!(
-            view.map(|view| view.bootstrap),
-            Ok(app_core::module::LoadState::Ready(
-                app_core::effects::HostInfo {
-                    name: "Idle VS Code".to_owned(),
-                    version: env!("CARGO_PKG_VERSION").to_owned(),
-                }
-            )),
-            "the shell must resolve the shared core's host information request"
-        );
-    }
+    Surface::Sidebar
 }

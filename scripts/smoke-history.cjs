@@ -16,6 +16,15 @@ async function smokeHistory(host, f, binary, extensionPath) {
     f.api.workspace.workspaceFolders = [{ name: 'history', uri: resource }];
     assert.equal(path.dirname(binary), path.join(extensionPath, 'bin', `${process.platform}-${process.arch}`));
     lease = host.history.connect({ root: resource, repository: fixture.binding, chainDirectory: path.join(root, 'chain') });
+    const page = await host.history.query({ binding: fixture.binding, operation: {
+      chain: fixture.binding.chain, action: { History: { filter: { kinds: [], session: null, author: null, recorder: null, path: null }, page: { after: null, limit: 100 } } },
+    } });
+    assert.ok(page.Ok.History.observations.length >= 4, 'app-core reads use the packaged engine');
+    const details = await host.history.query({ binding: fixture.binding, operation: {
+      chain: fixture.binding.chain, action: { OperationDetails: { operation: fixture.requests[0].record.operation } },
+    } });
+    assert.deepEqual(details.Ok.OperationDetails.records[0].bytes, fixture.encoded, 'the assembled inspector receives exact retained record bytes');
+    await assert.rejects(host.history.query({ binding: fixture.binding, operation: { chain: 'another-chain', action: 'Invalid' } }), { code: 'binding_mismatch' });
     const documents = f.calls.fileProviders.find(value => value.scheme === 'idle-history').provider;
     const hex = f.calls.contentProviders.find(value => value.scheme === 'idle-history-hex').provider;
     const text = f.calls.contentProviders.find(value => value.scheme === 'idle-history-text').provider;

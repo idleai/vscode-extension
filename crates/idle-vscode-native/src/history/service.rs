@@ -36,7 +36,52 @@ struct Envelope {
 #[derive(Serialize)]
 struct Response {
     id: u64,
-    body: Result<Preview, Failure>,
+    body: serde_json::Value,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct QueryRequest {
+    binding: RepositoryChainBinding,
+    query: app_core::history::Query,
+}
+
+fn execute_body(binding: &Binding, body: serde_json::Value) -> io::Result<serde_json::Value> {
+    if body.get("query").is_some() {
+        let result = serde_json::from_value::<QueryRequest>(body)
+            .map_err(|_error| app_core::module::EffectError {
+                message: "Invalid history query.".to_owned(),
+            })
+            .and_then(|request| read_query(binding, &request));
+        serde_json::to_value(result).map_err(io::Error::other)
+    } else {
+        let result = serde_json::from_value(body)
+            .map_err(|_error| {
+                Failure::new(
+                    FailureCode::InvalidReference,
+                    "Invalid native history request.",
+                )
+            })
+            .and_then(|request| execute(binding, &request));
+        serde_json::to_value(result).map_err(io::Error::other)
+    }
+}
+
+fn read_query(binding: &Binding, request: &QueryRequest) -> app_core::history::QueryOutput {
+    let failure = |message: &str| app_core::module::EffectError {
+        message: message.to_owned(),
+    };
+    if request.binding != binding.repository || request.query.chain != binding.repository.chain {
+        return Err(failure(
+            "The query belongs to a different repository or chain.",
+        ));
+    }
+    if !binding.chain_directory.is_dir() {
+        return Err(failure("The bound history source is unavailable."));
+    }
+    let mut queries = ChainQueries::open(&binding.chain_directory)
+        .map_err(|_error| failure("Unable to read the bound history source."))?;
+    app_core::history::engine::execute(&mut queries, &binding.repository.chain, &request.query)
 }
 
 /// Serve length-prefixed JSON until the host closes standard input.
@@ -81,23 +126,16 @@ pub fn serve(mut input: impl Read, mut output: impl Write, binding: &Binding) ->
         let request: Envelope = serde_json::from_slice(&bytes).map_err(io::Error::other)?;
         let response = Response {
             id: request.id,
-            body: serde_json::from_value(request.body)
-                .map_err(|_error| {
-                    Failure::new(
-                        FailureCode::InvalidReference,
-                        "Invalid native history request.",
-                    )
-                })
-                .and_then(|body| execute(binding, &body)),
+            body: execute_body(binding, request.body)?,
         };
         let mut bytes = serde_json::to_vec(&response).map_err(io::Error::other)?;
         if bytes.len() > MAX_RESPONSE {
             bytes = serde_json::to_vec(&Response {
                 id: request.id,
-                body: Err(Failure::new(
+                body: serde_json::json!({"Err": Failure::new(
                     FailureCode::TooLarge,
                     "The complete preview exceeds the native transport limit.",
-                )),
+                )}),
             })
             .map_err(io::Error::other)?;
         }

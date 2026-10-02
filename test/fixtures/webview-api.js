@@ -12,11 +12,12 @@ window.acquireVsCodeApi = () => {
     getState: () => undefined,
     setState: value => value,
     postMessage(request) {
-      if (request.method !== "host.ready" || request.session !== "smoke-session" || request.protocol !== 1) throw new Error("Invalid request from Rust.");
+      if (!["host.ready", "app.workspace"].includes(request.method) || request.session !== "smoke-session" || request.protocol !== 1) throw new Error("Invalid request from Rust.");
       window.smoke.posts++;
       window.dispatchEvent(new MessageEvent("message", { data: {
         protocol: window.smoke.malformed ? 2 : 1, session: request.session, id: request.id,
-        result: { capabilities: ["host.ready"], configuration: { trusted: true, folders: [], remoteName: null } },
+        result: request.method === "app.workspace" ? { Ok: { Directory: [] } } :
+          { capabilities: ["host.ready"], configuration: { trusted: true, folders: [], remoteName: null } },
       } }));
     },
   };

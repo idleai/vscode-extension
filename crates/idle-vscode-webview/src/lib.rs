@@ -1,8 +1,10 @@
-//! VS Code webview mounting entrypoint. Only the scaffold view is wired.
+//! VS Code mounting entrypoint for shared history and session components.
 
 pub mod adapters;
 pub mod app;
 pub mod bridge;
+#[cfg(target_arch = "wasm32")]
+mod connection;
 
 /// Mount the shared component after the WASM module loads.
 #[cfg(target_arch = "wasm32")]

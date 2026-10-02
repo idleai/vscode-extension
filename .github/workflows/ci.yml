@@ -21,18 +21,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: idleai/app-core
-          ref: main
+          ref: b19fb6360d5f410c348e08c4826038f2cf076268
           path: app-core
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: idleai/web-ui
-          ref: main
+          ref: e5369da6013813cb2e6ca28a92dd59302fc0eac5
           path: web-ui
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: idleai/editchain
+          ref: 271af3a5b331c9bbf19c8d84eb71612564bb9723
           path: editchain
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
@@ -53,6 +54,19 @@ jobs:
       - name: Install cargo-deny
         run: cargo install cargo-deny --locked --version 0.20.2
       - run: bash scripts/check.sh
+      - name: Install Chrome for packaged application checks
+        id: chrome
+        run: |
+          OUTPUT="$(npx @puppeteer/browsers install chrome@stable --path "$RUNNER_TEMP/idle-chrome")"
+          CHROME_EXECUTABLE="$(printf '%s\n' "$OUTPUT" | tail -n 1 | awk '{print $NF}')"
+          test -x "$CHROME_EXECUTABLE"
+          echo "path=$CHROME_EXECUTABLE" >> "$GITHUB_OUTPUT"
+      - name: Verify packaged webview and native history integration
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.path }}
+        run: |
+          npm run test:webview
+          npm run test:assembly
       - uses: actions/upload-artifact@v4
         with:
           name: idle-vscode
