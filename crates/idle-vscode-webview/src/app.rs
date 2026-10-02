@@ -106,6 +106,18 @@ fn resolve_effects(core: &Core, mut effects: Vec<Effect>) -> Result<(), String> 
                     .map_err(|error| error.to_string())?,
                 );
             }
+            Effect::Configuration(mut request) => {
+                effects.extend(
+                    core.resolve(
+                        request.as_mut(),
+                        Err(app_core::configuration::ConfigurationError {
+                            kind: app_core::configuration::ConfigurationErrorKind::Unavailable,
+                            message: "Configuration adapter is not connected.".to_owned(),
+                        }),
+                    )
+                    .map_err(|error| error.to_string())?,
+                );
+            }
         }
     }
     Ok(())
@@ -113,6 +125,55 @@ fn resolve_effects(core: &Core, mut effects: Vec<Effect>) -> Result<(), String> 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn configuration_requests_complete_both_editors_without_a_connected_adapter() {
+        use app_core::configuration::{
+            ConfigurationContext, ConfigurationError, ConfigurationErrorKind,
+            ConfigurationLoadState, Event,
+        };
+        use app_core::workspace::WorkspaceMode;
+
+        for mode in [WorkspaceMode::Standalone, WorkspaceMode::Managed] {
+            let core = app_core::Core::new();
+            let context = ConfigurationContext {
+                provider: "provider".to_owned(),
+                workspace_id: "workspace".to_owned(),
+                contributor_id: "contributor".to_owned(),
+                chain: "chain".to_owned(),
+                mode,
+            };
+            let effects = core.process_event(app_core::Event::Configuration(Event::Connect(
+                context.clone(),
+            )));
+            assert_eq!(
+                effects
+                    .iter()
+                    .filter(|effect| matches!(effect, app_core::Effect::Configuration(_)))
+                    .count(),
+                2,
+                "settings and rules each request their document"
+            );
+            super::resolve_effects(&core, effects).expect("resolve configuration operations");
+            let view = core.view().configuration;
+            assert_eq!(view.context, Some(context), "the selected context remains");
+            for editor in [view.settings, view.agent_rules] {
+                assert_eq!(
+                    editor.load,
+                    ConfigurationLoadState::Failed(ConfigurationError {
+                        kind: ConfigurationErrorKind::Unavailable,
+                        message: "Configuration adapter is not connected.".to_owned(),
+                    }),
+                    "each document finishes loading with an explicit failure"
+                );
+                assert!(editor.current.is_none(), "no document is fabricated");
+                assert!(
+                    editor.actions.is_empty(),
+                    "unloaded documents cannot be edited"
+                );
+            }
+        }
+    }
+
     #[test]
     fn resource_requests_resolve_as_unavailable_without_a_connected_adapter() {
         use app_core::resources::{
