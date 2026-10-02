@@ -207,17 +207,18 @@ repos/
   web-ui/
   vscode-extension/
   web/
-  editchain/          # existing history engine and extraction source
+  editchain/          # reusable engine, CLI and generic peer worker
   codex/              # existing idleai/codex-evo checkout
 ```
 
 Path dependencies are deliberate during extraction. CI checks out the required
-public siblings from `idleai/*` on `main`. The Cargo lockfile pins registry
+public siblings from `idleai/*` at the paired revisions in each workflow. The Cargo lockfile pins registry
 dependencies, not sibling source revisions; coordinate boundary changes across
 repositories. Once contracts are ready for release, replace sibling paths with
 versioned packages or pinned Git revisions as a separate packaging change.
 
-The `app-core` and `web-ui` siblings are required for builds. Installed VSIX files
+The `editchain`, `app-core` and `web-ui` siblings are required for builds.
+The compatibility extension also builds Codex's `tools/history-runtime` package. Installed VSIX files
 include their JS/WASM/theme assets and need no sibling source checkout.
 
 Rust 1.97.0 is selected by `rust-toolchain.toml`. Cargo installs the specified
@@ -327,3 +328,17 @@ The dependency policy in `deny.toml` includes one explicit maintenance exception
 Crux 0.20's mandatory `bincode` 1.3.3 dependency. Remove it when Crux migrates
 serialization. Other advisories remain checked. Crux's optional macro feature
 is disabled, removing its unmaintained `proc-macro-error` dependency.
+
+## Existing EditChain extension
+
+The existing extension now lives at
+[`extensions/vscode-editchain`](extensions/vscode-editchain/README.md), with its
+native `editchain-node` and editor protocol crates in this workspace. The renderer
+and graph geometry live in web-ui; shared contracts, semantic projections and the
+peer state adapter live in app-core. Codex owns the exporter and portable peer
+coordination. These source moves preserve the installed extension's interfaces.
+
+Use the [viewer import guide](docs/legacy-import.md) for `editchain-legacy`, and
+`./reinstall-vscode.sh --help` for the compatibility extension installer. The
+existing renderer CI job now runs here, including asset regeneration, native
+integration, Chrome smoke checks and the real VS Code renderer suite.

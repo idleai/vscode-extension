@@ -21,19 +21,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: idleai/app-core
-          ref: b19fb6360d5f410c348e08c4826038f2cf076268
+          ref: 52fb6d73a0f4f2e0fe3e57ef0fe9a3e03218a1b5
           path: app-core
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: idleai/web-ui
-          ref: e5369da6013813cb2e6ca28a92dd59302fc0eac5
+          ref: a06a207fc6fc3a7f8657ff449957c3db04857258
           path: web-ui
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: idleai/editchain
-          ref: 271af3a5b331c9bbf19c8d84eb71612564bb9723
+          ref: ef6206bb0c80c398102303529129662f74660c21
           path: editchain
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable

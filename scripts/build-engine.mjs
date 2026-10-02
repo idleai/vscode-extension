@@ -2,14 +2,16 @@ import { execFileSync } from "node:child_process";
 import { mkdir, copyFile, chmod } from "node:fs/promises";
 import path from "node:path";
 
-// Sibling source is a build dependency; installed adapters use only VSIX assets.
-const manifest = path.resolve("../editchain/Cargo.toml");
-execFileSync("cargo", ["build", "--manifest-path", manifest, "--locked", "--release",
-  "-p", "editchain-node", "--bin", "editchain-vscode-service", "-p", "editchain-sync", "--bin", "editchain-peer"], { stdio: "inherit" });
-const metadata = JSON.parse(execFileSync("cargo", ["metadata", "--manifest-path", manifest, "--locked", "--no-deps", "--format-version", "1"], { encoding: "utf8" }));
+// Source repositories are build dependencies; installed adapters use VSIX assets.
 const directory = path.resolve("bin", `${process.platform}-${process.arch}`);
 await mkdir(directory, { recursive: true });
-for (const binary of ["editchain-vscode-service", "editchain-peer"]) {
+for (const [repository, crate, binary] of [
+  [".", "editchain-node", "editchain-vscode-service"],
+  ["../editchain", "editchain-sync", "editchain-peer"],
+]) {
+  const manifest = path.resolve(repository, "Cargo.toml");
+  execFileSync("cargo", ["build", "--manifest-path", manifest, "--locked", "--release", "-p", crate, "--bin", binary], { stdio: "inherit" });
+  const metadata = JSON.parse(execFileSync("cargo", ["metadata", "--manifest-path", manifest, "--locked", "--no-deps", "--format-version", "1"], { encoding: "utf8" }));
   const name = `${binary}${process.platform === "win32" ? ".exe" : ""}`;
   const destination = path.join(directory, name);
   await copyFile(path.join(metadata.target_directory, "release", name), destination);

@@ -1,0 +1,205 @@
+name: History Renderer
+
+# Rust/WASM history renderer (extensions/vscode-editchain history webview).
+# The shipped UI is one panel titled "EditChain History", bootstrapped by
+# media/rust-history/loader.js and generated wasm-bindgen glue. The
+# editchain-history-renderer crate owns its state, DOM, accessibility, and
+# per-row SVG graph fragments. This job builds and checks that wasm32 crate,
+# verifies that the committed generated assets are reproducible, and exercises
+# the renderer contracts in Node and real Chrome.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  history-renderer:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vscode-extension
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          path: vscode-extension
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: idleai/app-core
+          ref: 52fb6d73a0f4f2e0fe3e57ef0fe9a3e03218a1b5
+          path: app-core
+          persist-credentials: false
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: idleai/web-ui
+          ref: a06a207fc6fc3a7f8657ff449957c3db04857258
+          path: web-ui
+          persist-credentials: false
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: idleai/editchain
+          ref: ef6206bb0c80c398102303529129662f74660c21
+          path: editchain
+          persist-credentials: false
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: idleai/codex-evo
+          ref: e4c18da409ea2e50226b77d973b380eff5584496
+          path: codex
+          persist-credentials: false
+
+      - name: Install Rust 1.97 toolchain and wasm32 target
+        run: |
+          rustup show
+          rustup component add clippy rustfmt
+          rustup target add wasm32-unknown-unknown
+
+      - name: Cache Cargo registry and target
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            vscode-extension/target
+            editchain/target
+            app-core/target
+            web-ui/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('vscode-extension/Cargo.lock', 'app-core/Cargo.lock', 'web-ui/Cargo.lock', 'editchain/Cargo.lock') }}
+
+      - name: Install wasm-bindgen-cli (exactly 0.2.127)
+        timeout-minutes: 20
+        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: vscode-extension/extensions/vscode-editchain/package-lock.json
+
+      - name: Build and test portable history runtime
+        working-directory: codex/tools/history-runtime
+        run: |
+          npm ci
+          npm test
+
+      - name: Install extension dependencies
+        working-directory: vscode-extension/extensions/vscode-editchain
+        run: npm ci
+
+      - name: Build native service, peer, and fixture importer (release)
+        timeout-minutes: 25
+        run: |
+          cargo build --release --locked -p editchain-node --bins
+          cargo build --manifest-path ../editchain/Cargo.toml --release --locked -p editchain-sync --bins
+
+      - name: Build deterministic history fixture
+        run: |
+          node extensions/vscode-editchain/scripts/create-renderer-fixture.mjs "$RUNNER_TEMP/editchain-renderer"
+
+      - name: Build history renderer and client-state assets
+        working-directory: vscode-extension/extensions/vscode-editchain
+        timeout-minutes: 25
+        run: npm run build:renderer
+
+      - name: Verify committed web and Node pkg trees regenerate without diff
+        working-directory: vscode-extension/extensions/vscode-editchain
+        run: |
+          for pkg in media/rust-history/pkg media/client-state/pkg media/main.css; do
+            git ls-files --error-unmatch "$pkg" >/dev/null
+            if [ -n "$(git status --porcelain -- "$pkg")" ]; then
+              echo "::error::Regenerating $pkg produced a diff; the committed wasm-bindgen artifacts are out of sync with the crate."
+              git status --porcelain -- "$pkg"
+              exit 1
+            fi
+            echo "$pkg regeneration matches the committed artifacts"
+          done
+
+      - name: wasm32 cargo check (history and peer adapters)
+        run: |
+          cargo check --manifest-path ../web-ui/Cargo.toml -p editchain-history-renderer --target wasm32-unknown-unknown --locked
+          cargo check --manifest-path ../app-core/Cargo.toml -p editchain-client-state --target wasm32-unknown-unknown --locked
+
+      - name: wasm32 clippy (history and peer adapters, -D warnings)
+        run: |
+          cargo clippy --manifest-path ../web-ui/Cargo.toml -p editchain-history-renderer --target wasm32-unknown-unknown --locked -- -D warnings
+          cargo clippy --manifest-path ../app-core/Cargo.toml -p editchain-client-state --target wasm32-unknown-unknown --locked -- -D warnings
+
+      - name: Compile extension
+        working-directory: vscode-extension/extensions/vscode-editchain
+        run: npm run compile
+
+      - name: Generic harness tests
+        working-directory: vscode-extension/extensions/vscode-editchain
+        env:
+          EDITCHAIN_PEER_TEST_BINARY: ${{ github.workspace }}/editchain/target/release/editchain-peer
+          EDITCHAIN_SERVICE_TEST_BINARY: ${{ github.workspace }}/vscode-extension/target/release/editchain-vscode-service
+        run: npm run test:harness
+
+      - name: Install Chrome for the Rust smoke harness
+        id: chrome
+        working-directory: vscode-extension/extensions/vscode-editchain
+        timeout-minutes: 10
+        run: |
+          OUT="$(npx @puppeteer/browsers install chrome@stable --path "$RUNNER_TEMP/puppeteer-chrome")"
+          printf '%s\n' "$OUT"
+          CHROME_BIN="$(printf '%s\n' "$OUT" | tail -n 1 | awk '{print $NF}')"
+          test -n "$CHROME_BIN"
+          test -x "$CHROME_BIN"
+          echo "path=$CHROME_BIN" >> "$GITHUB_OUTPUT"
+
+      - name: Rust-owned history adapter smoke test (real Chrome, deterministic per-row SVG)
+        working-directory: vscode-extension/extensions/vscode-editchain
+        timeout-minutes: 20
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.path }}
+        run: |
+          # Run with TAP output and fail the step if the suite did not run or
+          # ANY test skipped: Chrome is installed and the assets were just
+          # built, so a skip here means the suite silently stopped covering
+          # the Rust-owned path.
+          set -o pipefail
+          npm run test:rust-smoke 2>&1 | tee "$RUNNER_TEMP/rust-smoke.tap"
+          grep -q '^# tests ' "$RUNNER_TEMP/rust-smoke.tap" || {
+            echo "::error::rustSmoke produced no test plan; the suite did not run."
+            exit 1
+          }
+          if grep -q '# SKIP ' "$RUNNER_TEMP/rust-smoke.tap"; then
+            echo "::error::rustSmoke skipped a runtime test in CI despite CHROME_PATH and built assets; it must run for real."
+            grep '# SKIP ' "$RUNNER_TEMP/rust-smoke.tap"
+            exit 1
+          fi
+
+      - name: Real VS Code history renderer e2e (xvfb)
+        working-directory: vscode-extension/extensions/vscode-editchain
+        timeout-minutes: 30
+        env:
+          EDITCHAIN_RENDERER_E2E_SERVICE: ${{ github.workspace }}/vscode-extension/target/release/editchain-vscode-service
+          EDITCHAIN_RENDERER_E2E_WORKSPACE: ${{ runner.temp }}/editchain-renderer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb
+          npm run ui:vscode:renderer
+
+      - name: Upload history renderer artifacts (.ui-out + trace)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: history-renderer-artifacts
+          path: |
+            vscode-extension/extensions/vscode-editchain/.ui-out
+            vscode-extension/extensions/vscode-editchain/trace
+          if-no-files-found: warn
+          retention-days: 7

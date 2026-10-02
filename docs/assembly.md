@@ -63,4 +63,4 @@ reopening the view without replacing the capture session.
 
 The legacy EditChain host still serves the live Codex importer and standalone
 peer consumer. Its source retirement conditions are recorded in
-[`ASSEMBLY-MIGRATION.md`](../../editchain/extensions/vscode-editchain/ASSEMBLY-MIGRATION.md).
+[`ASSEMBLY-MIGRATION.md`](../extensions/vscode-editchain/ASSEMBLY-MIGRATION.md).
