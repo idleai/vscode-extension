@@ -2071,9 +2071,11 @@ name = "idle-vscode-webview"
 version = "0.1.0"
 dependencies = [
  "app-core",
+ "crux_core",
  "dioxus",
  "dioxus-web",
  "js-sys",
+ "serde",
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",

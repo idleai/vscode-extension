@@ -3,6 +3,7 @@ import { PeerAwarenessHost } from "../presence";
 import { CaptureHost } from "../capture";
 import { HistoryHost } from "../history";
 import { HostConfiguration } from "./configuration";
+import { AssemblyHost } from "./assembly";
 import { HostCredentials } from "./credentials";
 import type { DevTunnelsAdapters } from "./devTunnels";
 import { HostDiagnostics } from "./diagnostics";
@@ -22,6 +23,9 @@ export class HostServices implements vscode.Disposable {
   readonly native: NativeServices;
   readonly capture: CaptureHost;
   readonly history: HistoryHost;
+  readonly assembly: AssemblyHost;
+  private readonly changed = new vscode.EventEmitter<void>();
+  readonly onDidChangeContext = this.changed.event;
   /** Byte adapters; the caller/Rust runtime owns protocol interpretation. */
   readonly transport = { bridgeDuplex, consumeTransport, writeTransport };
   private tunnels: Promise<DevTunnelsAdapters> | undefined;
@@ -37,6 +41,7 @@ export class HostServices implements vscode.Disposable {
     this.native = new NativeServices(this.configuration);
     this.capture = new CaptureHost(context, this.configuration, this.diagnostics);
     this.history = new HistoryHost(context.extensionUri.fsPath, this.effects, this.diagnostics);
+    this.assembly = new AssemblyHost(this.configuration, this.history, this.effects);
     const refreshCaptureAccount = () => { void this.capture.refreshAccount(async () => (await this.credentials.account())?.label); };
     refreshCaptureAccount();
     this.accountChanged = this.credentials.onDidChange(() => {
@@ -44,7 +49,9 @@ export class HostServices implements vscode.Disposable {
       refreshCaptureAccount();
       this.presence.disconnect();
       this.history.disconnect();
+      this.assembly.reset();
       this.retireTunnels();
+      this.changed.fire();
     });
     this.registerPlatformEffects();
   }
@@ -129,6 +136,8 @@ export class HostServices implements vscode.Disposable {
     this.closed = true;
     this.accountChanged.dispose();
     this.presence.dispose();
+    this.assembly.dispose();
+    this.changed.dispose();
     this.effects.dispose();
     this.retireTunnels();
     try { await Promise.all([this.capture.shutdown(), this.history.shutdown(), this.native.shutdown(), ...this.retiring]); }

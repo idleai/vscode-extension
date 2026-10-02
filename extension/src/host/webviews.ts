@@ -55,7 +55,7 @@ function escapeHtml(value: string): string {
 
 export function webviewHtml(source: string, script: string, style: string, session: string, kind: string): string {
   const nonce = randomBytes(24).toString("hex");
-  const csp = `default-src 'none'; base-uri 'none'; form-action 'none'; script-src 'nonce-${nonce}' ${source} 'wasm-unsafe-eval'; style-src ${source}; img-src ${source} data:; font-src ${source}; connect-src ${source};`;
+  const csp = `default-src 'none'; base-uri 'none'; form-action 'none'; script-src 'nonce-${nonce}' ${source} 'wasm-unsafe-eval'; style-src ${source}; style-src-attr 'unsafe-inline'; img-src ${source} data:; font-src ${source}; connect-src ${source};`;
   return `<!doctype html>
 <html lang="en">
 <head>

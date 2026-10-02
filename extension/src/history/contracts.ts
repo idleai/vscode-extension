@@ -32,6 +32,8 @@ export interface HistoryBinding {
 export interface HistoryProvider {
   /** Resolve full records and fields through engine APIs, preserving explicit gaps. */
   resolve(request: HistoryRequest, signal: AbortSignal): Promise<HistoryPreview>;
+  /** Execute app-core reads through the same installed chain and process. */
+  query?(query: unknown, signal: AbortSignal): Promise<unknown>;
   /** Reset owned native services without releasing the binding; reads wait for completion. */
   restart?(): Promise<void>;
   shutdown(): Promise<void>;

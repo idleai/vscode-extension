@@ -1,8 +1,7 @@
-import init, { initializeHostBridge } from "./pkg/idle_vscode_webview.js";
+import init from "./pkg/idle_vscode_webview.js";
 
 async function start() {
   await init();
-  await initializeHostBridge();
 }
 
 start().catch((error) => {

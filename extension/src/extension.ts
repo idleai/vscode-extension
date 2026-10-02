@@ -15,11 +15,13 @@ export function activate(context: vscode.ExtensionContext): HostServices {
   const changed = () => {
     host.presence.disconnect();
     host.history.disconnect();
+    host.assembly.reset();
     host.native.reset();
     provider.broadcast("host.configurationChanged", host.configuration.snapshot());
   };
   context.subscriptions.push(
     host, provider,
+    host.onDidChangeContext(() => provider.broadcast("host.configurationChanged", host.configuration.snapshot())),
     vscode.window.registerWebviewViewProvider("idle.workspace", provider),
     register("idle.open", () => vscode.commands.executeCommand("idle.workspace.focus")),
     register("idle.openDetail", () => provider.openDetail()),

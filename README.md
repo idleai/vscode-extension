@@ -7,9 +7,11 @@ commands still run from the repository root and emit `out/`, `dist/` and `idle.v
 Idle's thin TypeScript workspace host, with application state in `app-core` and
 shared Rust/WASM rendering in `web-ui`. Activation installs commands, configuration,
 sidebar/detail webviews, output/status/notifications, credentials, native IPC and
-Dev Tunnels adapters. Opening either view currently mounts the shared bootstrap
-component. Editor capture and native history actions run independently of these
-views; complete workspace UI assembly has a separate feature owner below.
+Dev Tunnels adapters. Both views mount the shared workspace/history surface over
+a persistent app-core instance. Local history reads, inspection and native opens
+are connected; session and other runtime providers remain explicit integration
+work. See [the assembly contract and checks](docs/assembly.md). Editor capture and
+native services run independently of the views.
 
 Trusted folders with capture enabled start the packaged editor capture service
 during activation. Capture can silently read an existing account's display label;
@@ -33,9 +35,8 @@ the files in remote SSH, containers and Codespaces. See VS Code's
 [workspace extension host documentation](https://code.visualstudio.com/api/advanced-topics/extension-host).
 `idle.native.servicePath` and `idle.native.peerPath` are absolute paths on that
 host. Empty settings resolve `bin/<platform>-<arch>/editchain-vscode-service`
-and `editchain-peer` (with `.exe` on Windows). These history/peer binaries remain
-with f43; configure built compatible executables until that packaging is ready.
-The package includes `idle-editor-service` for the build host's platform and
+and `editchain-peer` (with `.exe` on Windows). The package includes both binaries,
+`idle-history-service` and `idle-editor-service` for the build host's platform and
 architecture. `idle.native.capturePath` can select an absolute compatible capture
 binary on the workspace host.
 Workspace build directories and the UI machine's PATH are not searched.
@@ -104,8 +105,9 @@ See [the capture contract, archive replay and remaining legacy callers](docs/edi
 `host.history.connect({ root, repository, chainDirectory, retainedDirectory? })`
 binds an exact checkout and app-core workspace/repository/chain selection to the
 packaged `idle-history-service`. Storage paths are absolute paths on the
-file-owning host. A selected standalone or managed adapter installs this binding;
-f43 owns wiring it to the assembled history UI. An optional provider implements
+file-owning host. Local folder discovery installs this binding for the assembled
+history UI; coordination adapters can install their explicit bindings through the
+same interface. An optional provider implements
 the same contract over an existing engine connection, with an optional `restart()`
 method for resetting a service it owns.
 
@@ -312,12 +314,13 @@ its webview member. Coordinate npm manifest/script changes with f38.
 The host primitives were adapted from EditChain's `stdioClient.ts`,
 `frameDecoder.ts`, activation/commands/account adapters, `multiplayer/relay.ts`,
 `multiplayer/native.ts`, `devTunnels/spike.ts`, and renderer `shell/runtime.rs`.
-The complete legacy extension remains temporarily executable for existing capture
-and history consumers. Its `HOST-MIGRATION.md` and this repo's
+The complete legacy extension remains temporarily executable for its live Codex
+importer and peer consumers. Its `ASSEMBLY-MIGRATION.md` and this repo's
 [capture handoff](docs/editor-capture.md) record the source mappings and cleanup
-owners. f39 supplies the editor-owned capture/conversion path; f40 supplies document/history actions, and f43
-switches UI consumers and retires the old host; f18/f23/f28 own coordination and
-shared Rust state. No legacy domain or rendering state was copied into TypeScript.
+owners. f39 supplies the editor-owned capture/conversion path and f40 supplies
+document/history actions. f43 supplies the new composition; complete source
+retirement follows the remaining f10/f18 consumer switches. Shared Rust state
+remains with f23/f28. No legacy domain or rendering state was copied into TypeScript.
 
 The dependency policy in `deny.toml` includes one explicit maintenance exception:
 [RUSTSEC-2025-0141](https://rustsec.org/advisories/RUSTSEC-2025-0141.html), for
