@@ -9,7 +9,7 @@ import type { DevTunnelsAdapters } from "./devTunnels";
 import { HostDiagnostics } from "./diagnostics";
 import { HostEffects } from "./effects";
 import { NativeServices } from "./nativeServices";
-import { HostError, record, textParam } from "./protocol";
+import { HostError, publicError, record, textParam } from "./protocol";
 import { TunnelJournal } from "./tunnelJournal";
 import { bridgeDuplex, consumeTransport, writeTransport } from "./transport";
 
@@ -41,7 +41,10 @@ export class HostServices implements vscode.Disposable {
     this.native = new NativeServices(this.configuration);
     this.capture = new CaptureHost(context, this.configuration, this.diagnostics);
     this.history = new HistoryHost(context.extensionUri.fsPath, this.effects, this.diagnostics);
-    this.assembly = new AssemblyHost(this.configuration, this.history, this.effects);
+    this.assembly = new AssemblyHost(this.configuration, this.history, this.effects, (folder, error) => {
+      this.diagnostics.failure("Workspace " + folder, error);
+      void this.diagnostics.notify("warning", "Idle cannot open " + folder + ": " + publicError(error).message);
+    });
     const refreshCaptureAccount = () => { void this.capture.refreshAccount(async () => (await this.credentials.account())?.label); };
     refreshCaptureAccount();
     this.accountChanged = this.credentials.onDidChange(() => {
