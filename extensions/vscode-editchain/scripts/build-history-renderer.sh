@@ -27,9 +27,13 @@ fi
 # generated pkg tree is byte-identical everywhere.
 CARGO_HOME_BASE="${CARGO_HOME:-$HOME/.cargo}"
 RUSTUP_HOME_BASE="${RUSTUP_HOME:-$HOME/.rustup}"
+RUSTC_SYSROOT="$(rustc --print sysroot)"
+RUSTC_COMMIT_HASH="$(rustc -vV | sed -n 's/^commit-hash: //p')"
 GRAPH_SIBLING_ROOT="$(cd "$REPOSITORY_DIR/.." && pwd)"
 ORIGINAL_RUSTFLAGS="${RUSTFLAGS:-}"
-export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${CARGO_HOME_BASE}=/cargo --remap-path-prefix=${RUSTUP_HOME_BASE}=/rustup --remap-path-prefix=${GRAPH_SIBLING_ROOT}=/workspace --remap-path-prefix=${WASM_WORKSPACE}=/workspace"
+# rust-src makes inlined standard-library locations point into the installed
+# sysroot. Match rustc's built-in paths when that optional component is absent.
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${CARGO_HOME_BASE}=/cargo --remap-path-prefix=${RUSTUP_HOME_BASE}=/rustup --remap-path-prefix=${GRAPH_SIBLING_ROOT}=/workspace --remap-path-prefix=${WASM_WORKSPACE}=/workspace --remap-path-prefix=${RUSTC_SYSROOT}/lib/rustlib/src/rust=/rustc/${RUSTC_COMMIT_HASH}"
 
 cargo build \
   --manifest-path "$WASM_WORKSPACE/Cargo.toml" \

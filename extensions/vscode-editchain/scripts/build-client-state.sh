@@ -9,8 +9,11 @@ cd "$SOURCE_REPOSITORY_DIR"
 WASM_WORKSPACE="$(python3 "$SCRIPT_DIR/stage-rust-workspace.py" "$SOURCE_REPOSITORY_DIR")"
 CARGO_ROOT="${CARGO_HOME:-$HOME/.cargo}"
 RUSTUP_ROOT="${RUSTUP_HOME:-$HOME/.rustup}"
+RUSTC_SYSROOT="$(rustc --print sysroot)"
+RUSTC_COMMIT_HASH="$(rustc -vV | sed -n 's/^commit-hash: //p')"
 SIBLING_ROOT="$(cd "$REPOSITORY_DIR/.." && pwd)"
-export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${CARGO_ROOT}=/cargo --remap-path-prefix=${RUSTUP_ROOT}=/rustup --remap-path-prefix=${SIBLING_ROOT}=/workspace --remap-path-prefix=${WASM_WORKSPACE}=/workspace"
+# Keep inlined standard-library locations identical with and without rust-src.
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=${CARGO_ROOT}=/cargo --remap-path-prefix=${RUSTUP_ROOT}=/rustup --remap-path-prefix=${SIBLING_ROOT}=/workspace --remap-path-prefix=${WASM_WORKSPACE}=/workspace --remap-path-prefix=${RUSTC_SYSROOT}/lib/rustlib/src/rust=/rustc/${RUSTC_COMMIT_HASH}"
 
 cargo build --manifest-path "$WASM_WORKSPACE/Cargo.toml" --target-dir "$WASM_WORKSPACE/target" \
   --package editchain-client-state --target wasm32-unknown-unknown --release --locked
