@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import * as vscode from "vscode";
-import { HistoryHost } from "../history";
-import { HostConfiguration } from "./configuration";
+import { HistoryHost, RepositoryBinding } from "../history";
+import { FolderConfiguration, HostConfiguration } from "./configuration";
 import { HostEffects } from "./effects";
 import { HostError, record } from "./protocol";
 
@@ -36,9 +36,7 @@ export class AssemblyHost implements vscode.Disposable {
       try {
         const config = this.configuration.forResource(folder.uri);
         // These are host-local aliases, not shared repository or runtime identities.
-        const repository = alias("repository", folder.uri.toString());
-        const chain = alias("chain", config.chainDirectory);
-        const workspace = alias("workspace", `${repository}\0${chain}`);
+        const { repository_id: repository, chain, workspace_id: workspace } = localBinding(config);
         this.bindings.push(this.history.connect({ root: folder.uri, chainDirectory: config.chainDirectory,
           repository: { workspace_id: workspace, repository_id: repository, chain } }));
         workspaces.push({ id: workspace, name: folder.name, chain, revision: 1, mode: "Standalone",
@@ -47,6 +45,11 @@ export class AssemblyHost implements vscode.Disposable {
     }
     this.directory = workspaces;
     return workspaces;
+  }
+
+  /** Notifications carry the same explicit logical binding used by native reads. */
+  bindingFor(resource: vscode.Uri): RepositoryBinding {
+    return localBinding(this.configuration.forResource(resource));
   }
 
   private workspace(params: unknown): unknown {
@@ -76,4 +79,10 @@ export class AssemblyHost implements vscode.Disposable {
 
 function alias(kind: string, value: string): string {
   return `local-${kind}:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function localBinding(config: FolderConfiguration): RepositoryBinding {
+  const repository = alias("repository", config.folder.uri.toString());
+  const chain = alias("chain", config.chainDirectory);
+  return { workspace_id: alias("workspace", `${repository}\0${chain}`), repository_id: repository, chain };
 }

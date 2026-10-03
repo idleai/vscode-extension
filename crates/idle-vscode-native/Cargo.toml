@@ -17,7 +17,7 @@ editchain-engine = { path = "../../../editchain/crates/editchain-engine" }
 
 [dev-dependencies]
 tempfile = "3"
-editchain-import = { path = "../../../editchain/crates/editchain-import" }
+idle-history-import = { path = "../idle-history-import" }
 
 [lints]
 workspace = true

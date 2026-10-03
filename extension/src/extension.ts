@@ -22,6 +22,14 @@ export function activate(context: vscode.ExtensionContext): HostServices {
   context.subscriptions.push(
     host, provider,
     host.onDidChangeContext(() => provider.broadcast("host.configurationChanged", host.configuration.snapshot())),
+    host.collection.onDidChange(folder => {
+      try { provider.broadcast("history.changed", { binding: host.assembly.bindingFor(folder) }); }
+      catch (error) { host.diagnostics.failure("History notification", error); }
+    }),
+    host.sharing.onDidChange(folder => {
+      try { provider.broadcast("history.changed", { binding: host.assembly.bindingFor(folder) }); }
+      catch (error) { host.diagnostics.failure("Shared history notification", error); }
+    }),
     vscode.window.registerWebviewViewProvider("idle.workspace", provider),
     register("idle.open", () => vscode.commands.executeCommand("idle.workspace.focus")),
     register("idle.openDetail", () => provider.openDetail()),
@@ -30,7 +38,7 @@ export function activate(context: vscode.ExtensionContext): HostServices {
     register("idle.restartNative", async () => {
       host.configuration.assertTrusted();
       host.native.reset();
-      await Promise.all([host.history.restart(), host.capture.restart()]);
+      await Promise.all([host.history.restart(), host.capture.restart(), host.collection.restart(), host.sharing.reset(true)]);
       host.diagnostics.append("Native adapters restarted.");
     }),
     register("idle.signIn", async () => {

@@ -1,7 +1,7 @@
 //! Read Git on the file-owning host, independently of editor view lifetimes.
 
-use editchain_core::human::HumanGitContext;
 use editchain_git::{RepositoryCatalog, open_repository};
+use idle_history::human::HumanGitContext;
 use std::{
     path::Path,
     time::{SystemTime, UNIX_EPOCH},

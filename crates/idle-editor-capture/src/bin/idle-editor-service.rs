@@ -8,7 +8,9 @@ use std::{
     path::Path,
 };
 // Cargo supplies the package's library dependencies to this binary as well.
-use {blake3 as _, editchain_core as _, editchain_git as _, editchain_store as _};
+use {
+    blake3 as _, editchain_core as _, editchain_git as _, editchain_store as _, idle_history as _,
+};
 
 #[cfg(test)]
 use tempfile as _;

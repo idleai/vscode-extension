@@ -4,7 +4,7 @@ VS Code host for Idle's workspace and history views, editor capture, and native
 history actions. The TypeScript host lives here; shared application state lives
 in `app-core`, and Rust/WASM rendering lives in `web-ui`.
 
-Local history browsing and native actions are connected. Production session and
+Local history browsing, automatic collection, standalone peer sharing and native actions are connected. Production session and
 coordination integrations remain in progress; see the [assembly notes](docs/assembly.md).
 
 ## Setup
@@ -19,6 +19,7 @@ repos/
   app-core/
   web-ui/
   editchain/
+  codex/                # tools/codex-session-exporter and tools/history-runtime
 ```
 
 Cargo uses local path dependencies. The [CI workflow](.github/workflows/ci.yml)
@@ -29,6 +30,7 @@ Install the build tools and dependencies from this repository's root:
 ```sh
 cargo install --locked wasm-bindgen-cli --version 0.2.127
 cargo install --locked cargo-deny --version 0.20.2
+npm --prefix ../codex/tools/history-runtime ci
 npm ci
 npm run build
 ```
@@ -50,6 +52,13 @@ destination workspace host. Installed packages need no sibling source checkouts.
 Open **Idle: Open Workspace** from the command palette. Native services require
 Workspace Trust. Editor capture continues while views are closed; use
 **Idle: Pause Editor Capture** or `idle.tracking.enabled` to control it.
+Codex import and chain-change monitoring also run with views closed. Use
+**Idle: Pause Agent History Import** or `idle.live.enabled` to pause collection.
+
+Standalone sharing uses **Idle: Copy History Join Request**, **Host Shared History**
+and **Join Shared History**. Each selected folder has its own chain, device
+approval and outgoing history scope. **Stop History Sharing** removes automatic
+resumption; closing views keeps replication running. See [sharing](docs/sharing.md).
 
 ## Checks
 
@@ -68,9 +77,9 @@ CHROME_BIN=/absolute/path/to/chrome npm run test:webview
 CHROME_BIN=/absolute/path/to/chrome npm run test:assembly
 ```
 
-The root Idle extension uses packaged browser/native integration tests with a
-simulated VS Code API. The existing EditChain History extension has a real VS Code
-harness for actions and screenshots; see its [test commands](extensions/vscode-editchain/README.md#tests).
+The packaged browser/native checks use a simulated VS Code API, real browser
+rendering and the bundled native services. Native sharing tests use real mutual
+TLS and durable stores with an injected byte transport.
 
 ## Repository layout
 
@@ -78,13 +87,7 @@ harness for actions and screenshots; see its [test commands](extensions/vscode-e
 | --- | --- |
 | `extension/src/` | TypeScript activation, platform adapters and editor integration |
 | `crates/` | Native services, editor protocol, capture and WASM integration |
-| `extensions/vscode-editchain/` | Existing EditChain History extension and its desktop harness |
-| `docs/` | Integration contracts and migration notes |
-
-The existing extension also needs a sibling `codex/` checkout of
-`idleai/codex-evo` for `tools/history-runtime`. Its
-[README](extensions/vscode-editchain/README.md) covers builds and packaging;
-the [import guide](docs/legacy-import.md) covers viewer data.
+| `docs/` | Host, collection, sharing and import contracts |
 
 ## Reference
 
@@ -92,4 +95,6 @@ the [import guide](docs/legacy-import.md) covers viewer data.
 - [Host APIs, peer providers and live relay testing](docs/host-integration.md)
 - [Editor capture and archive replay](docs/editor-capture.md)
 - [Native history actions](docs/native-history-actions.md)
-- [Compatibility extension migration](extensions/vscode-editchain/ASSEMBLY-MIGRATION.md)
+- [Collection and import API](docs/import-api.md)
+- [History import CLI](docs/import-cli.md)
+- [Standalone history sharing](docs/sharing.md)

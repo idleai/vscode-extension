@@ -1,12 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, copyFile, chmod } from "node:fs/promises";
+import { mkdir, copyFile, chmod, rm } from "node:fs/promises";
 import path from "node:path";
 
 // Source repositories are build dependencies; installed adapters use VSIX assets.
 const directory = path.resolve("bin", `${process.platform}-${process.arch}`);
 await mkdir(directory, { recursive: true });
+await rm(path.join(directory, `editchain-vscode-service${process.platform === "win32" ? ".exe" : ""}`), { force: true });
 for (const [repository, crate, binary] of [
-  [".", "editchain-node", "editchain-vscode-service"],
   ["../editchain", "editchain-sync", "editchain-peer"],
 ]) {
   const manifest = path.resolve(repository, "Cargo.toml");

@@ -27,6 +27,7 @@ web-sys = { version = "=0.3.104", features = ["Window", "Document", "Element", "
 
 [dev-dependencies]
 app-core = { path = "../../../app-core/crates/app-core", version = "0.1.0", features = ["session-fixtures"] }
+editchain-core = { path = "../../../editchain/crates/editchain-core" }
 
 [lints]
 workspace = true

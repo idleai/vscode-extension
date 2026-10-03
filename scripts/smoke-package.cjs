@@ -9,6 +9,7 @@ const { pathToFileURL } = require('node:url');
 const { fixture, uri } = require('../test/helpers/vscode.cjs');
 const { smokeCapture } = require('./smoke-capture.cjs');
 const { smokeHistory } = require('./smoke-history.cjs');
+const { smokeCollection } = require('./smoke-collection.cjs');
 
 async function main() {
   const temporary = mkdtempSync(path.join(tmpdir(), 'idle-package-smoke-'));
@@ -20,11 +21,13 @@ async function main() {
     const archive = path.resolve(process.argv[2] ?? 'idle.vsix');
     const files = execFileSync('unzip', ['-Z1', archive], { encoding: 'utf8' }).trim().split('\n');
     assert.ok(files.includes('extension/dist/pkg/idle_vscode_webview_bg.wasm'));
+    assert.ok(files.includes('extension/dist/peer-state/idle_peer_state_bg.wasm'));
+    assert.ok(!files.some(file => file.includes('editchain-vscode-service') || file.includes('editchain_history_renderer') || file.includes('editchain_client_state')));
     const captureBinary = `bin/${process.platform}-${process.arch}/idle-editor-service${process.platform === 'win32' ? '.exe' : ''}`;
     assert.ok(files.includes(`extension/${captureBinary}`));
     const historyBinary = `bin/${process.platform}-${process.arch}/idle-history-service${process.platform === 'win32' ? '.exe' : ''}`;
     assert.ok(files.includes(`extension/${historyBinary}`));
-    for (const name of ['editchain-vscode-service', 'editchain-peer']) {
+    for (const name of ['idle-history-collector', 'codex-session-exporter', 'editchain-peer']) {
       assert.ok(files.includes(`extension/bin/${process.platform}-${process.arch}/${name}${process.platform === 'win32' ? '.exe' : ''}`));
     }
     assert.ok(!files.some(file => file.includes('/node_modules/') || file.includes('/out/host/') || file.endsWith('.map')));
@@ -49,11 +52,17 @@ async function main() {
     const adapters = await host.devTunnels();
     adapters.createClient();
     adapters.createHost({ port: 43187, incoming() {} });
+    const { SharedConnection } = createRequire(entry)(path.join(temporary, 'extension/dist/peer-state/idle_peer_state.js'));
+    const peerState = new SharedConnection();
+    peerState.begin();
+    assert.equal(peerState.status, 'Connecting');
+    peerState.free();
     await smokeHistory(host, f, path.join(temporary, 'extension', historyBinary), path.join(temporary, 'extension'));
     await extension.deactivate();
     assert.deepEqual(external, []);
     Module._load = original;
     await smokeCapture(path.join(temporary, 'extension', captureBinary));
+    await smokeCollection(path.dirname(path.join(temporary, 'extension', captureBinary)));
     console.log('PASS: isolated VSIX host activation and lazy tunnel SDK loading, with no external runtime packages.');
   } finally {
     await extension?.deactivate();

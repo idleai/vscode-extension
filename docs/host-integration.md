@@ -6,8 +6,8 @@ For setup, builds and packaging, see the [root README](../README.md).
 ## Host services
 
 `activate()` returns `HostServices`. Native feature modules use
-`host.configuration.forResource(uri)`, `host.native.request(uri, body)`,
-`host.native.requestJson(uri, bytes)`, and `host.native.startPeer(uri)`. Every
+`host.configuration.forResource(uri)` and `host.native.startPeer(uri)`;
+capture, collection and native-history modules own their typed service clients. Every
 native operation resolves an explicit open workspace folder. Relative chain
 directories use that folder, and processes inherit its directory. Multi-root
 windows never silently choose their first folder. Unsupported virtual filesystems
@@ -16,12 +16,10 @@ and untrusted workspaces cannot launch native adapters or access credentials.
 The manifest declares `extensionKind: ["workspace"]`, so native adapters run with
 the files in remote SSH, containers and Codespaces. See VS Code's
 [workspace extension host documentation](https://code.visualstudio.com/api/advanced-topics/extension-host).
-`idle.native.servicePath` and `idle.native.peerPath` are absolute paths on that
-host. Empty settings resolve `bin/<platform>-<arch>/editchain-vscode-service`
-and `editchain-peer` (with `.exe` on Windows). The package includes both binaries,
-`idle-history-service` and `idle-editor-service` for the build host's platform and
-architecture. `idle.native.capturePath` can select an absolute compatible capture
-binary on the workspace host.
+`idle.native.peerPath` overrides the packaged `editchain-peer` executable with an
+absolute path. The package also contains `idle-history-service`,
+`idle-editor-service`, `idle-history-collector` and `codex-session-exporter` for
+its host platform. Capture and collection have corresponding explicit path settings.
 Workspace build directories and the UI machine's PATH are not searched.
 
 `host.effects.register(method, handler, requiresTrust)` installs an explicit
@@ -45,8 +43,9 @@ asset-only resource roots and a restrictive
 SDK callbacks re-read a token for the originally selected account; only account
 metadata reaches UI. `host.devTunnels()` lazily supplies pinned encrypted relay
 streams, with local port forwarding disabled. Caller-supplied Rust/runtime code
-owns authorization, invitations, peer protocol and reconnect decisions. The
-adapter never refreshes an approved endpoint to an unapproved host key.
+owns authorization, invitations, peer protocol and reconnect decisions. The generic byte adapter pins the supplied relay key. The standalone sharing
+adapter can explicitly refresh the endpoint of the same relay resource after
+a host restart; native mutual TLS still requires the approved device certificate.
 
 Tunnel shutdown suspends established leases and removes incomplete new hosts;
 explicit `stop()` deletes a resource. An account-scoped journal retains cleanup

@@ -8,7 +8,7 @@ use {
 };
 
 #[cfg(test)]
-use {editchain_import as _, tempfile as _};
+use {idle_history_import as _, tempfile as _};
 
 fn main() -> io::Result<()> {
     let mut arguments = std::env::args().skip(1);

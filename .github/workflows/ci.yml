@@ -21,20 +21,26 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: idleai/app-core
-          ref: 18e9c7d98f87a3a44f98374fa187393221c30572
+          ref: a4e4f8bb3ef944c4ac514a064ca3654d4170cad1
           path: app-core
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: idleai/web-ui
-          ref: 808464f2c2f4c0e5029b3503ce42b3041ffd5ff9
+          ref: fc73c121538e92f8d5a44957dc4aff827c628821
           path: web-ui
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: idleai/editchain
-          ref: ef6206bb0c80c398102303529129662f74660c21
+          ref: b1fd8436b4ca4f2a3add85a3bae7388cba089f62
           path: editchain
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: idleai/codex-evo
+          ref: 43358882a44c3e2441866a9395d690b8d61c91c7
+          path: codex
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -50,6 +56,11 @@ jobs:
           cache: npm
           cache-dependency-path: vscode-extension/package-lock.json
       - run: cargo install --locked wasm-bindgen-cli --version 0.2.127
+      - name: Install and verify portable history runtime
+        working-directory: codex/tools/history-runtime
+        run: |
+          npm ci
+          npm test
       - run: npm ci
       - name: Install cargo-deny
         run: cargo install cargo-deny --locked --version 0.20.2

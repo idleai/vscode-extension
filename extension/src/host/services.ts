@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import { PeerAwarenessHost } from "../presence";
 import { CaptureHost } from "../capture";
+import { CollectionHost } from "../collection";
+import { SharingHost } from "../sharing";
 import { HistoryHost } from "../history";
 import { HostConfiguration } from "./configuration";
 import { AssemblyHost } from "./assembly";
@@ -22,6 +24,8 @@ export class HostServices implements vscode.Disposable {
   readonly presence = new PeerAwarenessHost(this.diagnostics);
   readonly native: NativeServices;
   readonly capture: CaptureHost;
+  readonly collection: CollectionHost;
+  readonly sharing: SharingHost;
   readonly history: HistoryHost;
   readonly assembly: AssemblyHost;
   private readonly changed = new vscode.EventEmitter<void>();
@@ -40,6 +44,8 @@ export class HostServices implements vscode.Disposable {
     this.credentials = new HostCredentials(context.secrets, () => vscode.workspace.isTrusted);
     this.native = new NativeServices(this.configuration);
     this.capture = new CaptureHost(context, this.configuration, this.diagnostics);
+    this.collection = new CollectionHost(context, this.configuration, this.diagnostics);
+    this.sharing = new SharingHost(context, this.configuration, this.credentials, this.diagnostics, () => this.devTunnels());
     this.history = new HistoryHost(context.extensionUri.fsPath, this.effects, this.diagnostics);
     this.assembly = new AssemblyHost(this.configuration, this.history, this.effects, (folder, error) => {
       this.diagnostics.failure("Workspace " + folder, error);
@@ -53,6 +59,7 @@ export class HostServices implements vscode.Disposable {
       this.presence.disconnect();
       this.history.disconnect();
       this.assembly.reset();
+      void this.sharing.reset(false).catch(error => this.diagnostics.failure("Account sharing reset", error));
       this.retireTunnels();
       this.changed.fire();
     });
@@ -142,8 +149,15 @@ export class HostServices implements vscode.Disposable {
     this.assembly.dispose();
     this.changed.dispose();
     this.effects.dispose();
-    this.retireTunnels();
-    try { await Promise.all([this.capture.shutdown(), this.history.shutdown(), this.native.shutdown(), ...this.retiring]); }
+    try {
+      const services = await Promise.allSettled([this.sharing.shutdown(), this.capture.shutdown(),
+        this.collection.shutdown(), this.history.shutdown(), this.native.shutdown()]);
+      this.retireTunnels();
+      const tunnels = await Promise.allSettled(this.retiring);
+      if ([...services, ...tunnels].some(result => result.status === "rejected")) {
+        throw new HostError("shutdown_failed", "Some host services did not close successfully.");
+      }
+    }
     finally { this.credentials.dispose(); }
   }
 
