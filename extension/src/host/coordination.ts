@@ -85,6 +85,8 @@ export class CoordinationHost {
   }
 
   private async open(config: FolderConfiguration, binding: RepositoryBinding, generation: number): Promise<CoordinationClient> {
+    // Retirement may already be waiting for this queued restart to settle.
+    this.assertCurrent(generation);
     await this.retiring;
     const subject = await this.identity;
     this.assertCurrent(generation);

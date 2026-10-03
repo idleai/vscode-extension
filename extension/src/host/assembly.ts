@@ -19,6 +19,7 @@ interface LocalWorkspace {
 /** Local folder bindings. Coordination adapters can install their own effect routes. */
 export class AssemblyHost implements vscode.Disposable {
   private directory: LocalWorkspace[] | undefined;
+  private readonly folders = new Map<string, vscode.Uri>();
   private readonly bindings: vscode.Disposable[] = [];
   private readonly installed: { dispose(): void }[];
 
@@ -55,6 +56,7 @@ export class AssemblyHost implements vscode.Disposable {
         const { repository_id: repository, chain, workspace_id: workspace } = localBinding(config);
         this.bindings.push(this.history.connect({ root: folder.uri, chainDirectory: config.chainDirectory,
           repository: { workspace_id: workspace, repository_id: repository, chain } }));
+        this.folders.set(workspace, folder.uri);
         workspaces.push({ id: workspace, name: folder.name, chain, revision: 1, mode: "Standalone",
           repositories: [{ id: repository, name: folder.name, remote: null }] });
       } catch (error) { this.report(folder.name, error); }
@@ -76,9 +78,10 @@ export class AssemblyHost implements vscode.Disposable {
 
   private coordinate(params: unknown, signal: AbortSignal): Promise<unknown> {
     this.list();
-    if (!record(params) || !record(params.binding)) throw new HostError("invalid_request", "Coordination requires a repository binding.");
-    for (const folder of vscode.workspace.workspaceFolders ?? []) {
-      const config = this.configuration.forResource(folder.uri);
+    if (!record(params) || !record(params.binding) || typeof params.binding.workspace_id !== "string") throw new HostError("invalid_request", "Coordination requires a repository binding.");
+    const folder = this.folders.get(params.binding.workspace_id);
+    if (folder) {
+      const config = this.configuration.forResource(folder);
       const binding = localBinding(config);
       if (binding.workspace_id === params.binding.workspace_id && binding.repository_id === params.binding.repository_id && binding.chain === params.binding.chain) {
         return this.coordination!.read(config, binding, params, signal);
@@ -103,6 +106,7 @@ export class AssemblyHost implements vscode.Disposable {
 
   reset(): void {
     this.directory = undefined;
+    this.folders.clear();
     this.coordination?.reset();
     for (const binding of this.bindings.splice(0)) binding.dispose();
   }
