@@ -5,6 +5,8 @@ pub mod app;
 pub mod bridge;
 #[cfg(target_arch = "wasm32")]
 mod connection;
+mod coordination;
+mod destinations;
 
 /// Mount the shared component after the WASM module loads.
 #[cfg(target_arch = "wasm32")]

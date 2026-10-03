@@ -11,6 +11,7 @@ description = "Idle VS Code webview entrypoint"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+idle-protocol = { path = "../../../host-tools/crates/idle-protocol" }
 app-core = { path = "../../../app-core/crates/app-core", version = "0.1.0" }
 web-ui = { path = "../../../web-ui/crates/web-ui", version = "0.1.0" }
 dioxus = { version = "=0.7.7", default-features = false, features = ["macro", "html", "hooks", "signals"] }

@@ -35,6 +35,8 @@ export interface HistoryProvider {
   resolve(request: HistoryRequest, signal: AbortSignal): Promise<HistoryPreview>;
   /** Execute app-core reads through the same installed chain and process. */
   query?(query: unknown, signal: AbortSignal): Promise<unknown>;
+  /** Shared derived views use the same installed chain and authorization. */
+  projection?(query: unknown, signal: AbortSignal): Promise<unknown>;
   /** Native author and exposure projection for one exact file occurrence. */
   activity?(request: ActivityRequest, signal: AbortSignal): Promise<ActivityPreview>;
   /** Reset owned native services without releasing the binding; reads wait for completion. */

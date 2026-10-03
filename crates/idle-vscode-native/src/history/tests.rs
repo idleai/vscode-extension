@@ -665,3 +665,66 @@ fn legacy_originals_and_unknown_payloads_use_exact_engine_fields() {
         );
     }
 }
+
+#[test]
+fn native_projection_reads_real_activity_and_rejects_other_bindings() {
+    use app_core::{projections, subscriptions};
+
+    let directory = tempfile::tempdir().unwrap();
+    let engine = Engine::open(directory.path()).unwrap();
+    let _stored = engine
+        .append(&original(91, Payload::Inline(b"recorded".to_vec())).unwrap())
+        .unwrap();
+    drop(engine);
+    let query = projections::ProjectionQuery {
+        context: subscriptions::Context {
+            provider: "idle-local".into(),
+            workspace: "workspace".into(),
+            contributor: "local-user".into(),
+            chain: "chain".into(),
+        },
+        limit: 20,
+    };
+    let installed = service::Binding {
+        repository: binding(),
+        chain_directory: directory.path().to_path_buf(),
+        retained_directory: None,
+    };
+    let mut wrong = binding();
+    wrong.repository_id = "another-repository".into();
+    for selected in [binding(), wrong] {
+        let bytes = serde_json::to_vec(
+            &serde_json::json!({"id":1, "body":{"binding":selected,"projection":query}}),
+        )
+        .unwrap();
+        let mut input = u32::try_from(bytes.len()).unwrap().to_le_bytes().to_vec();
+        input.extend(bytes);
+        let mut output = Vec::new();
+        service::serve(Cursor::new(input), &mut output, &installed).unwrap();
+        let response: serde_json::Value = serde_json::from_slice(output.get(4..).unwrap()).unwrap();
+        let result: projections::ProjectionOutput =
+            serde_json::from_value(response.get("body").unwrap().clone()).unwrap();
+        if selected == binding() {
+            let snapshot = result.unwrap();
+            assert_eq!(snapshot.workspace_id, "workspace");
+            assert!(
+                snapshot
+                    .inputs
+                    .iter()
+                    .any(|input| input.kind == projections::ProjectionKind::Activity
+                        && !input.rows.is_empty())
+            );
+            assert!(
+                snapshot
+                    .inputs
+                    .iter()
+                    .filter(|input| input.kind != projections::ProjectionKind::Activity)
+                    .all(|input| input.availability
+                        == projections::ProjectionAvailability::Unavailable
+                        && input.total.is_none())
+            );
+        } else {
+            assert!(result.unwrap_err().message.contains("different repository"));
+        }
+    }
+}

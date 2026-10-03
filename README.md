@@ -5,8 +5,10 @@ history actions. The TypeScript host lives here; shared application state lives
 in `app-core`, Rust/WASM rendering lives in `web-ui`, and shared contracts,
 collection and peer coordination live in `host-tools`.
 
-Local history browsing, automatic collection, standalone peer sharing and native actions are connected. Production session and
-coordination integrations remain in progress; see the [assembly notes](docs/assembly.md).
+Workspace navigation, local metadata and presence, recorded Activity, automatic
+collection, standalone peer sharing and native actions are connected. Session
+execution and the shared resource/configuration editors remain in progress;
+see the [assembly notes](docs/assembly.md).
 
 ## Setup
 
@@ -87,6 +89,15 @@ CHROME_BIN=/absolute/path/to/chrome npm run test:assembly
 The packaged browser/native checks use a simulated VS Code API, real browser
 rendering and the bundled native services. Native sharing tests use real mutual
 TLS and durable stores with an injected byte transport.
+
+To verify the installed extension in a disposable desktop VS Code profile on
+Linux, with `xvfb-run` available:
+
+```sh
+VSCODE_BIN=/absolute/path/to/code npm run test:vscode
+```
+
+This check uses its own workspace, settings and extension directory.
 
 ## Repository layout
 
