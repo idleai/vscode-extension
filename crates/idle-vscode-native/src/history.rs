@@ -37,7 +37,7 @@ pub fn prepare(
     resolve::prepare(queries, operation, request)
 }
 
-fn validate_binding(binding: &RepositoryChainBinding) -> Result<(), Failure> {
+pub(crate) fn validate_binding(binding: &RepositoryChainBinding) -> Result<(), Failure> {
     if [
         &binding.workspace_id,
         &binding.repository_id,
@@ -54,7 +54,7 @@ fn validate_binding(binding: &RepositoryChainBinding) -> Result<(), Failure> {
     Ok(())
 }
 
-fn full_id(value: &str) -> Result<OpId, Failure> {
+pub(crate) fn full_id(value: &str) -> Result<OpId, Failure> {
     if value.len() == 64
         && value
             .bytes()
@@ -69,7 +69,7 @@ fn full_id(value: &str) -> Result<OpId, Failure> {
     ))
 }
 
-fn reference(value: editchain_engine::queries::RecordRef) -> RecordRef {
+pub(crate) fn reference(value: editchain_engine::queries::RecordRef) -> RecordRef {
     RecordRef {
         operation: value.operation.to_string(),
         hash: OpId::from_bytes(value.record_hash).to_string(),

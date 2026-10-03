@@ -1,5 +1,6 @@
 import type * as vscode from "vscode";
 import { HostError, PublicHostError, record } from "../host/protocol";
+import type { ActivityPreview, ActivityRequest } from "../authorActivity/contracts";
 
 /** JSON contracts shared with idle-vscode-native::history and app-core. */
 export interface RepositoryBinding { workspace_id: string; repository_id: string; chain: string }
@@ -34,6 +35,8 @@ export interface HistoryProvider {
   resolve(request: HistoryRequest, signal: AbortSignal): Promise<HistoryPreview>;
   /** Execute app-core reads through the same installed chain and process. */
   query?(query: unknown, signal: AbortSignal): Promise<unknown>;
+  /** Native author and exposure projection for one exact file occurrence. */
+  activity?(request: ActivityRequest, signal: AbortSignal): Promise<ActivityPreview>;
   /** Reset owned native services without releasing the binding; reads wait for completion. */
   restart?(): Promise<void>;
   shutdown(): Promise<void>;

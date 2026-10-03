@@ -23,10 +23,12 @@ export function activate(context: vscode.ExtensionContext): HostServices {
     host, provider,
     host.onDidChangeContext(() => provider.broadcast("host.configurationChanged", host.configuration.snapshot())),
     host.collection.onDidChange(folder => {
+      host.activity.refresh();
       try { provider.broadcast("history.changed", { binding: host.assembly.bindingFor(folder) }); }
       catch (error) { host.diagnostics.failure("History notification", error); }
     }),
     host.sharing.onDidChange(folder => {
+      host.activity.refresh();
       try { provider.broadcast("history.changed", { binding: host.assembly.bindingFor(folder) }); }
       catch (error) { host.diagnostics.failure("Shared history notification", error); }
     }),

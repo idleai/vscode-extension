@@ -90,6 +90,21 @@ function type(env, text, explicit = false) {
 }
 
 const editEvents = env => env.events.filter(event => ['human_edit', 'human_edit_batch'].includes(event.event.type));
+
+test('native revision selection retires a renamed buffer until its new location is captured', () => {
+  const env = harness();
+  try {
+    const baseline = env.events.find(event => event.event.type === 'document_snapshot');
+    assert.deepEqual(env.capture.revision(env.document), { session: baseline.session,
+      document: baseline.event.document.id, version: baseline.event.document.version });
+    env.document.uri = { scheme: 'file', fsPath: '/workspace/renamed.ts', toString: () => 'file:///workspace/renamed.ts' };
+    assert.equal(env.capture.revision(env.document), undefined, 'a URI change cannot borrow the old path observation');
+    type(env, 'new location', true);
+    const changed = env.events.filter(event => event.event.type === 'document_changed').at(-1);
+    assert.equal(changed.event.document.uri, 'file:///workspace/renamed.ts');
+    assert.equal(env.capture.revision(env.document).version, changed.event.document.version);
+  } finally { env.capture.dispose(); }
+});
 const receipts = env => editEvents(env).flatMap(event => event.event.type === 'human_edit' ? [event]
   : event.event.edits.map(edit => ({ ...event, event: { type: 'human_edit', ...edit } })));
 const editGroups = env => {

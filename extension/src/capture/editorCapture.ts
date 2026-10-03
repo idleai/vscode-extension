@@ -13,6 +13,7 @@ type Document = { id: string; uri: string; path: string | null; version: number 
 type Range = { start: [number, number]; end: [number, number] };
 type BufferState = { document: Document; text: string };
 type Exposure = { document: Document; editor: string; ranges: Range[]; started_ms: number; monotonic: number; reported: boolean };
+export interface EditorRevision { session: string; document: string; version: number }
 
 /** VS Code observations, with optional change-origin details and local focus guards. */
 export class EditorCapture {
@@ -258,6 +259,14 @@ export class EditorCapture {
   }
 
   checkpoint(): void { this.edits.flush(); this.publishRead(); }
+
+  /** Select an admitted buffer occurrence without deriving identity from content. */
+  revision(document: vscode.TextDocument): EditorRevision | undefined {
+    const state = this.documents.get(document);
+    if (!this.tracked(document) || !state || state.document.version !== document.version ||
+        state.document.uri !== document.uri.toString()) return undefined;
+    return { session: this.session, document: state.document.id, version: state.document.version };
+  }
 
   setUserName(name: string | undefined): void {
     if (this.stopped || name === this.userName) return;

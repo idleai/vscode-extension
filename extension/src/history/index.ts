@@ -14,6 +14,7 @@ import { BYTE_SCHEME, TEXT_SCHEME, HEX_SCHEME, DocumentAddress, HexDocuments, Te
 import { NativeHistoryProvider } from "./native";
 import { openWorkingFile } from "./workingFile";
 import { linkCancellation } from "./cancellation";
+import { ActivityPreview, ActivityRequest, parsePreview } from "../authorActivity/contracts";
 
 export type { HistoryBinding, HistoryProvider, HistoryRequest, HistoryPreview, RepositoryBinding } from "./contracts";
 export { HistoryFailure } from "./contracts";
@@ -34,6 +35,8 @@ export class HistoryHost implements vscode.Disposable {
   private readonly installed: vscode.Disposable[] = [];
   private readonly documents = new HistoryDocuments(address => this.read(address));
   private closed = false;
+  private readonly changed = new vscode.EventEmitter<void>();
+  readonly onDidChange = this.changed.event;
 
   constructor(private readonly extensionPath: string, effects: HostEffects, private readonly diagnostics: HostDiagnostics) {
     this.installed.push(
@@ -72,6 +75,7 @@ export class HistoryHost implements vscode.Disposable {
     const owner = Symbol();
     const connection = { id: randomUUID(), owner, binding: installed, provider: provider ?? new NativeHistoryProvider(this.extensionPath, installed), abort: new AbortController() };
     this.connections.set(key, connection);
+    this.changed.fire();
     return new vscode.Disposable(() => {
       const current = this.connections.get(key);
       if (current?.owner === owner) this.remove(key, current);
@@ -94,7 +98,28 @@ export class HistoryHost implements vscode.Disposable {
       connection.abort.abort();
       work.push(next.ready);
     }
+    this.changed.fire();
     await Promise.all(work);
+    this.changed.fire();
+  }
+
+  /** Editor projections share the native action binding and cancellation guards. */
+  async activity(request: ActivityRequest, signal: AbortSignal, documentConnection?: string): Promise<ActivityPreview> {
+    const connection = this.connection(parseBinding(request.binding));
+    if (documentConnection !== undefined && documentConnection !== connection.id) {
+      throw new HostError('unavailable', "This document's history binding has expired.");
+    }
+    if (!connection.provider.activity) throw new HostError('unavailable', 'Author and exposure reads are unavailable on this connection.');
+    if (request.source === 'retained' && !connection.binding.retainedDirectory) throw new HostError('unavailable', 'A retained input source has not been bound.');
+    this.assertCurrent(connection, signal);
+    if (connection.ready) await connection.ready;
+    this.assertCurrent(connection, signal);
+    const linked = linkCancellation(connection.abort.signal, signal);
+    try {
+      const result = await connection.provider.activity(request, linked.signal);
+      this.assertCurrent(connection, signal);
+      return parsePreview(result, request);
+    } finally { linked.dispose(); }
   }
 
   /** Shared history reads use only host-installed repository and storage bindings. */
@@ -230,6 +255,7 @@ export class HistoryHost implements vscode.Disposable {
   private remove(key: string, connection: Connection): void {
     this.connections.delete(key);
     connection.abort.abort();
+    this.changed.fire();
     const work = connection.provider.shutdown();
     this.retiring.add(work);
     void work.then(() => this.retiring.delete(work), error => this.diagnostics.failure("Closing history adapter", error));
@@ -240,6 +266,7 @@ export class HistoryHost implements vscode.Disposable {
       this.closed = true;
       this.disconnect();
       for (const disposable of this.installed) disposable.dispose();
+      this.changed.dispose();
     }
     const results = await Promise.allSettled(this.retiring);
     if (results.some(result => result.status === "rejected")) throw new HostError("shutdown_failed", "A history adapter did not shut down.");

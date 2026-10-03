@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { HostConfiguration } from '../host/configuration';
 import { HostDiagnostics } from '../host/diagnostics';
 import { StdioClient } from '../host/processes';
-import { EditorCapture } from './editorCapture';
+import { EditorCapture, EditorRevision } from './editorCapture';
 import { EditorOutbox } from './editorOutbox';
 import { EditorHealth } from './editorHealth';
 import { observeEditorContext } from './editorContext';
@@ -31,6 +31,8 @@ export class CaptureHost implements vscode.Disposable {
   private trackingUpdates = Promise.resolve();
   private trackingGeneration = 0;
   private trackingBlocked = false;
+  private readonly changed = new vscode.EventEmitter<vscode.Uri>();
+  readonly onDidChange = this.changed.event;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly configuration: HostConfiguration,
     private readonly diagnostics: HostDiagnostics,
@@ -55,6 +57,15 @@ export class CaptureHost implements vscode.Disposable {
   async snapshot(): Promise<unknown> {
     await this.lifecycle;
     return this.recorders.map(({ folder, health }) => ({ workspace: folder.uri.toString(), ...health }));
+  }
+
+  /** Current capture identity, including unsaved buffer versions. */
+  revision(document: vscode.TextDocument): EditorRevision | undefined {
+    for (const recorder of this.recorders) {
+      const revision = recorder.capture.revision(document);
+      if (revision) return revision;
+    }
+    return undefined;
   }
 
   /** Receipt display metadata remains unsigned and never rewrites earlier changes. */
@@ -150,7 +161,7 @@ export class CaptureHost implements vscode.Disposable {
     const archive = this.archive;
     const outbox = new EditorOutbox(directory, config.cwd, config.chainDirectory, body => {
       start(client); return client.requestJson(body, { timeoutMs: 30000 });
-    }, message => this.updateStatus(message), () => {},
+    }, message => this.updateStatus(message), () => { if (!this.closed) this.changed.fire(folder.uri); },
     timing => this.diagnostics.append(`[capture] delivery ${JSON.stringify(timing)}`),
     (workspace, event, raw) => archive?.append(workspace, event, raw));
     const health = new EditorHealth();
@@ -223,6 +234,7 @@ export class CaptureHost implements vscode.Disposable {
 
   shutdown(): Promise<void> {
     this.closed = true;
+    this.changed.dispose();
     for (const subscription of this.subscriptions) subscription.dispose();
     for (const recorder of this.recorders) { recorder.context.dispose(); recorder.capture.dispose(); }
     this.stopping ??= this.close();

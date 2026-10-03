@@ -14,8 +14,8 @@ function uri(value) {
 
 function fixture() {
   const commands = new Map();
-  const events = Object.fromEntries(['configuration', 'folders', 'trust', 'authentication', 'activeEditor'].map(key => [key, new Emitter()]));
-  const calls = { auth: [], output: [], notifications: [], external: [], clipboard: [], providers: [], panels: [], lenses: [], statuses: [], choices: [], fileProviders: [], contentProviders: [], editorCommands: [] };
+  const events = Object.fromEntries(['configuration', 'folders', 'trust', 'authentication', 'activeEditor', 'visibleEditors', 'changeDocument', 'closeDocument'].map(key => [key, new Emitter()]));
+  const calls = { auth: [], output: [], notifications: [], external: [], clipboard: [], providers: [], panels: [], lenses: [], statuses: [], choices: [], fileProviders: [], contentProviders: [], editorCommands: [], decorationTypes: [] };
   const secrets = new Map();
   const state = new Map();
   const configuration = new Map();
@@ -29,6 +29,13 @@ function fixture() {
     StatusBarAlignment: { Left: 1, Right: 2 }, ViewColumn: { Active: 1 },
     CodeLens: class { constructor(range, command) { this.range = range; this.command = command; } },
     Range: class { constructor(...coordinates) { this.coordinates = coordinates; } },
+    ThemeColor: class { constructor(id) { this.id = id; } },
+    DecorationRangeBehavior: { ClosedClosed: 1 },
+    MarkdownString: class {
+      value = '';
+      appendText(text) { this.value += text.replace(/[\\`*_{}[\]()<>#+.!-]/g, '\\$&'); return this; }
+      appendMarkdown(text) { this.value += text; return this; }
+    },
     languages: { registerCodeLensProvider: (selector, provider) => { calls.lenses.push({ selector, provider }); return { dispose() {} }; } },
     extensions: { getExtension: () => undefined },
     workspace: {
@@ -39,6 +46,8 @@ function fixture() {
       onDidChangeConfiguration: events.configuration.event,
       onDidChangeWorkspaceFolders: events.folders.event,
       onDidGrantWorkspaceTrust: events.trust.event,
+      onDidChangeTextDocument: events.changeDocument.event,
+      onDidCloseTextDocument: events.closeDocument.event,
       registerFileSystemProvider: (scheme, provider, options) => {
         const value = { scheme, provider, options, disposed: false };
         calls.fileProviders.push(value);
@@ -57,6 +66,9 @@ function fixture() {
       onDidChangeSessions: events.authentication.event,
     },
     window: {
+      visibleTextEditors: [],
+      onDidChangeVisibleTextEditors: events.visibleEditors.event,
+      createTextEditorDecorationType: options => { const type = { options, disposed: false, dispose() { this.disposed = true; } }; calls.decorationTypes.push(type); return type; },
       createOutputChannel: () => ({ appendLine: line => calls.output.push(line), show() {}, dispose() {} }),
       createStatusBarItem: () => { const status = { visible: false, show() { this.visible = true; }, hide() { this.visible = false; }, dispose() {} }; calls.statuses.push(status); return status; },
       onDidChangeActiveTextEditor: events.activeEditor.event,

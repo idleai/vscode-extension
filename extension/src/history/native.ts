@@ -4,6 +4,7 @@ import { HostError, record } from "../host/protocol";
 import { resolveNativePath } from "../host/configuration";
 import * as vscode from "vscode";
 import { HistoryBinding, HistoryFailure, HistoryPreview, HistoryProvider, HistoryRequest, parseRecord } from "./contracts";
+import { ActivityPreview, ActivityRequest, parsePreview } from "../authorActivity/contracts";
 
 /** Lazy packaged engine process; every request uses the installed storage binding. */
 export class NativeHistoryProvider implements HistoryProvider {
@@ -26,6 +27,14 @@ export class NativeHistoryProvider implements HistoryProvider {
 
   async query(query: unknown, signal: AbortSignal): Promise<unknown> {
     return this.request({ binding: this.binding.repository, query }, signal);
+  }
+
+  async activity(request: ActivityRequest, signal: AbortSignal): Promise<ActivityPreview> {
+    const response = await this.request({ activity: request }, signal);
+    if (record(response) && record(response.Err) && typeof response.Err.code === 'string' && typeof response.Err.message === 'string') {
+      throw new HistoryFailure(response.Err.code, response.Err.message, Array.isArray(response.Err.candidates) ? response.Err.candidates.map(parseRecord) : []);
+    }
+    return parsePreview(record(response) ? response.Ok : undefined, request);
   }
 
   private async request(request: unknown, signal: AbortSignal): Promise<unknown> {
