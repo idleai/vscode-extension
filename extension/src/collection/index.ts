@@ -5,7 +5,6 @@ import { HostConfiguration, resolveNativePath } from '../host/configuration';
 import { HostDiagnostics } from '../host/diagnostics';
 import { StdioClient } from '../host/processes';
 import { record } from '../host/protocol';
-import { captureSources, belongsToWorkspace } from './sources';
 import { CollectorLoop, Update } from './loop';
 
 interface Entry { loop: CollectorLoop; client: StdioClient }
@@ -69,27 +68,23 @@ export class CollectionHost implements vscode.Disposable {
     client.setLog(line => this.diagnostics.append(`[collector ${folder.name}] ${line}`));
     const current = () => !this.closed && generation === this.generation && vscode.workspace.isTrusted &&
       !!vscode.workspace.getWorkspaceFolder(folder.uri);
+    const request = async (body: unknown, signal: AbortSignal): Promise<Update> => {
+      if (!current()) throw new Error('History collection binding was retired.');
+      const restarted = !client.isRunning();
+      client.ensureStarted(binary, { cwd: config.cwd,
+        args: [JSON.stringify({ workspace: config.cwd, chain: config.chainDirectory, sessions, helper })] });
+      let result: unknown;
+      try { result = await client.request(body, { signal, timeoutMs: 60000 }); }
+      catch (error) { client.stop(); throw error; }
+      if (!current()) throw new Error('History collection binding was retired.');
+      if (!record(result) || !record(result.Ok) || typeof result.Ok.changed !== 'boolean' || typeof result.Ok.pending !== 'boolean') {
+        throw new Error(record(result) && typeof result.Err === 'string' ? result.Err : 'Invalid collector response.');
+      }
+      return { ...result.Ok, changed: result.Ok.changed || restarted } as unknown as Update;
+    };
     const loop = new CollectorLoop({
-      capture: () => captureSources(config.cwd, sessions, importing),
-      select: async files => {
-        const selected: string[] = [];
-        for (const file of files) if (current() && await belongsToWorkspace(file, config.cwd)) selected.push(file);
-        return selected;
-      },
-      poll: async (paths, gitChanged, signal) => {
-        if (!current()) throw new Error('History collection binding was retired.');
-        const restarted = !client.isRunning();
-        client.ensureStarted(binary, { cwd: config.cwd,
-          args: [JSON.stringify({ workspace: config.cwd, chain: config.chainDirectory, sessions, helper })] });
-        let result: unknown;
-        try { result = await client.request({ paths, git_changed: gitChanged || restarted }, { signal, timeoutMs: 60000 }); }
-        catch (error) { client.stop(); throw error; }
-        if (!current()) throw new Error('History collection binding was retired.');
-        if (!record(result) || !record(result.Ok) || typeof result.Ok.changed !== 'boolean' || typeof result.Ok.pending !== 'boolean') {
-          throw new Error(record(result) && typeof result.Err === 'string' ? result.Err : 'Invalid collector response.');
-        }
-        return { ...result.Ok, changed: result.Ok.changed || restarted } as unknown as Update;
-      },
+      poll: signal => request({ scan: importing ? 'import' : 'observe' }, signal),
+      observe: signal => request({ paths: [], git_changed: false }, signal),
       changed: () => { if (current()) this.changed.fire(folder.uri); },
       failed: error => this.diagnostics.failure(`History collection for ${folder.name}`, error),
     });

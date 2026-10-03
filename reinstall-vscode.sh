@@ -17,7 +17,7 @@ Extra CLI options are used for both installation and verification, for example:
   ./reinstall-vscode.sh code --profile "Development"
   ./reinstall-vscode.sh /path/to/code --user-data-dir /path/to/user-data
 
-The proposed editor API still requires opt-in in the VS Code client.
+Builds the current Idle extension and its shared host-tools packages.
 USAGE
   exit 0
 fi
@@ -56,20 +56,16 @@ if ! "$editchain_code" "$@" --list-extensions >/dev/null; then
 fi
 
 cd "$editchain_root"
-npm --prefix ../codex/tools/history-runtime ci
-cd extensions/vscode-editchain
+npm --prefix ../host-tools/packages/history-runtime ci
+npm --prefix ../host-tools/packages/history-runtime run build
 npm ci
-npm run build:native
-npm run build:renderer
-npm run compile
+npm run package
 editchain_version="$(node -p 'require("./package.json").version')"
-editchain_vsix="$editchain_root/outputs/editchain-history-${editchain_version}-editor-origins.vsix"
+editchain_id="$(node -p 'const p = require("./package.json"); p.publisher + "." + p.name')"
+editchain_vsix="$editchain_root/idle.vsix"
 
-# The VS Code client still needs its separate proposed-API runtime opt-in.
-npm run package:editor-origins -- "$editchain_vsix"
 # Resolve relative CLI options against the same directory as the initial query.
 cd "$editchain_invocation_dir"
 "$editchain_code" "$@" --install-extension "$editchain_vsix" --force
-"$editchain_code" "$@" --list-extensions --show-versions | rg -Fx "ambientlight.editchain-history@${editchain_version}"
+"$editchain_code" "$@" --list-extensions --show-versions | rg -Fx "${editchain_id}@${editchain_version}"
 echo "Build and installation complete. Reload the target VS Code window to load the extension."
-echo "Direct editor attribution requires the VS Code client's proposed-API opt-in."

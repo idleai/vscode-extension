@@ -329,7 +329,7 @@
     }
   },
   "dependencies": {
-    "@idle/history-runtime": "file:../codex/tools/history-runtime",
+    "@idle/history-runtime": "file:../host-tools/packages/history-runtime",
     "@microsoft/dev-tunnels-connections": "1.3.56",
     "@microsoft/dev-tunnels-contracts": "1.3.56",
     "@microsoft/dev-tunnels-management": "1.3.56",

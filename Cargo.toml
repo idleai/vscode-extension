@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/idle-vscode-webview", "crates/idle-vscode-native", "crates/idle-editor-capture", "crates/idle-history-collector", "crates/idle-history-import", "crates/idle-history-tools"]
+members = ["crates/idle-vscode-webview", "crates/idle-vscode-native", "crates/idle-editor-capture"]
 resolver = "3"
 
 [workspace.lints.rust]

@@ -2,7 +2,8 @@
 
 VS Code host for Idle's workspace and history views, editor capture, and native
 history actions. The TypeScript host lives here; shared application state lives
-in `app-core`, and Rust/WASM rendering lives in `web-ui`.
+in `app-core`, Rust/WASM rendering lives in `web-ui`, and shared contracts,
+collection and peer coordination live in `host-tools`.
 
 Local history browsing, automatic collection, standalone peer sharing and native actions are connected. Production session and
 coordination integrations remain in progress; see the [assembly notes](docs/assembly.md).
@@ -19,7 +20,8 @@ repos/
   app-core/
   web-ui/
   editchain/
-  codex/                # tools/codex-session-exporter and tools/history-runtime
+  host-tools/           # shared contracts, collection and peer coordination
+  codex/                # tools/codex-session-exporter
 ```
 
 Cargo uses local path dependencies. The [CI workflow](.github/workflows/ci.yml)
@@ -30,7 +32,7 @@ Install the build tools and dependencies from this repository's root:
 ```sh
 cargo install --locked wasm-bindgen-cli --version 0.2.127
 cargo install --locked cargo-deny --version 0.20.2
-npm --prefix ../codex/tools/history-runtime ci
+npm --prefix ../host-tools/packages/history-runtime ci
 npm ci
 npm run build
 ```
@@ -87,7 +89,7 @@ TLS and durable stores with an injected byte transport.
 | --- | --- |
 | `extension/src/` | TypeScript activation, platform adapters and editor integration |
 | `crates/` | Native services, editor protocol, capture and WASM integration |
-| `docs/` | Host, collection, sharing and import contracts |
+| `docs/` | Platform host, capture, history actions and sharing contracts |
 
 ## Reference
 
@@ -95,6 +97,5 @@ TLS and durable stores with an injected byte transport.
 - [Host APIs, peer providers and live relay testing](docs/host-integration.md)
 - [Editor capture and archive replay](docs/editor-capture.md)
 - [Native history actions](docs/native-history-actions.md)
-- [Collection and import API](docs/import-api.md)
-- [History import CLI](docs/import-cli.md)
+- [Shared collection and import tools](https://github.com/idleai/host-tools)
 - [Standalone history sharing](docs/sharing.md)

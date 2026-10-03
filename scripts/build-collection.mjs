@@ -5,7 +5,7 @@ import path from 'node:path';
 const directory = path.resolve('bin', `${process.platform}-${process.arch}`);
 await mkdir(directory, { recursive: true });
 for (const [manifest, binary, crate] of [
-  ['Cargo.toml', 'idle-history-collector', 'idle-history-collector'],
+  ['../host-tools/Cargo.toml', 'idle-history-collector', 'idle-history-collector'],
   ['../codex/tools/codex-session-exporter/Cargo.toml', 'codex-session-exporter', undefined],
 ]) {
   const source = path.resolve(manifest);

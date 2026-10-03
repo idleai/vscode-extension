@@ -21,26 +21,32 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: idleai/app-core
-          ref: a4e4f8bb3ef944c4ac514a064ca3654d4170cad1
+          ref: 038c29d081d141201381406e58fac2538676a70b
           path: app-core
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: idleai/web-ui
-          ref: fc73c121538e92f8d5a44957dc4aff827c628821
+          ref: 5a6567ca240eb077894e8ef7add69484713af019
           path: web-ui
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: idleai/editchain
-          ref: b1fd8436b4ca4f2a3add85a3bae7388cba089f62
+          ref: 45b94c95a2cb185a59e58cf0763f589c666ab1e6
           path: editchain
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: idleai/codex-evo
-          ref: 43358882a44c3e2441866a9395d690b8d61c91c7
+          ref: 903d7f1c62c621cf1f925362ac88893ec1f36b07
           path: codex
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: idleai/host-tools
+          ref: edb3989d04e12fbc2ba4dd60b911d7bc1332e5a6
+          path: host-tools
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -57,7 +63,7 @@ jobs:
           cache-dependency-path: vscode-extension/package-lock.json
       - run: cargo install --locked wasm-bindgen-cli --version 0.2.127
       - name: Install and verify portable history runtime
-        working-directory: codex/tools/history-runtime
+        working-directory: host-tools/packages/history-runtime
         run: |
           npm ci
           npm test

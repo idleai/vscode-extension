@@ -8,7 +8,7 @@ publish = false
 description = "VS Code observations, schema-three conversion and durable capture"
 
 [dependencies]
-idle-history = { path = "../../../app-core/crates/idle-history" }
+idle-history = { path = "../../../host-tools/crates/idle-history" }
 editchain-core = { path = "../../../editchain/crates/editchain-core" }
 editchain-store = { path = "../../../editchain/crates/editchain-store" }
 editchain-git = { path = "../../../editchain/crates/editchain-git" }
