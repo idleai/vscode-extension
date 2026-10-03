@@ -20,25 +20,31 @@ pub fn App() -> Element {
         },
     );
     #[cfg(target_arch = "wasm32")]
-    let (view, capabilities) = connection.as_ref().map_or_else(
+    let (view, capabilities, now_ms) = connection.as_ref().map_or_else(
         || {
             (
                 app_core::ViewModel::default(),
                 web_ui::host::HostCapabilities::new(web_ui::host::HostKind::VsCode),
+                None,
             )
         },
         |connection| {
             let runtime = connection.runtime.borrow();
-            (runtime.view(), runtime.capabilities())
+            (runtime.view(), runtime.capabilities(), runtime.now_ms())
         },
     );
     #[cfg(not(target_arch = "wasm32"))]
     let runtime =
         use_hook(|| std::rc::Rc::new(std::cell::RefCell::new(crate::adapters::Runtime::default())));
     #[cfg(not(target_arch = "wasm32"))]
-    let (view, capabilities) = (runtime.borrow().view(), runtime.borrow().capabilities());
+    let (view, capabilities, now_ms) = (
+        runtime.borrow().view(),
+        runtime.borrow().capabilities(),
+        runtime.borrow().now_ms(),
+    );
+    let destination = crate::destinations::destination(&view);
     rsx! { WorkspaceSurface {
-        view, capabilities, surface: surface(), error: error(),
+        destination, now_ms, view, capabilities, surface: surface(), error: error(),
         onaction: move |event| {
             #[cfg(target_arch = "wasm32")]
             if let Some(connection) = &connection { connection.dispatch(event); }

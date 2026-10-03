@@ -1,6 +1,7 @@
 import init from "./pkg/idle_vscode_webview.js";
 
 async function start() {
+  document.getElementById("main").replaceChildren();
   await init();
 }
 

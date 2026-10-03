@@ -1,88 +1,137 @@
 # Extension assembly (f43)
 
-The sidebar and detail panel mount `web_ui::assembly::WorkspaceSurface` over a
-persistent `app_core::Core`. Workspace selection, history queries, search,
-disclosure, exact record inspection and native opens travel through typed Crux
-events and continuations. The two documents have separate presentation state;
-capture, bindings and native processes belong to the extension lifetime.
+The sidebar mounts f34's shared `WorkspaceNavigation` through
+`web_ui::assembly::WorkspaceSurface`, over a persistent `app_core::Core`.
+Workspace, Users, Sessions, Projections, Compute hosts, Model providers and compact
+Activity stay in that order, followed by Settings and Agent Rules. Selecting
+Activity opens the full history inspector; selecting Projections mounts f33's
+panels. The detail tab retains its history and session destinations. Each document
+has separate selection and presentation state. Capture, bindings and native
+processes belong to the extension lifetime.
 
 `host.ready` negotiates installed actions before the first workspace request.
 Every effect has a document-local transport identity. Context changes immediately
 clear the old view and capabilities, retire pending continuations and negotiate
 again. Old and duplicate replies cannot populate the new view. Malformed results,
 failed sends and request timeouts become visible failures. Closing a document
-removes its listener and timers without stopping capture or native services.
+removes its listeners, timers and pending reads without stopping native services.
 
-## Local history
+## Local workspace coordination
 
-Each open native folder appears as an independent local workspace. The host
-resolves `idle.chainDirectory` against that folder and installs an explicit
-workspace/repository/chain binding. Host-local aliases are stable across document
-recreation and contain no storage paths. They are local routing identities, not
-shared enrollment or authenticated contributor identities. No first-folder
-fallback is used for multi-root windows.
+Each native folder has an explicit workspace/repository/chain binding. The host
+resolves `idle.chainDirectory` against that folder. Stable local aliases contain
+no storage paths and never select another folder as a fallback.
 
-`app.workspace` supplies the local directory, snapshots and empty local membership
-and presence sets. `app.history` routes reads through the packaged
-`idle-history-service` and app-core's engine adapter; native-open queries use the
-existing exact history actions. Every read rechecks the installed binding and
-Workspace Trust. A missing chain is reported as unavailable. **Refresh history**
-reconciles recorded changes while preserving app-core selection/disclosure.
+The packaged f18 `idle-coordination` process supplies workspace membership,
+resource directories, settings/rules reads and audience-scoped recovery cursors.
+The host creates a private startup configuration under extension global storage.
+A persisted random contributor identity identifies the local VS Code profile;
+its authority is the trusted local process connection. It is displayed as
+**You (local)** and is independent of GitHub sign-in, peer device enrollment and
+runtime identities. No bearer token enters the webview or coordinator configuration.
+The metadata store has one process owner; another process using the same store
+is reported as unavailable.
 
-The shared session components are mounted with unavailable actions until a
-session provider is connected. Runtime fixtures verify typed session results in
-both workspace modes. Production subscription/session/projection/resource and
-configuration providers, durable prompt drafts and mutation recovery remain
-integration work under f43 with their runtime/backend owners. f17 supplies the
-required live running-session lifetime check. The current local host does not
-claim live session execution. Local collection and peer receipts publish scoped
-`history.changed` events; the Rust runtime reconciles only its current binding.
-These notifications do not implement a durable backend subscription cursor.
+The host accepts only bounded snapshot, presence and catch-up reads from views.
+It publishes expiring local presence itself, including an active file only when
+it is within the selected folder. Account, folder or configuration changes retire
+the corresponding processes and pending reads. Native restart reopens the saved
+metadata. A closed view does not delete it.
 
-Active Codex rollouts are treated as append logs. Replacement, truncation and
-same-size changes trigger a strict replay into a new source generation. A larger
-in-place rewrite is checked on collector restart; normal live polls read only
-the appended bytes. Imports checkpoint source positions after durable writes.
+Coordinator payloads cross the JavaScript bridge as exact JSON text. Rust converts
+them using the shared protocol and app-core adapters, preserving revisions and
+cursor positions above JavaScript's integer limit. Recovery checks the audience,
+workspace, stream and increasing positions before reconciling. Empty catch-up
+responses keep a bounded watch pending; an expired cursor triggers a fresh join
+and replacement reads. Interrupted transport uses app-core's retry state.
+
+## History and projections
+
+`app.history` uses the packaged `idle-history-service` and app-core's engine
+adapter. Native record, Original, file and diff actions retain exact record
+identities. Every read rechecks its installed binding, cancellation and Workspace
+Trust. A missing chain is unavailable. Refreshes preserve current selection and
+disclosure when those records still exist.
+
+`app.projection` reads the same bound chain through app-core's projection engine
+adapter. Recorded Activity has source references, bounded reads and explicit gaps.
+Task, error, triage and human-input projections are explicitly unavailable while
+no controller supplies them; an absent provider does not become a zero total.
+
+Collection and peer receipts publish scoped `history.changed` events. The Rust
+runtime refreshes history and derived projections only for its current binding.
+These local history notifications remain separate from the coordinator's durable
+metadata cursor. Capture, collection, sharing and f42 author/exposure decorations
+continue while views are closed.
+
+Active Codex rollouts are append logs. Replacement, truncation and same-size
+changes trigger a strict replay into a new source generation. A larger in-place
+rewrite is checked on collector restart; normal live polls read appended bytes.
+Imports checkpoint source positions after durable writes.
+
+## Remaining integrations
+
+Resource directories and configuration reads are connected. Destination slots
+currently show read-only summaries. The shared f35/f36 resource and configuration
+editors, durable mutation drafts and recovery, and managed providers remain under
+f43. No configuration save is enabled by this assembly.
+
+Session components have unavailable actions until an execution provider supplies
+real capabilities and explicit session-to-history mappings. Directory membership
+or a controller lease cannot establish a running session. Creation, input,
+compute and model actions remain disabled; f17's live running-session lifetime
+acceptance is still required. Runtime fixtures continue to verify both workspace
+modes. The broader f43 feature remains open.
+
+Existing peer sharing commands retain their established runtime and saved consent.
+The local coordinator does not start discovery, resume sharing or migrate peer
+identities automatically.
 
 ## Assets and checks
 
-The build bundles theme, graph, details and session styles plus the application
-WASM. VS Code CSS variables update the shared theme directly. The CSP permits
-dynamic style attributes for graph coordinates while keeping style elements and
-scripts restricted to packaged assets.
+The build bundles theme, navigation, projection, history, details and session
+styles with the application WASM. VS Code CSS variables update the shared theme.
+The CSP permits graph coordinates while restricting scripts and style elements
+to packaged assets.
 
 The VSIX includes `idle-editor-service`, `idle-history-service`,
-`idle-history-collector`, `codex-session-exporter` and `editchain-peer` for the build host's OS/architecture.
-Sibling source repositories are build inputs; an installed extension resolves
-only configured absolute executables or its own packaged binaries. Build a
-platform-specific VSIX for each destination host.
+`idle-history-collector`, `codex-session-exporter`, `editchain-peer` and
+`idle-coordination` for the build host's OS/architecture. Installed copies resolve
+configured absolute executables or packaged tools; sibling source checkouts are
+build inputs only. Build a platform-specific VSIX for each destination host.
 
-CI pins the app-core, web-ui, host-tools, EditChain and Codex commits used for verification.
-Publish the paired commits before opening the extension PR so checkout can fetch
-the complete source set.
+[CI](../.github/workflows/ci.yml) pins the paired source revisions:
 
-Run `./scripts/check.sh`, then set `CHROME_BIN` and run `npm run test:webview`
-and `npm run test:assembly`. CI runs both browser checks. The latter extracts the
-VSIX, generates a synthetic chain, and verifies the sidebar/detail path from
-Crux through the native service to exact native previews and host theme updates.
-Capture tests also verify edits before opening, with all views closed, and after
-reopening the view without replacing the capture session.
+| Repository | Revision |
+| --- | --- |
+| app-core | `ccb712c789f8c0487644f9394caa67d93621a882` |
+| web-ui | `9c5128c81776f06adb72fbec08be81eff18b081e` |
+| host-tools | `eba843a421a11769173d62117250aff5a7d89951` |
+| EditChain | `45b94c95a2cb185a59e58cf0763f589c666ab1e6` |
+| Codex exporter | `903d7f1c62c621cf1f925362ac88893ec1f36b07` |
+
+Run `./scripts/check.sh` for the canonical Rust checks, host tests, packaging and
+native VSIX checks. Then run `test:webview` and `test:assembly` with `CHROME_BIN`
+set to a Chrome executable. They use isolated browser profiles, synthetic
+workspaces and packaged native tools. The assembly check covers navigation,
+compact Activity, projection availability, multiple folders, exact previews,
+recorded updates, host theme changes and document reconnection.
+
+Run `VSCODE_BIN=/absolute/path/to/code npm run test:vscode` on Linux with
+`xvfb-run` available. This installs the VSIX into a disposable extension directory,
+starts a separate desktop VS Code profile and checks native metadata, exact
+record/file/diff opens, author/exposure reads and capture across view closure and
+reopening. It does not attach to an existing editor profile. CI runs this check
+with VS Code 1.140.0.
 
 ## Application ownership
 
-The extension owns its editor recorder, platform event adapters, credentials,
-trust checks and service lifecycle. `host-tools` owns provider imports, import
-commands, source discovery and collection, portable peer coordination and shared
-protocol/history contracts. Its `idle-peer-state` package exposes portable Rust
-connection helpers to Node. App-core owns the Crux model, effects and view models.
-EditChain contains only storage, schemas, indexes, queries, replication and engine tooling.
-
-Collection requests now ask the native collector to discover sources and run a
-bounded scan. The host retains only timers, cancellation and scoped notifications.
-The same native collector has a standalone watch mode for hosts without VS Code;
-see [host-tools](https://github.com/idleai/host-tools).
+The extension owns editor recording, platform events, credentials, trust checks
+and service lifetime. Host-tools owns imports, source discovery and collection,
+portable peer coordination and shared protocol/history contracts. App-core owns
+semantic state, effects and view models. Web-ui owns shared rendering. EditChain
+contains storage, schemas, indexes, queries, replication and engine tooling.
 
 The old extension, native viewer service, renderer and compatibility projection/
-protocol packages are retired. Reused layout and peer behavior checks run against
-the current packages. Installed development collectors are outside this change;
-there is no settings, identity or outbox handoff from an old extension.
+protocol packages remain retired. Installed development collectors are outside
+this change; there is no settings, identity or outbox handoff from an old extension.

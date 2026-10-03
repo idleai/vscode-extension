@@ -6,6 +6,7 @@ import { SharingHost } from "../sharing";
 import { HistoryHost } from "../history";
 import { ActivityDecorations } from "../authorActivity";
 import { HostConfiguration } from "./configuration";
+import { CoordinationHost } from "./coordination";
 import { AssemblyHost } from "./assembly";
 import { HostCredentials } from "./credentials";
 import type { DevTunnelsAdapters } from "./devTunnels";
@@ -29,6 +30,7 @@ export class HostServices implements vscode.Disposable {
   readonly sharing: SharingHost;
   readonly history: HistoryHost;
   readonly assembly: AssemblyHost;
+  readonly coordination: CoordinationHost;
   readonly activity: ActivityDecorations;
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChangeContext = this.changed.event;
@@ -49,10 +51,11 @@ export class HostServices implements vscode.Disposable {
     this.collection = new CollectionHost(context, this.configuration, this.diagnostics);
     this.sharing = new SharingHost(context, this.configuration, this.credentials, this.diagnostics, () => this.devTunnels());
     this.history = new HistoryHost(context.extensionUri.fsPath, this.effects, this.diagnostics);
+    this.coordination = new CoordinationHost(context, this.configuration);
     this.assembly = new AssemblyHost(this.configuration, this.history, this.effects, (folder, error) => {
       this.diagnostics.failure("Workspace " + folder, error);
       void this.diagnostics.notify("warning", "Idle cannot open " + folder + ": " + publicError(error).message);
-    });
+    }, this.coordination);
     this.activity = new ActivityDecorations(this.history, this.capture, this.assembly, this.diagnostics);
     const refreshCaptureAccount = () => { void this.capture.refreshAccount(async () => (await this.credentials.account())?.label); };
     refreshCaptureAccount();
@@ -155,7 +158,7 @@ export class HostServices implements vscode.Disposable {
     this.effects.dispose();
     try {
       const services = await Promise.allSettled([this.sharing.shutdown(), this.capture.shutdown(),
-        this.collection.shutdown(), this.history.shutdown(), this.native.shutdown()]);
+        this.collection.shutdown(), this.history.shutdown(), this.native.shutdown(), this.coordination.shutdown()]);
       this.retireTunnels();
       const tunnels = await Promise.allSettled(this.retiring);
       if ([...services, ...tunnels].some(result => result.status === "rejected")) {

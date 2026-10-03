@@ -2078,6 +2078,7 @@ dependencies = [
  "dioxus",
  "dioxus-web",
  "editchain-core",
+ "idle-protocol",
  "js-sys",
  "serde",
  "serde_json",

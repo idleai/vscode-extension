@@ -1,0 +1,44 @@
+const assert = require('node:assert/strict');
+const { mkdir } = require('node:fs/promises');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+
+exports.smokeCoordination = async (host, f, temporary) => {
+  const root = path.join(temporary, 'coordination-workspace');
+  await mkdir(root, { recursive: true });
+  const uri = f.api.Uri.parse(pathToFileURL(root).toString());
+  f.api.workspace.workspaceFolders = [{ uri, name: 'Local coordination', index: 0 }];
+  f.configuration.set(uri.toString(), { 'tracking.enabled': false, 'live.enabled': false });
+  host.assembly.reset();
+  const context = { session: 'coordination-smoke', signal: new AbortController().signal };
+  const directory = await host.effects.execute('app.workspace', { operation: 'List' }, context);
+  const workspace = directory.Ok.Directory[0];
+  const binding = { workspace_id: workspace.id, repository_id: workspace.repositories[0].id, chain: workspace.chain };
+  const read = async command => {
+    const reply = await host.effects.execute('app.coordination', { binding, command: JSON.stringify(command) }, context);
+    return JSON.parse(reply.native).result.Ok;
+  };
+  const first = await read({ kind: 'snapshot' });
+  assert.equal(first.workspace.value.id, binding.workspace_id);
+  assert.equal(first.workspace.value.chain, binding.chain);
+  assert.equal(first.memberships[0].value.role, 'owner');
+  const presence = await read({ kind: 'presence' });
+  assert.equal(presence[0].contributor_id, first.as_of.contributor_id);
+  assert.equal(presence[0].repository_id, binding.repository_id);
+  assert.ok(Number(presence[0].valid_until) > Date.now());
+  await assert.rejects(host.effects.execute('app.coordination', { binding, command: '{"kind":"mutate"}' }, context), { code: 'denied' });
+  await assert.rejects(host.effects.execute('app.coordination', { binding: { ...binding, chain: 'other-chain' }, command: '{"kind":"snapshot"}' }, context), { code: 'unavailable' });
+  const cancel = new AbortController();
+  const waiting = host.effects.execute('app.coordination', { binding, command: JSON.stringify({ kind: 'catch_up', data: { after: first.as_of, limit: 256 } }), watch: true }, { ...context, signal: cancel.signal });
+  const rejected = assert.rejects(waiting);
+  setTimeout(() => cancel.abort(), 50);
+  await rejected;
+  host.coordination.reset();
+  const restarted = await read({ kind: 'snapshot' });
+  assert.deepEqual(restarted.workspace, first.workspace);
+  assert.deepEqual(restarted.memberships, first.memberships);
+  f.api.workspace.isTrusted = false;
+  await assert.rejects(read({ kind: 'snapshot' }), { code: 'workspace_untrusted' });
+  f.api.workspace.isTrusted = true;
+  console.log('PASS: packaged coordinator metadata, local presence, restart persistence, cancellation, trust and binding checks.');
+};

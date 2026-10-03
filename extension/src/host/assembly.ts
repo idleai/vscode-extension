@@ -1,7 +1,9 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { createHash } from "node:crypto";
 import * as vscode from "vscode";
 import { HistoryHost, RepositoryBinding } from "../history";
 import { FolderConfiguration, HostConfiguration } from "./configuration";
+import { CoordinationHost } from "./coordination";
 import { HostEffects } from "./effects";
 import { HostError, record } from "./protocol";
 
@@ -21,11 +23,25 @@ export class AssemblyHost implements vscode.Disposable {
   private readonly installed: { dispose(): void }[];
 
   constructor(private readonly configuration: HostConfiguration, private readonly history: HistoryHost, effects: HostEffects,
-    private readonly report: (folder: string, error: unknown) => void) {
+    private readonly report: (folder: string, error: unknown) => void, private readonly coordination?: CoordinationHost) {
     this.installed = [
       effects.register("app.workspace", params => this.workspace(params)),
       effects.register("app.history", (params, context) => history.query(params, context.signal)),
+      effects.register("app.projection", (params, context) => history.projection(params, context.signal)),
     ];
+    if (coordination) this.installed.push(
+      effects.register("app.coordination", (params, context) => this.coordinate(params, context.signal)),
+      effects.register("app.subscription", async (params, context) => {
+        if (!record(params) || !record(params.operation) || !record(params.operation.action)) throw new HostError("invalid_request", "Invalid subscription operation.");
+        const action = params.operation.action;
+        if (record(action.Leave)) return { Ok: "Left" };
+        if (record(action.Wait) && Number.isInteger(action.Wait.delay_ms) && Number(action.Wait.delay_ms) >= 0 && Number(action.Wait.delay_ms) <= 30_000) {
+          await delay(Number(action.Wait.delay_ms), undefined, { signal: context.signal });
+          return { Ok: "Elapsed" };
+        }
+        throw new HostError("unavailable", "This subscription is unavailable.");
+      }),
+    );
   }
 
   private list(): LocalWorkspace[] {
@@ -58,6 +74,19 @@ export class AssemblyHost implements vscode.Disposable {
     return this.bindingFor(resource);
   }
 
+  private coordinate(params: unknown, signal: AbortSignal): Promise<unknown> {
+    this.list();
+    if (!record(params) || !record(params.binding)) throw new HostError("invalid_request", "Coordination requires a repository binding.");
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      const config = this.configuration.forResource(folder.uri);
+      const binding = localBinding(config);
+      if (binding.workspace_id === params.binding.workspace_id && binding.repository_id === params.binding.repository_id && binding.chain === params.binding.chain) {
+        return this.coordination!.read(config, binding, params, signal);
+      }
+    }
+    throw new HostError("unavailable", "This coordination binding is no longer available.");
+  }
+
   private workspace(params: unknown): unknown {
     if (!record(params)) throw new HostError("invalid_request", "Expected a workspace operation.");
     const workspaces = this.list();
@@ -74,6 +103,7 @@ export class AssemblyHost implements vscode.Disposable {
 
   reset(): void {
     this.directory = undefined;
+    this.coordination?.reset();
     for (const binding of this.bindings.splice(0)) binding.dispose();
   }
 

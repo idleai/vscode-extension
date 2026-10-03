@@ -7,7 +7,7 @@ async function probe() {
   let rejected = false;
   try { await initializeHostBridge(); } catch { rejected = true; }
   if (!rejected || window.smoke.listeners !== 1 || window.smoke.errors.length) throw new Error(`Protocol error handling failed: ${window.smoke.errors}`);
-  if (!document.getElementById("main").textContent.includes("Open a trusted workspace folder")) throw new Error("Shared Rust view did not render.");
+  if (!document.getElementById("main").textContent.includes("No workspaces available")) throw new Error("Shared Rust view did not render.");
   document.documentElement.dataset.smoke = "pass";
 }
 probe().catch(error => { document.documentElement.dataset.smoke = "fail"; document.documentElement.dataset.smokeError = String(error); });
