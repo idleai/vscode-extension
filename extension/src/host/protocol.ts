@@ -35,7 +35,9 @@ export function parseRequest(value: unknown, session: string): HostRequest | und
       typeof value.method !== "string" || !/^[\w.-]{1,128}$/.test(value.method) ||
       !("params" in value)) return undefined;
   try {
-    if (Buffer.byteLength(JSON.stringify(value), "utf8") > MAX_MESSAGE_BYTES) return undefined;
+    const limit = value.method === "app.configurationState" || value.method === "app.coordination"
+      ? 12 * MAX_MESSAGE_BYTES : MAX_MESSAGE_BYTES;
+    if (Buffer.byteLength(JSON.stringify(value), "utf8") > limit) return undefined;
   } catch { return undefined; }
   return value as unknown as HostRequest;
 }

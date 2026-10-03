@@ -29,7 +29,7 @@ export class WorkspaceViewProvider implements vscode.WebviewViewProvider, vscode
     const assets = vscode.Uri.joinPath(this.extensionUri, "dist");
     view.webview.options = { enableScripts: true, localResourceRoots: [assets] };
     const bridge = new WebviewBridge(session, this.effects,
-      message => view.webview.postMessage(message), this.failure);
+      message => view.webview.postMessage(message), this.failure, kind);
     const receive = view.webview.onDidReceiveMessage(message => { void bridge.receive(message); });
     const entry = { bridge, dispose: () => { bridge.dispose(); receive.dispose(); closed.dispose(); this.views.delete(entry); } };
     const closed = view.onDidDispose(entry.dispose);

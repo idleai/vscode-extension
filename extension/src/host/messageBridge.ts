@@ -12,6 +12,7 @@ export class WebviewBridge {
     private readonly effects: HostEffects,
     private readonly post: (message: unknown) => PromiseLike<boolean>,
     private readonly failure: (error: unknown) => void,
+    private readonly viewKind?: string,
   ) {}
 
   async receive(value: unknown): Promise<void> {
@@ -33,7 +34,7 @@ export class WebviewBridge {
     this.pending.set(request.id, controller);
     try {
       const result = await this.effects.execute(request.method, request.params,
-        { signal: controller.signal, session: this.session });
+        { signal: controller.signal, session: this.session, viewKind: this.viewKind });
       if (!controller.signal.aborted) {
         if (request.method === "host.ready") this.ready = true;
         await this.send({ id: request.id, result: result ?? null });

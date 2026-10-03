@@ -49,8 +49,8 @@ for (const broken of ['one', 'two']) test('an invalid ' + broken + ' folder pres
   const bindings = [];
   const reads = [];
   const history = { connect(binding) { bindings.push(binding); return { dispose() { released.push(binding); } }; } };
-  const coordination = { read: async (config, binding, params, signal) => {
-    reads.push({ config, binding, params, signal });
+  const coordination = { read: async (config, binding, params, context) => {
+    reads.push({ config, binding, params, context });
     return { native: '{"result":{"Ok":{}}}' };
   }, reset() {} };
   const host = new AssemblyHost(new HostConfiguration('/extension'), history, effects,
@@ -72,7 +72,7 @@ for (const broken of ['one', 'two']) test('an invalid ' + broken + ' folder pres
     assert.equal(reads[0].config.folder.name, workspace.name);
     assert.deepEqual(reads[0].binding, params.binding);
     assert.equal(reads[0].params, params);
-    assert.equal(reads[0].signal, context.signal);
+    assert.equal(reads[0].context, context);
     assert.deepEqual(await effects.execute('app.workspace', { operation: 'List' }, context), result);
     assert.equal(failures.length, 1, 'repeat views do not repeat the notification');
     f.configuration.delete('file:///' + broken);

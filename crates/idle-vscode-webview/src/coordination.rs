@@ -2,6 +2,7 @@
 
 mod reads;
 mod recovery;
+mod writes;
 
 use app_core::{
     Effect, Event, ViewModel, configuration, projections, resources, subscriptions, workspace,
@@ -48,6 +49,7 @@ impl Adapter {
             {
                 (json!({"kind":"snapshot"}), false)
             }
+            Effect::Configuration(request) => (writes::command(&request.operation).ok()?, false),
             Effect::Subscription(request) => match &request.operation.action {
                 subscriptions::SubscriptionAction::Join => (json!({"kind":"snapshot"}), false),
                 subscriptions::SubscriptionAction::Watch { connection } => (
@@ -62,15 +64,18 @@ impl Adapter {
             | Effect::History(_)
             | Effect::Session(_)
             | Effect::Projection(_)
-            | Effect::Resource(_)
-            | Effect::Configuration(_) => return None,
+            | Effect::Resource(_) => return None,
         };
         let binding = binding(effect, view)?;
         if matches!(effect, Effect::Subscription(request) if request.operation.action == subscriptions::SubscriptionAction::Join)
         {
             self.latest_join = Some(id.into());
         }
-        Some(json!({"binding":binding, "command":command.to_string(), "watch":watch}))
+        let drafts = matches!(effect, Effect::Configuration(request) if matches!(request.operation.action, configuration::ConfigurationAction::Save(_)))
+            .then(|| serde_json::to_string(&view.configuration.drafts).ok()).flatten();
+        Some(
+            json!({"binding":binding, "command":command.to_string(), "watch":watch, "drafts":drafts}),
+        )
     }
 
     pub(crate) fn decode(
@@ -101,7 +106,12 @@ impl Adapter {
                 reads::resource(&request.operation, data.clone(), now).map(Some)
             }
             Effect::Configuration(request) => {
-                reads::configuration(&request.operation, data.clone()).map(Some)
+                if request.operation.action == configuration::ConfigurationAction::Load {
+                    reads::configuration(&request.operation, data.clone()).map(Some)
+                } else {
+                    writes::configuration(&request.operation, data.clone(), value.get("snapshot"))
+                        .map(Some)
+                }
             }
             Effect::Subscription(request) => {
                 self.subscription(&request.operation, data.clone(), id, view)

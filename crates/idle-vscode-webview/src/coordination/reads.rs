@@ -104,22 +104,45 @@ pub(super) fn configuration(
 ) -> Result<Value, String> {
     let snapshot: RepositorySnapshot =
         serde_json::from_value(data).map_err(|error| error.to_string())?;
+    Ok(
+        json!({"Ok": configuration::ConfigurationResult::Loaded(configuration_snapshot(operation, snapshot)?)}),
+    )
+}
+
+pub(super) fn configuration_snapshot(
+    operation: &configuration::ConfigurationOperation,
+    snapshot: RepositorySnapshot,
+) -> Result<configuration::ConfigurationSnapshot, String> {
     if snapshot.workspace.value.id.0 != operation.context.workspace_id
+        || snapshot.as_of.workspace_id.0 != operation.context.workspace_id
         || snapshot.workspace.value.chain.0 != operation.context.chain
         || snapshot.as_of.contributor_id.0 != operation.context.contributor_id
     {
         return Err("Configuration scope differs from the connected coordinator".into());
     }
+    let can_edit = snapshot.memberships.iter().any(|record| {
+        record.value.contributor_id.0 == operation.context.contributor_id
+            && record.value.status == idle_protocol::v1::membership::MembershipStatus::Active
+            && matches!(
+                record.value.role,
+                idle_protocol::v1::membership::Role::Owner
+                    | idle_protocol::v1::membership::Role::Admin
+            )
+    });
     let record = match operation.document {
         configuration::ConfigurationDocument::Settings => snapshot.settings,
         configuration::ConfigurationDocument::AgentRules => snapshot.agent_rules,
     };
-    Ok(
-        json!({"Ok": configuration::ConfigurationResult::Loaded(configuration::ConfigurationSnapshot {
-            context: operation.context.clone(), document: operation.document, can_edit: false,
-            record: record.map(|record| configuration::ConfigurationRecord {
-                revision: record.revision.0, value: configuration::ConfigurationValue { schema_version: record.value.schema_version, json: record.value.json },
-            }),
-        })}),
-    )
+    Ok(configuration::ConfigurationSnapshot {
+        context: operation.context.clone(),
+        document: operation.document,
+        can_edit,
+        record: record.map(|record| configuration::ConfigurationRecord {
+            revision: record.revision.0,
+            value: configuration::ConfigurationValue {
+                schema_version: record.value.schema_version,
+                json: record.value.json,
+            },
+        }),
+    })
 }

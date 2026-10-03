@@ -10,6 +10,8 @@ use web_ui::host::{HostCapabilities, HostCapability, HostKind};
 
 use crate::bridge::BridgeError;
 
+mod drafts;
+
 /// One platform call. Its identity is valid only in this document.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Call {
@@ -28,6 +30,7 @@ pub struct Runtime {
     next: u64,
     capabilities: HostCapabilities,
     coordination: crate::coordination::Adapter,
+    drafts: drafts::State,
 }
 
 impl std::fmt::Debug for Runtime {
@@ -47,6 +50,7 @@ impl Default for Runtime {
             next: 0,
             capabilities: HostCapabilities::new(HostKind::VsCode),
             coordination: crate::coordination::Adapter::default(),
+            drafts: drafts::State::default(),
         }
     }
 }
@@ -76,6 +80,7 @@ impl Runtime {
         self.core = Core::new();
         self.capabilities = HostCapabilities::new(HostKind::VsCode);
         self.coordination = crate::coordination::Adapter::default();
+        self.drafts = drafts::State::default();
     }
 
     /// Start or reset after account, trust or workspace configuration changes.
@@ -85,6 +90,7 @@ impl Runtime {
     pub fn ready(&mut self, value: &Value) -> Result<Vec<Call>, String> {
         self.invalidate();
         self.capabilities = capabilities(value);
+        self.configure_drafts(value);
         self.coordination.enabled = value
             .get("capabilities")
             .and_then(Value::as_array)
@@ -103,6 +109,12 @@ impl Runtime {
     /// # Errors
     /// Returns a serialization or Crux continuation failure.
     pub fn dispatch(&mut self, event: Event) -> Result<Vec<Call>, String> {
+        if matches!(
+            event,
+            Event::Configuration(app_core::configuration::Event::Refresh)
+        ) {
+            self.drafts.retry_load();
+        }
         self.enqueue(self.core.process_event(event))
     }
 
@@ -137,6 +149,9 @@ impl Runtime {
         id: &str,
         result: Result<Value, BridgeError>,
     ) -> Result<Vec<Call>, String> {
+        if self.drafts.has_request(id) {
+            return self.receive_drafts(id, result);
+        }
         let Some(mut effect) = self.pending.remove(id) else {
             return Ok(Vec::new());
         };
@@ -264,6 +279,7 @@ impl Runtime {
             });
             let _previous = self.pending.insert(id, effect);
         }
+        calls.extend(self.collect_drafts());
         Ok(calls)
     }
 }

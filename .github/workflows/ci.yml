@@ -21,13 +21,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: idleai/app-core
-          ref: ccb712c789f8c0487644f9394caa67d93621a882
+          ref: 1cda8c9bff6ae21aabb0087f079666543a57b5db
           path: app-core
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: idleai/web-ui
-          ref: 9c5128c81776f06adb72fbec08be81eff18b081e
+          ref: bdb581c39f95e258209fa23aba943866a7c4a6a4
           path: web-ui
           persist-credentials: false
       - uses: actions/checkout@v4

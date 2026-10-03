@@ -6,8 +6,9 @@ in `app-core`, Rust/WASM rendering lives in `web-ui`, and shared contracts,
 collection and peer coordination live in `host-tools`.
 
 Workspace navigation, local metadata and presence, recorded Activity, automatic
-collection, standalone peer sharing and native actions are connected. Session
-execution and the shared resource/configuration editors remain in progress;
+collection, standalone peer sharing, configuration saves, shared resource screens
+and native actions are connected. Git/GitHub data and recorded-session browsing
+are being assembled; live session execution requires a runtime;
 see the [assembly notes](docs/assembly.md).
 
 ## Setup

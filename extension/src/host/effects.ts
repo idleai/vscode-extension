@@ -3,6 +3,8 @@ import { HostError } from "./protocol";
 export interface HostCallContext {
   readonly signal: AbortSignal;
   readonly session: string;
+  /** Stable host-selected surface; never accepted from request parameters. */
+  readonly viewKind?: string;
 }
 
 export type HostEffect = (params: unknown, context: HostCallContext) => unknown | PromiseLike<unknown>;

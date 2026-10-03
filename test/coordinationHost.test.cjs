@@ -56,7 +56,7 @@ for (const action of ['reset', 'shutdown']) test(action + ' during coordinator r
   const configuration = new HostConfiguration(directory);
   const host = new CoordinationHost(f.context, configuration);
   const config = configuration.forResource(f.api.workspace.workspaceFolders[0].uri);
-  const read = () => host.read(config, binding, { command: '{"kind":"snapshot"}' }, new AbortController().signal);
+  const read = () => host.read(config, binding, { command: '{"kind":"snapshot"}' }, { signal: new AbortController().signal, session: 'document', viewKind: 'sidebar' });
   assert.deepEqual(JSON.parse((await read()).native).result.Ok, { ready: true });
   children[0].stdout.emit('end');
   const cancelled = assert.rejects(read(), { code: 'cancelled' });

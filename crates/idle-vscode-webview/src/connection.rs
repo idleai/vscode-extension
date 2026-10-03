@@ -63,6 +63,14 @@ impl Connection {
         self.publish(calls);
     }
 
+    pub(crate) fn save_configuration(
+        self: &Rc<Self>,
+        document: app_core::configuration::ConfigurationDocument,
+    ) {
+        let calls = self.runtime.borrow_mut().save_configuration(document);
+        self.publish(calls);
+    }
+
     fn handshake(self: &Rc<Self>) {
         // Clear private state and actions immediately, before waiting for the host.
         self.runtime.borrow_mut().invalidate();
@@ -110,6 +118,9 @@ impl Connection {
         self.bump();
         match result {
             Ok(calls) => {
+                if let Some(message) = self.runtime.borrow().draft_error() {
+                    self.report(message.into());
+                }
                 for call in calls {
                     self.send(call);
                 }

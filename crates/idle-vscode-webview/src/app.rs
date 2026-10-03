@@ -42,20 +42,46 @@ pub fn App() -> Element {
         runtime.borrow().capabilities(),
         runtime.borrow().now_ms(),
     );
-    let destination = crate::destinations::destination(&view);
-    rsx! { WorkspaceSurface {
-        destination, now_ms, view, capabilities, surface: surface(), error: error(),
-        onaction: move |event| {
-            #[cfg(target_arch = "wasm32")]
-            if let Some(connection) = &connection { connection.dispatch(event); }
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                if let Err(message) = runtime.borrow_mut().dispatch(event) { error.set(Some(message)); }
-                let mut revision = revision;
-                let next = revision.peek().wrapping_add(1);
-                revision.set(next);
+    #[cfg(target_arch = "wasm32")]
+    let save_connection = connection.clone();
+    #[cfg(not(target_arch = "wasm32"))]
+    let save_runtime = runtime.clone();
+    let onaction = EventHandler::new(move |event| {
+        #[cfg(target_arch = "wasm32")]
+        if let Some(connection) = &connection {
+            connection.dispatch(event);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if let Err(message) = runtime.borrow_mut().dispatch(event) {
+                error.set(Some(message));
             }
-        },
+            let mut revision = revision;
+            let next = revision.peek().wrapping_add(1);
+            revision.set(next);
+        }
+    });
+    let onsave = EventHandler::new(move |document| {
+        #[cfg(target_arch = "wasm32")]
+        if let Some(connection) = &save_connection {
+            connection.save_configuration(document);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if let Err(message) = save_runtime.borrow_mut().save_configuration(document) {
+                error.set(Some(message));
+            }
+            let mut revision = revision;
+            let next = revision.peek().wrapping_add(1);
+            revision.set(next);
+        }
+    });
+    let onexecute = EventHandler::new(move |_mutation| {
+        error.set(Some("No runtime is connected for resource actions.".into()));
+    });
+    let destination = crate::destinations::destination(&view, onaction, onsave, onexecute);
+    rsx! { WorkspaceSurface {
+        destination, now_ms, view, capabilities, surface: surface(), error: error(), onaction,
     } }
 }
 

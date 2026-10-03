@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { randomUUID } from "node:crypto";
 import { PeerAwarenessHost } from "../presence";
 import { CaptureHost } from "../capture";
 import { CollectionHost } from "../collection";
@@ -123,7 +124,7 @@ export class HostServices implements vscode.Disposable {
   }
 
   private registerPlatformEffects(): void {
-    this.effects.register("host.ready", () => ({ capabilities: this.effects.available(), configuration: this.configuration.snapshot() }), false);
+    this.effects.register("host.ready", () => ({ capabilities: this.effects.available(), configuration: this.configuration.snapshot(), mutation_prefix: randomUUID() }), false);
     this.effects.register("configuration.read", () => this.configuration.snapshot(), false);
     this.effects.register("output.show", () => this.diagnostics.show(), false);
     this.effects.register("notification.show", async params => {

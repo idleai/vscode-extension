@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 import { HistoryHost, RepositoryBinding } from "../history";
 import { FolderConfiguration, HostConfiguration } from "./configuration";
 import { CoordinationHost } from "./coordination";
-import { HostEffects } from "./effects";
+import { HostCallContext, HostEffects } from "./effects";
 import { HostError, record } from "./protocol";
 
 interface LocalWorkspace {
@@ -31,7 +31,8 @@ export class AssemblyHost implements vscode.Disposable {
       effects.register("app.projection", (params, context) => history.projection(params, context.signal)),
     ];
     if (coordination) this.installed.push(
-      effects.register("app.coordination", (params, context) => this.coordinate(params, context.signal)),
+      effects.register("app.coordination", (params, context) => this.coordinate(params, context)),
+      effects.register("app.configurationState", (params, context) => this.coordinate(params, context, true)),
       effects.register("app.subscription", async (params, context) => {
         if (!record(params) || !record(params.operation) || !record(params.operation.action)) throw new HostError("invalid_request", "Invalid subscription operation.");
         const action = params.operation.action;
@@ -76,7 +77,7 @@ export class AssemblyHost implements vscode.Disposable {
     return this.bindingFor(resource);
   }
 
-  private coordinate(params: unknown, signal: AbortSignal): Promise<unknown> {
+  private coordinate(params: unknown, context: HostCallContext, state = false): Promise<unknown> {
     this.list();
     if (!record(params) || !record(params.binding) || typeof params.binding.workspace_id !== "string") throw new HostError("invalid_request", "Coordination requires a repository binding.");
     const folder = this.folders.get(params.binding.workspace_id);
@@ -84,7 +85,8 @@ export class AssemblyHost implements vscode.Disposable {
       const config = this.configuration.forResource(folder);
       const binding = localBinding(config);
       if (binding.workspace_id === params.binding.workspace_id && binding.repository_id === params.binding.repository_id && binding.chain === params.binding.chain) {
-        return this.coordination!.read(config, binding, params, signal);
+        return state ? this.coordination!.configurationState(binding, params, context)
+          : this.coordination!.read(config, binding, params, context);
       }
     }
     throw new HostError("unavailable", "This coordination binding is no longer available.");

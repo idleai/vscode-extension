@@ -17,7 +17,7 @@ window.acquireVsCodeApi = () => {
         .then(response => response.json())
         .then(data => {
           fixture.responses.push({ request, data });
-          if (request.method === fixture.holdMethod) fixture.held.push(data);
+          if (request.method === fixture.holdMethod || (fixture.holdMutation && request.method === 'app.coordination' && JSON.parse(request.params.command).kind === 'mutate')) fixture.held.push(data);
           else window.dispatchEvent(new MessageEvent("message", { data }));
         });
     },

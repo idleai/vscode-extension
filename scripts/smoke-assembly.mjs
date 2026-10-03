@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import puppeteer from "puppeteer-core";
+import { checkConfiguration } from "./assembly-configuration.mjs";
 
 // Isolated browser and synthetic chain. This never attaches to the user's editor.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -54,7 +55,7 @@ try {
         const envelope = JSON.parse(data);
         let delivery;
         const send = message => { delivery = message; return Promise.resolve(true); };
-        const bridge = new WebviewBridge(envelope.session, host.effects, send, error => { if (!response.destroyed) expectedFailures.push(error); });
+        const bridge = new WebviewBridge(envelope.session, host.effects, send, error => { if (!response.destroyed) expectedFailures.push(error); }, envelope.session.endsWith('detail') ? 'detail' : 'sidebar');
         response.on("close", () => bridge.dispose());
         await bridge.receive(envelope);
         bridge.dispose();
@@ -121,9 +122,10 @@ try {
     await checkReadyReplies(page, workspaceId);
     await page.close();
   }
+  await checkConfiguration(browser, `http://127.0.0.1:${server.address().port}`);
   assert.deepEqual(errors, [], "the packaged views have no browser or CSP errors");
   assert.deepEqual(expectedFailures, [], "host operations succeed");
-  console.log("PASS: packaged sidebar/detail -> persistent Crux -> bound native history -> shared inspector -> exact native file preview.");
+  console.log("PASS: packaged sidebar/detail, exact native history, configuration saves, conflicts, reopened drafts and original-request recovery.");
 } catch (error) {
   for (const [index, page] of (await browser?.pages() ?? []).entries()) {
     try { await savePage(page, `failure-${index}`, process.env.IDLE_ASSEMBLY_OUTPUT ?? join(root, 'outputs', 'assembly')); } catch {}

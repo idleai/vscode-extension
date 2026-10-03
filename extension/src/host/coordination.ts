@@ -6,6 +6,8 @@ import * as vscode from 'vscode';
 import { RepositoryBinding } from '../history';
 import { FolderConfiguration, HostConfiguration, resolveNativePath } from './configuration';
 import { CoordinationClient } from './coordinationClient';
+import { ConfigurationJournal } from './configurationJournal';
+import { HostCallContext } from './effects';
 import { HostError, record } from './protocol';
 
 /** One private metadata authority per folder, owned by the extension lifetime. */
@@ -15,24 +17,35 @@ export class CoordinationHost {
   private generation = 0;
   private closed = false;
   private readonly identity: Promise<string>;
+  private readonly journal: ConfigurationJournal;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly configuration: HostConfiguration) {
+    this.journal = new ConfigurationJournal(path.join(context.globalStorageUri.fsPath, 'configuration'));
     const saved = context.globalState.get<string>('coordination.localContributor');
     const id = saved ?? randomUUID();
     this.identity = saved ? Promise.resolve(id) : Promise.resolve(context.globalState.update('coordination.localContributor', id)).then(() => id);
   }
 
-  async read(config: FolderConfiguration, binding: RepositoryBinding, params: unknown, signal: AbortSignal): Promise<unknown> {
+  async read(config: FolderConfiguration, binding: RepositoryBinding, params: unknown, context: HostCallContext): Promise<unknown> {
+    const { signal } = context;
     this.configuration.assertTrusted();
-    if (!record(params) || typeof params.command !== 'string' || params.command.length > 16_384) {
+    if (!record(params) || typeof params.command !== 'string' || Buffer.byteLength(params.command, 'utf8') > 2 * 1024 * 1024) {
       throw new HostError('invalid_request', 'Expected a bounded coordination read.');
     }
     let command: unknown;
     try { command = JSON.parse(params.command); } catch { throw new HostError('invalid_request', 'Invalid coordination read.'); }
-    if (!record(command) || !['snapshot', 'presence', 'catch_up'].includes(String(command.kind))) {
+    if (!record(command) || !['snapshot', 'presence', 'catch_up', 'mutate'].includes(String(command.kind))) {
       throw new HostError('denied', 'This coordination operation is unavailable.');
     }
     const generation = this.generation;
+    const mutation = command.kind === 'mutate' ? await this.validateMutation(command.data, binding) : undefined;
+    this.assertCurrent(generation, signal);
+    if (mutation) {
+      if (typeof params.drafts !== 'string') throw new HostError('invalid_request', 'A configuration save requires its recoverable draft.');
+      await this.journal.writeDrafts(binding, mutation.contributor, context.viewKind ?? context.session, params.drafts);
+      await this.journal.prepare(binding, mutation.contributor, mutation.id, params.command);
+      this.assertCurrent(generation, signal);
+    }
     let opening = this.clients.get(binding.workspace_id);
     if (!opening) {
       opening = this.open(config, binding, generation);
@@ -56,13 +69,46 @@ export class CoordinationHost {
     const deadline = Date.now() + 20_000;
     for (;;) {
       const raw = await client.request(params.command, signal);
+      const snapshot = mutation && JSON.parse(raw)?.result?.Ok?.result?.status === 'success'
+        ? await client.request('{"kind":"snapshot"}', signal) : undefined;
+      if (mutation) await this.journal.settled(binding, mutation.contributor, mutation.id);
       this.assertCurrent(generation, signal);
-      if (params.watch !== true || command.kind !== 'catch_up' || Date.now() >= deadline) return { native: raw, now_ms: Date.now() };
+      if (params.watch !== true || command.kind !== 'catch_up' || Date.now() >= deadline) return { native: raw, snapshot, now_ms: Date.now() };
       const result = JSON.parse(raw).result.Ok;
       if (result.kind !== 'events' || result.data.events.length) return { native: raw, now_ms: Date.now() };
       await delay(1000, undefined, { signal });
       this.assertCurrent(generation, signal);
     }
+  }
+
+  async configurationState(binding: RepositoryBinding, params: unknown, context: HostCallContext): Promise<unknown> {
+    this.configuration.assertTrusted();
+    const generation = this.generation;
+    const contributor = `local-contributor:${await this.identity}`;
+    this.assertCurrent(generation, context.signal);
+    if (!record(params)) throw new HostError('invalid_request', 'Expected a configuration state request.');
+    const view = context.viewKind ?? context.session;
+    if (params.operation === 'load') return { drafts: await this.journal.readDrafts(binding, contributor, view) };
+    if (params.operation === 'store' && typeof params.drafts === 'string') {
+      await this.journal.writeDrafts(binding, contributor, view, params.drafts);
+      return null;
+    }
+    throw new HostError('invalid_request', 'Invalid configuration state operation.');
+  }
+
+  private async validateMutation(value: unknown, binding: RepositoryBinding): Promise<{ contributor: string; id: string }> {
+    const subject = await this.identity;
+    const contributor = `local-contributor:${subject}`;
+    if (!record(value) || value.api_version !== '1' || value.control_fence !== null
+      || !record(value.body) || value.body.kind !== 'configuration' || !record(value.context)
+      || value.context.workspace_id !== binding.workspace_id || !record(value.context.contributor)
+      || value.context.contributor.contributor_id !== contributor || !record(value.context.contributor.authenticated_as)
+      || value.context.contributor.authenticated_as.issuer !== 'idle-vscode-local'
+      || value.context.contributor.authenticated_as.subject !== subject
+      || typeof value.context.request_id !== 'string' || !value.context.request_id || value.context.request_id.length > 1024) {
+      throw new HostError('denied', 'This configuration write does not belong to the local workspace connection.');
+    }
+    return { contributor, id: value.context.request_id };
   }
 
   private async publishPresence(client: CoordinationClient, config: FolderConfiguration, binding: RepositoryBinding, signal: AbortSignal): Promise<void> {
@@ -120,5 +166,5 @@ export class CoordinationHost {
     void this.retiring.catch(() => {});
   }
 
-  shutdown(): Promise<void> { this.closed = true; this.reset(); return this.retiring; }
+  async shutdown(): Promise<void> { this.closed = true; this.reset(); await Promise.all([this.retiring, this.journal.flush()]); }
 }

@@ -5,7 +5,7 @@ The sidebar mounts f34's shared `WorkspaceNavigation` through
 Workspace, Users, Sessions, Projections, Compute hosts, Model providers and compact
 Activity stay in that order, followed by Settings and Agent Rules. Selecting
 Activity opens the full history inspector; selecting Projections mounts f33's
-panels. The detail tab retains its history and session destinations. Each document
+panels. The detail tab exposes the same complete set of destinations. Each document
 has separate selection and presentation state. Capture, bindings and native
 processes belong to the extension lifetime.
 
@@ -23,7 +23,7 @@ resolves `idle.chainDirectory` against that folder. Stable local aliases contain
 no storage paths and never select another folder as a fallback.
 
 The packaged f18 `idle-coordination` process supplies workspace membership,
-resource directories, settings/rules reads and audience-scoped recovery cursors.
+resource directories, conditional settings/rules writes and audience-scoped recovery cursors.
 The host creates a private startup configuration under extension global storage.
 A persisted random contributor identity identifies the local VS Code profile;
 its authority is the trusted local process connection. It is displayed as
@@ -32,7 +32,9 @@ runtime identities. No bearer token enters the webview or coordinator configurat
 The metadata store has one process owner; another process using the same store
 is reported as unavailable.
 
-The host accepts only bounded snapshot, presence and catch-up reads from views.
+The host accepts bounded snapshot, presence and catch-up reads and configuration
+writes bound to its persisted local contributor. Other mutations are unavailable
+through this view adapter.
 It publishes expiring local presence itself, including an active file only when
 it is within the selected folder. Account, folder or configuration changes retire
 the corresponding processes and pending reads. Native restart reopens the saved
@@ -71,10 +73,22 @@ Imports checkpoint source positions after durable writes.
 
 ## Remaining integrations
 
-Resource directories and configuration reads are connected. Destination slots
-currently show read-only summaries. The shared f35/f36 resource and configuration
-editors, durable mutation drafts and recovery, and managed providers remain under
-f43. No configuration save is enabled by this assembly.
+The shared f35 resource screens display actual publication owners, health,
+provider-qualified models, controller leases and runtime progress. Compute,
+model selection and installation controls use the supplied capability/grant
+results. This standalone metadata connection supplies no execution capabilities.
+
+The f36 Settings and Agent Rules forms load and save independently. Only an active
+owner/admin can edit; the native authority rechecks every conditional write.
+Each surface retains private drafts by repository binding and contributor.
+Before forwarding a save, the host durably records its draft, unchanged request
+ID, deadline, revision and complete JSON command. Reopening recovers uncertain
+saves without automatic resubmission. Conflicts retain the original draft and
+require explicit review of the current saved revision. Unknown fields and exact
+64-bit revisions survive the JavaScript boundary.
+
+Git/GitHub data and recorded-session directories are the remaining standalone
+assembly work. Managed providers and new live runtime implementations are deferred.
 
 Session components have unavailable actions until an execution provider supplies
 real capabilities and explicit session-to-history mappings. Directory membership
@@ -89,8 +103,8 @@ identities automatically.
 
 ## Assets and checks
 
-The build bundles theme, navigation, projection, history, details and session
-styles with the application WASM. VS Code CSS variables update the shared theme.
+The build bundles theme, navigation, projection, history, details, session,
+configuration and resource styles with the application WASM. VS Code CSS variables update the shared theme.
 The CSP permits graph coordinates while restricting scripts and style elements
 to packaged assets.
 
@@ -104,8 +118,8 @@ build inputs only. Build a platform-specific VSIX for each destination host.
 
 | Repository | Revision |
 | --- | --- |
-| app-core | `ccb712c789f8c0487644f9394caa67d93621a882` |
-| web-ui | `9c5128c81776f06adb72fbec08be81eff18b081e` |
+| app-core | `1cda8c9bff6ae21aabb0087f079666543a57b5db` |
+| web-ui | `bdb581c39f95e258209fa23aba943866a7c4a6a4` |
 | host-tools | `eba843a421a11769173d62117250aff5a7d89951` |
 | EditChain | `45b94c95a2cb185a59e58cf0763f589c666ab1e6` |
 | Codex exporter | `903d7f1c62c621cf1f925362ac88893ec1f36b07` |

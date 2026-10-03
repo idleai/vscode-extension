@@ -126,10 +126,15 @@ impl HostProtocol {
             ("method".to_owned(), Value::from(method)),
             ("params".to_owned(), params),
         ]));
-        if request.to_string().len() > MAX_MESSAGE_BYTES {
+        let limit = if matches!(method, "app.configurationState" | "app.coordination") {
+            12 * MAX_MESSAGE_BYTES
+        } else {
+            MAX_MESSAGE_BYTES
+        };
+        if request.to_string().len() > limit {
             return Err(BridgeError::new(
                 "message_too_large",
-                "Host request exceeds the one-mebibyte message limit",
+                "Host request exceeds this method's message limit",
             ));
         }
         Ok(request)
