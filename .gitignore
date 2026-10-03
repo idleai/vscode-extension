@@ -10,8 +10,4 @@
 !.env.example
 .editchain/
 
-# Compatibility extension build outputs
-/extensions/vscode-editchain/node_modules/
-/extensions/vscode-editchain/out/
-/extensions/vscode-editchain/bin/
 /outputs/

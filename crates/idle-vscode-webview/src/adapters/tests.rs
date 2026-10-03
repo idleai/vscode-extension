@@ -245,3 +245,134 @@ fn both_session_modes_accept_typed_runtime_fixtures_without_inventing_execution(
         );
     }
 }
+
+#[test]
+fn history_notifications_match_the_complete_binding_and_retain_selection() {
+    use editchain_core::{
+        OpId,
+        activity::{ItemId, Kind, Message, MessageKind, Operation, Stage},
+    };
+
+    let item = ItemId(OpId::from_bytes([2; 32]));
+    let operation = Operation::new(
+        OpId::from_bytes([1; 32]),
+        item,
+        ItemId(OpId::from_bytes([3; 32])),
+        Kind::Message(Message {
+            category: MessageKind::Text,
+            stage: Stage::Finished,
+            audience: Vec::new(),
+            blocks: Vec::new(),
+            coverage: None,
+            outcome: None,
+        }),
+    )
+    .into_op()
+    .expect("valid activity");
+    let page = history::HistoryPage {
+        observations: vec![history::Observation {
+            record: history::RecordRef {
+                operation: operation.id.to_string(),
+                hash: OpId::from_bytes([4; 32]).to_string(),
+            },
+            operation_json: serde_json::to_vec(&operation).expect("operation JSON"),
+        }],
+        next_after: None,
+        scanned: 1,
+    };
+    let mut runtime = Runtime::default();
+    let directory = runtime.ready(&json!({})).expect("start").remove(0);
+    let infos: Vec<Value> = ["one", "two"]
+        .into_iter()
+        .map(|id| {
+            json!({"id": id, "name": id, "chain": format!("chain-{id}"),
+                "revision": 1, "mode": "Standalone",
+                "repositories": [{"id": "repository", "name": id, "remote": null}]})
+        })
+        .collect();
+    let _calls = runtime
+        .receive(&directory.id, Ok(json!({"Ok": {"Directory": infos}})))
+        .expect("directory");
+    let calls = runtime
+        .dispatch(Event::Workspace(workspace::Event::SelectWorkspace(
+            "one".into(),
+        )))
+        .expect("select first folder");
+    for call in calls {
+        let result = if call.method == "app.history" {
+            json!({"Ok": {"History": page}})
+        } else {
+            json!({"Ok": {"Snapshot": {"workspace": infos.first().expect("first workspace"),
+                "members": [], "host_ids": [], "provider_ids": []}}})
+        };
+        let _followups = runtime.receive(&call.id, Ok(result)).expect("initial read");
+    }
+    let selection = history::Selected {
+        item: Some(item.to_string()),
+        observation: None,
+    };
+    let _calls = runtime
+        .dispatch(Event::History(history::Event::Select(selection.clone())))
+        .expect("select item");
+    let binding = runtime
+        .view()
+        .workspace
+        .repository_binding
+        .expect("bound history");
+    for field in ["workspace_id", "repository_id", "chain"] {
+        let mut wrong = serde_json::to_value(&binding).expect("binding");
+        *wrong.get_mut(field).expect("binding field") = json!("another-context");
+        let before = runtime.view();
+        assert!(
+            runtime
+                .history_changed(&json!({"binding": wrong}))
+                .expect("unrelated change")
+                .is_empty(),
+            "another binding cannot issue a read"
+        );
+        assert_eq!(
+            runtime.view(),
+            before,
+            "unrelated changes preserve the view"
+        );
+    }
+    let refresh = runtime
+        .history_changed(&json!({"binding": binding}))
+        .expect("bound change");
+    assert!(
+        refresh.iter().any(|call| call.method == "app.history"),
+        "a local or peer write reconciles history"
+    );
+    assert_eq!(
+        runtime.view().history.selected,
+        selection,
+        "refresh retains logical selection"
+    );
+    let _calls = runtime
+        .dispatch(Event::Workspace(workspace::Event::SelectWorkspace(
+            "two".into(),
+        )))
+        .expect("switch folder");
+    let before = runtime.view();
+    assert!(
+        runtime
+            .history_changed(&json!({"binding": binding}))
+            .expect("old folder notification")
+            .is_empty(),
+        "a delayed old-folder event is ignored"
+    );
+    for call in refresh {
+        let _calls = runtime
+            .receive(&call.id, Err(unavailable()))
+            .expect("old refresh completion");
+    }
+    assert_eq!(
+        runtime.view(),
+        before,
+        "old reads cannot change the new folder"
+    );
+    assert!(
+        runtime.history_changed(&json!({})).is_err(),
+        "binding is required"
+    );
+}

@@ -384,7 +384,7 @@ fn actual_schema_migration_requires_explicit_alias_or_retained_selection() {
     };
     let _stored = engine.append(&legacy).unwrap();
     let mut selected = request(&engine.queries().unwrap(), id(1), Target::Record).unwrap();
-    let _report = editchain_import::activity::migrate(&source, &destination, || false).unwrap();
+    let _report = idle_history_import::activity::migrate(&source, &destination, || false).unwrap();
     let mut converted = ChainQueries::open(&destination).unwrap();
     let alias = run(&mut converted, &selected).expect_err("old reference");
     assert_eq!(

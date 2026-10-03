@@ -131,15 +131,14 @@ with engine resolution in `crates/idle-vscode-native/src/history/`.
 The old pretty-printed JSON and hunk-only documents are replaced by exact record
 and snapshot reads. Missing snapshots cannot be presented as whole-file diffs.
 
-The legacy host still serves its existing renderer and capture consumers.
-f43 owns switching those consumers to these bindings and shared app-core/web-ui
-actions, then removing the legacy provider registrations and handlers. No new
-production fixture or implicit repository discovery is installed by f40.
+The current assembly routes app-core and shared web-ui actions through these
+bindings. The old host and its provider registrations have been removed. Folder
+selection installs an explicit chain binding before any native history action.
 
 The bootstrap shell resolves `Effect::Projection` and `Effect::Resource` as
 unavailable until their adapters are connected. Resource handling uses the f26
-interface now merged into app-core. Production projection, resource and history
-view assembly remains with f43.
+interface now merged into app-core. Production projection and resource providers
+remain with f43 and their backend owners; local history assembly is connected.
 
 ## Verification
 
@@ -162,11 +161,9 @@ retained binding and checks that old document addresses have expired.
 Run `./scripts/lint.sh`, `npm test`, and `./scripts/check.sh`. The last command
 includes packaging and the isolated VSIX checks.
 
-Verification uses EditChain `3c75cf0`, app-core `f726f60` and web-ui `a09286a`,
-the current main revisions at verification time. CI follows these repositories'
-main branches; local checks should refresh those revisions when they advance.
-Feature branches in sibling working directories are not required to build this
-changeset. The bootstrap test also checks that unavailable resource requests
+CI pins compatible EditChain, app-core, web-ui and Codex source revisions in
+`.github/workflows/ci.yml`. Use those revisions for reproducible local checks.
+The bootstrap test also checks that unavailable resource requests
 finish with disabled capabilities in standalone and managed modes.
-The lint gate returned `RESULT: PASS`; the full check passed with 195 host tests
-and the packaged history restart and capture checks.
+The packaged tests exercise history restart, capture and collection alongside
+host activation and current peer-state bindings.

@@ -87,8 +87,8 @@ absolute destination on the importing host to replay archives from another
 platform; Windows drive and UNC source paths and POSIX source paths remain
 unchanged. A relative destination resolves against the original workspace only
 when that workspace is absolute on the importing platform. Use this
-editor-owned adapter for new archives. The old EditChain editor importer remains
-a legacy consumer until its compatibility wiring is switched.
+editor-owned adapter for new archives. Application archive import lives in `idle-history-import`; replay into live
+editor capture uses the editor-owned wire and validation rules.
 
 Existing EC02 chains are never silently converted. The engine refuses an EC02
 append; pending capture remains in the outbox. Configure an explicitly migrated
@@ -105,19 +105,16 @@ perform migration automatically.
 | `editchain-node::editor::context` | `idle-editor-capture::observe_context` |
 | `editchain-node::editor` admission and normalization responsibilities | `idle-editor-capture::CaptureWriter` and schema-three `convert` modules |
 
-Implementation changes are confined to `vscode-extension`. The EditChain
-checkout remains unchanged and its legacy extension, editor protocol and writer
-remain executable for existing consumers. The new extension has no dependency
-on `editchain-node` or `editchain-protocol`. f43 owns switching the remaining
-legacy host consumers and retiring their old capture paths alongside f40's
-native-history switch. Keep the old importer available for old archives until
-its callers use the editor-owned replay adapter.
+The retired editor protocol and native viewer service have no remaining consumers.
+The current capture service owns validation and schema-three conversion; source
+identity contracts live in app-core's `idle-history`. Old archive bytes remain
+readable by the application import and capture adapters.
 
 f39 owns the new capture crate, capture executable, manifest settings,
 activation/shutdown hooks and capture packaging script. Its webview uses the
 published `app-core` interface; the f25 projection API is not a prerequisite.
-Use the sibling `main` revisions for the same build as CI. Production projection
-connections remain with f43.
+Use the sibling revisions pinned in `.github/workflows/ci.yml` for the same build
+as CI. Production projection connections remain with f43.
 
 ## Verification
 

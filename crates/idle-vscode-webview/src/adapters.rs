@@ -89,6 +89,25 @@ impl Runtime {
         self.enqueue(self.core.process_event(event))
     }
 
+    /// Reconcile a local change only when it belongs to the current binding.
+    /// These invalidations are hints; app-core performs authoritative reads.
+    ///
+    /// # Errors
+    /// Returns malformed notification or Crux continuation errors.
+    pub fn history_changed(&mut self, params: &Value) -> Result<Vec<Call>, String> {
+        let binding: app_core::workspace::RepositoryChainBinding = serde_json::from_value(
+            params
+                .get("binding")
+                .cloned()
+                .ok_or("History notification requires a binding")?,
+        )
+        .map_err(|error| error.to_string())?;
+        if self.core.view().workspace.repository_binding.as_ref() != Some(&binding) {
+            return Ok(Vec::new());
+        }
+        self.dispatch(Event::History(app_core::history::Event::Refresh))
+    }
+
     /// Resolve a matching host response; retired or duplicate responses do nothing.
     /// Malformed success payloads become visible domain failures.
     ///

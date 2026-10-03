@@ -8,7 +8,7 @@ use editchain_engine::{
     activity::{File, FileAction, ItemId, Kind, Operation, Original, OriginalRef},
 };
 use idle_vscode_native::history::{Request, Source, Target};
-use {editchain_import as _, idle_editor_capture as _, idle_protocol as _, serde as _};
+use {idle_editor_capture as _, idle_history_import as _, idle_protocol as _, serde as _};
 
 type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 

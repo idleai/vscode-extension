@@ -28,10 +28,12 @@
       "supported": "limited",
       "description": "Views and diagnostics are available. Native processes, credentials and transports require trust.",
       "restrictedConfigurations": [
-        "idle.native.servicePath",
         "idle.native.peerPath",
         "idle.chainDirectory",
         "idle.native.capturePath",
+        "idle.native.collectorPath",
+        "idle.live.sessionsPath",
+        "idle.live.codexHelperPath",
         "idle.tracking.jsonl.directory"
       ]
     },
@@ -94,6 +96,16 @@
         "enablement": "isWorkspaceTrusted"
       },
       {
+        "command": "idle.history.startImport",
+        "title": "Idle: Resume Agent History Import",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.history.pauseImport",
+        "title": "Idle: Pause Agent History Import",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
         "command": "idle.history.openRecord",
         "title": "Idle: Open Raw Record",
         "enablement": "isWorkspaceTrusted"
@@ -117,17 +129,56 @@
         "command": "idle.history.openWorkingFile",
         "title": "Idle: Open Working File",
         "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.sharing.request",
+        "title": "Idle: Copy History Join Request",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.sharing.host",
+        "title": "Idle: Host Shared History",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.sharing.join",
+        "title": "Idle: Join Shared History",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.sharing.scope",
+        "title": "Idle: Change Shared History Scope",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.sharing.remove",
+        "title": "Idle: Remove Shared History Device",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.sharing.resume",
+        "title": "Idle: Resume History Sharing",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.sharing.discovery",
+        "title": "Idle: Configure History Peer Discovery",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.sharing.status",
+        "title": "Idle: Show History Sharing Status",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.sharing.stop",
+        "title": "Idle: Stop History Sharing",
+        "enablement": "isWorkspaceTrusted"
       }
     ],
     "configuration": {
       "title": "Idle",
       "properties": {
-        "idle.native.servicePath": {
-          "type": "string",
-          "default": "",
-          "scope": "machine-overridable",
-          "description": "Absolute editchain-vscode-service path on the workspace host. Empty resolves a packaged binary for that host's platform and architecture."
-        },
         "idle.native.peerPath": {
           "type": "string",
           "default": "",
@@ -185,6 +236,30 @@
           "default": "",
           "scope": "machine-overridable",
           "description": "Absolute idle-history-service path on the workspace host. Empty uses the packaged history service."
+        },
+        "idle.native.collectorPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Absolute history collector path on the workspace host. Empty uses the packaged collector."
+        },
+        "idle.live.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Import changed Codex sessions into this folder's chain while the extension is active, including when all views are closed."
+        },
+        "idle.live.sessionsPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Codex sessions directory on the workspace host. Empty uses CODEX_HOME/sessions or ~/.codex/sessions; relative paths use the bound folder."
+        },
+        "idle.live.codexHelperPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Absolute Codex session exporter path. Empty uses the packaged exporter."
         }
       }
     },
@@ -225,18 +300,20 @@
   "scripts": {
     "vscode:prepublish": "npm run build",
     "compile": "tsc -p .",
-    "test": "npm run compile && node --test test/*.test.cjs",
+    "test": "node scripts/prepare-host-tests.mjs && npm run compile && node --test test/*.test.cjs",
     "test:tunnels:live": "npm run compile && node scripts/smoke-dev-tunnels.cjs",
     "test:webview": "node scripts/smoke-webview.mjs idle.vsix",
     "test:assembly": "node scripts/smoke-assembly.mjs idle.vsix",
     "build:host": "node scripts/build-host.mjs",
     "build:wasm": "node scripts/build-wasm.mjs",
-    "build": "npm run compile && npm run build:host && npm run build:wasm && npm run build:capture && npm run build:history && npm run build:engine",
+    "build": "npm run compile && npm run build:host && npm run build:wasm && npm run build:peer-state && npm run build:capture && npm run build:history && npm run build:collection && npm run build:engine",
     "check": "bash scripts/check.sh",
     "package": "vsce package --no-dependencies --out idle.vsix",
     "build:capture": "node scripts/build-capture.mjs",
     "build:history": "node scripts/build-history.mjs",
-    "build:engine": "node scripts/build-engine.mjs"
+    "build:collection": "node scripts/build-collection.mjs",
+    "build:engine": "node scripts/build-engine.mjs",
+    "build:peer-state": "node scripts/build-peer-state.mjs"
   },
   "devDependencies": {
     "@types/node": "22.19.17",
@@ -252,12 +329,14 @@
     }
   },
   "dependencies": {
+    "@idle/history-runtime": "file:../codex/tools/history-runtime",
     "@microsoft/dev-tunnels-connections": "1.3.56",
     "@microsoft/dev-tunnels-contracts": "1.3.56",
     "@microsoft/dev-tunnels-management": "1.3.56",
     "@microsoft/dev-tunnels-ssh": "3.12.42",
     "@microsoft/dev-tunnels-ssh-tcp": "3.12.42",
     "node-rsa": "2.0.0",
+    "supports-color": "7.2.0",
     "vscode-jsonrpc": "4.0.0"
   }
 }

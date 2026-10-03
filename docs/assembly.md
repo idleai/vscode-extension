@@ -35,7 +35,14 @@ both workspace modes. Production subscription/session/projection/resource and
 configuration providers, durable prompt drafts and mutation recovery remain
 integration work under f43 with their runtime/backend owners. f17 supplies the
 required live running-session lifetime check. The current local host does not
-claim live session execution or automatic history subscriptions.
+claim live session execution. Local collection and peer receipts publish scoped
+`history.changed` events; the Rust runtime reconciles only its current binding.
+These notifications do not implement a durable backend subscription cursor.
+
+Active Codex rollouts are treated as append logs. Replacement, truncation and
+same-size changes trigger a strict replay into a new source generation. A larger
+in-place rewrite is checked on collector restart; normal live polls read only
+the appended bytes. Imports checkpoint source positions after durable writes.
 
 ## Assets and checks
 
@@ -45,7 +52,7 @@ dynamic style attributes for graph coordinates while keeping style elements and
 scripts restricted to packaged assets.
 
 The VSIX includes `idle-editor-service`, `idle-history-service`,
-`editchain-vscode-service` and `editchain-peer` for the build host's OS/architecture.
+`idle-history-collector`, `codex-session-exporter` and `editchain-peer` for the build host's OS/architecture.
 Sibling source repositories are build inputs; an installed extension resolves
 only configured absolute executables or its own packaged binaries. Build a
 platform-specific VSIX for each destination host.
@@ -61,6 +68,15 @@ Crux through the native service to exact native previews and host theme updates.
 Capture tests also verify edits before opening, with all views closed, and after
 reopening the view without replacing the capture session.
 
-The legacy EditChain host still serves the live Codex importer and standalone
-peer consumer. Its source retirement conditions are recorded in
-[`ASSEMBLY-MIGRATION.md`](../extensions/vscode-editchain/ASSEMBLY-MIGRATION.md).
+## Application ownership
+
+The extension owns provider imports (`idle-history-import`), import tooling
+(`idle-history-tools`), automatic collection and sharing platform adapters.
+`idle-history` in app-core owns source identity contracts and display taxonomy;
+`idle-peer-state` exposes its portable Rust connection state to Node. EditChain
+contains only storage, schemas, indexes, queries, replication and engine tooling.
+
+The old extension, native viewer service, renderer and compatibility projection/
+protocol packages are retired. Reused layout and peer behavior checks run against
+the current packages. Installed development collectors are outside this change;
+there is no settings, identity or outbox handoff from an old extension.

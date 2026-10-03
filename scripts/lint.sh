@@ -58,7 +58,7 @@ check "cargo clippy" cargo clippy --workspace --all-targets --all-features --loc
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
-check "peer integration worker" cargo build --manifest-path ../editchain/Cargo.toml --locked -p editchain-sync --bin editchain-peer
+check "engine integration tools" cargo build --manifest-path ../editchain/Cargo.toml --locked -p editchain -p editchain-sync --bins
 check "cargo test" cargo test --workspace --all-features --locked
 
 # ---------------------------------------------------------------------------

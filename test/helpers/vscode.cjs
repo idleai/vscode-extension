@@ -73,7 +73,8 @@ function fixture() {
     },
   };
   const context = {
-    extensionUri: uri('file:///extension'), subscriptions: [],
+    extensionUri: uri('file:///extension'), globalStorageUri: uri('file:///private-idle-storage'), subscriptions: [],
+    workspaceState: { get: key => state.get(key), update: async (key, value) => { if (value === undefined) state.delete(key); else state.set(key, value); } },
     secrets: { get: async key => secrets.get(key), store: async (key, value) => { secrets.set(key, value); }, delete: async key => { secrets.delete(key); } },
     globalState: { keys: () => [...state.keys()], get: key => state.get(key), update: async (key, value) => { if (value === undefined) state.delete(key); else state.set(key, value); } },
   };

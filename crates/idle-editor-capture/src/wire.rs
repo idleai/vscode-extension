@@ -33,7 +33,7 @@ pub struct EditorEvent {
     pub session: String,
     /// Persistent local attribution, independent of the recorder incarnation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub identity: Option<editchain_core::human::HumanIdentity>,
+    pub identity: Option<idle_history::human::HumanIdentity>,
     /// Account display name observed locally; not a verified account binding.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_name: Option<String>,
@@ -155,7 +155,7 @@ pub enum EditorEventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         workspace_path: Option<String>,
         /// Worktrees discovered within this workspace.
-        repositories: Vec<editchain_core::human::HumanGitContext>,
+        repositories: Vec<idle_history::human::HumanGitContext>,
     },
     /// Recorder policy and runtime version.
     TrackingStarted {
@@ -335,7 +335,7 @@ impl RecordEditorEvents {
             if event
                 .user_name
                 .as_deref()
-                .is_some_and(|name| !editchain_core::human::valid_user_name(name))
+                .is_some_and(|name| !idle_history::human::valid_user_name(name))
             {
                 return Err(invalid(
                     "human user name must contain 1..80 characters without control characters or surrounding whitespace",

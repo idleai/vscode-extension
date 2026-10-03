@@ -88,6 +88,9 @@ impl Connection {
                 self.handshake();
                 return;
             }
+            HostMessage::Event { event, params } if event == "history.changed" => {
+                self.runtime.borrow_mut().history_changed(&params)
+            }
             HostMessage::Event { .. } => return,
             HostMessage::Response { id, result }
                 if id == format!("ready:{}", self.generation.get())
