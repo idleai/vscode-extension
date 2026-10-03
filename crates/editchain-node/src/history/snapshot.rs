@@ -304,8 +304,15 @@ fn repository_stamp(repository: &RepositoryDiscovery) -> RepositoryStamp {
                         .collect()
                 })
                 .map_err(|error| error.to_string()),
-            objects: source_file_stamps(&repository.common_dir.join("objects"), true)
-                .map_err(|error| error.to_string()),
+            // Background Git maintenance creates and removes this advisory lock
+            // without changing any objects. Skip it before reading metadata so
+            // lock removal cannot look like a failed object inventory either.
+            objects: source_file_stamps_matching(
+                &repository.common_dir.join("objects"),
+                true,
+                |relative| relative != Path::new("maintenance.lock"),
+            )
+            .map_err(|error| error.to_string()),
             shallow: match fs::read(repository.common_dir.join("shallow")) {
                 Ok(bytes) => Ok(Some(bytes)),
                 Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
@@ -331,6 +338,14 @@ fn repository_stamp(repository: &RepositoryDiscovery) -> RepositoryStamp {
 
 /// Enumerate source metadata without following directory symlinks.
 fn source_file_stamps(root: &Path, recursive: bool) -> io::Result<Vec<SourceFileStamp>> {
+    source_file_stamps_matching(root, recursive, |_| true)
+}
+
+fn source_file_stamps_matching(
+    root: &Path,
+    recursive: bool,
+    include: impl Fn(&Path) -> bool,
+) -> io::Result<Vec<SourceFileStamp>> {
     let mut pending = vec![root.to_path_buf()];
     let mut stamps = Vec::new();
     while let Some(directory) = pending.pop() {
@@ -342,6 +357,10 @@ fn source_file_stamps(root: &Path, recursive: bool) -> io::Result<Vec<SourceFile
         for entry in entries {
             let entry = entry?;
             let path = entry.path();
+            let relative = path.strip_prefix(root).map_err(io::Error::other)?;
+            if !include(relative) {
+                continue;
+            }
             if entry.file_type()?.is_dir() {
                 if recursive {
                     pending.push(path);
@@ -354,12 +373,7 @@ fn source_file_stamps(root: &Path, recursive: bool) -> io::Result<Vec<SourceFile
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default();
             stamps.push(SourceFileStamp {
-                name: path
-                    .strip_prefix(root)
-                    .map_err(io::Error::other)?
-                    .as_os_str()
-                    .as_encoded_bytes()
-                    .to_vec(),
+                name: relative.as_os_str().as_encoded_bytes().to_vec(),
                 length: metadata.len(),
                 modified_secs: duration.as_secs(),
                 modified_nanos: duration.subsec_nanos(),

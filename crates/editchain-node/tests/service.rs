@@ -681,6 +681,24 @@ fn invalid_snapshot_offsets_fall_back_to_authoritative_rows() {
 }
 
 #[test]
+fn git_maintenance_lock_does_not_invalidate_render_snapshot() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repo = make_git_repo(tmp.path());
+    let before = prepare_render_snapshot(&repo, Path::new(".editchain")).unwrap();
+    let lock = repo.join(".git/objects/maintenance.lock");
+    for contents in [b"".as_slice(), b"maintenance in progress".as_slice()] {
+        std::fs::write(&lock, contents).unwrap();
+        let during = prepare_render_snapshot(&repo, Path::new(".editchain")).unwrap();
+        assert!(during.reused, "maintenance does not change history inputs");
+        assert_eq!(before.path, during.path);
+    }
+    std::fs::remove_file(lock).unwrap();
+    let after = prepare_render_snapshot(&repo, Path::new(".editchain")).unwrap();
+    assert!(after.reused, "releasing maintenance retains the snapshot");
+    assert_eq!(before.path, after.path);
+}
+
+#[test]
 fn git_ref_changes_and_object_recovery_invalidate_render_cache_with_unchanged_head() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = make_git_repo(tmp.path());
