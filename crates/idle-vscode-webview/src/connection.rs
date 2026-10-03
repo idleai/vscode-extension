@@ -21,6 +21,7 @@ pub(crate) struct Connection {
     bridge: VsCodeBridge,
     listener: RefCell<Option<MessageSubscription>>,
     generation: Cell<u64>,
+    ready_pending: Cell<bool>,
     timers: RefCell<BTreeMap<String, Timeout>>,
 }
 
@@ -37,6 +38,7 @@ impl Connection {
             bridge,
             listener: RefCell::new(None),
             generation: Cell::new(0),
+            ready_pending: Cell::new(false),
             timers: RefCell::new(BTreeMap::new()),
         });
         let weak = Rc::downgrade(&connection);
@@ -68,6 +70,7 @@ impl Connection {
         let mut error = self.error;
         error.set(None);
         self.generation.set(self.generation.get().wrapping_add(1));
+        self.ready_pending.set(true);
         self.bump();
         self.send(Call {
             id: format!("ready:{}", self.generation.get()),
@@ -87,7 +90,8 @@ impl Connection {
             }
             HostMessage::Event { .. } => return,
             HostMessage::Response { id, result }
-                if id == format!("ready:{}", self.generation.get()) =>
+                if id == format!("ready:{}", self.generation.get())
+                    && self.ready_pending.replace(false) =>
             {
                 match result {
                     Ok(value) => self.runtime.borrow_mut().ready(&value),

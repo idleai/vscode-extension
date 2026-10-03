@@ -20,7 +20,8 @@ export class AssemblyHost implements vscode.Disposable {
   private readonly bindings: vscode.Disposable[] = [];
   private readonly installed: { dispose(): void }[];
 
-  constructor(private readonly configuration: HostConfiguration, private readonly history: HistoryHost, effects: HostEffects) {
+  constructor(private readonly configuration: HostConfiguration, private readonly history: HistoryHost, effects: HostEffects,
+    private readonly report: (folder: string, error: unknown) => void) {
     this.installed = [
       effects.register("app.workspace", params => this.workspace(params)),
       effects.register("app.history", (params, context) => history.query(params, context.signal)),
@@ -31,8 +32,8 @@ export class AssemblyHost implements vscode.Disposable {
     this.configuration.assertTrusted();
     if (this.directory) return this.directory;
     const workspaces: LocalWorkspace[] = [];
-    try {
-      for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      try {
         const config = this.configuration.forResource(folder.uri);
         // These are host-local aliases, not shared repository or runtime identities.
         const repository = alias("repository", folder.uri.toString());
@@ -42,10 +43,10 @@ export class AssemblyHost implements vscode.Disposable {
           repository: { workspace_id: workspace, repository_id: repository, chain } }));
         workspaces.push({ id: workspace, name: folder.name, chain, revision: 1, mode: "Standalone",
           repositories: [{ id: repository, name: folder.name, remote: null }] });
-      }
-      this.directory = workspaces;
-      return workspaces;
-    } catch (error) { this.reset(); throw error; }
+      } catch (error) { this.report(folder.name, error); }
+    }
+    this.directory = workspaces;
+    return workspaces;
   }
 
   private workspace(params: unknown): unknown {

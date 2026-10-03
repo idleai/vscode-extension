@@ -1,0 +1,17 @@
+[package]
+name = "editchain-editor-protocol"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.97"
+license = "MIT"
+publish = false
+description = "Versioned editor capture payloads and validation for VS Code"
+repository = "https://github.com/idleai/vscode-extension"
+
+[lints]
+workspace = true
+
+[dependencies]
+editchain-core = { path = "../../../editchain/crates/editchain-core" }
+editchain-protocol = { path = "../../../app-core/crates/editchain-protocol" }
+serde = { version = "1", features = ["derive"] }

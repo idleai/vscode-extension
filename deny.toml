@@ -4,6 +4,8 @@ all-features = true
 [advisories]
 db-urls = ["https://github.com/rustsec/advisory-db"]
 ignore = [
+    # `instant` is unmaintained but only a transitive dep via `tantivy`; no direct use.
+    "RUSTSEC-2024-0384",
     # Crux 0.20 requires bincode 1.3.3 for its bridge; no patched version exists.
     # This is an unmaintained advisory, not a vulnerability waiver. Remove when
     # Crux migrates serialization (f21). Keep all other advisory checks enabled.

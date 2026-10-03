@@ -98,6 +98,8 @@ try {
     assert.equal(await page.$eval(".idle-history-viewport", element => element.getBoundingClientRect().height), kind === "sidebar" ? 400 : 640, 'CSP permits graph sizing');
     await page.evaluate(() => document.documentElement.style.setProperty("--vscode-editor-background", "#112233"));
     assert.equal(await page.$eval(".idle-theme", element => getComputedStyle(element).backgroundColor), "rgb(17, 34, 51)", 'the view follows host theme tokens');
+    await checkSearch(page);
+    await checkReadyReplies(page, workspaceId);
     await page.close();
   }
   assert.deepEqual(errors, [], "the packaged views have no browser or CSP errors");
@@ -114,4 +116,65 @@ try {
 async function waitFor(condition) {
   const deadline = Date.now() + 10_000;
   while (!condition()) { if (Date.now() > deadline) throw new Error("Host action did not complete."); await new Promise(resolve => setTimeout(resolve, 20)); }
+}
+
+async function checkSearch(page) {
+  await page.evaluate(() => {
+    const input = document.querySelector("#idle-search");
+    input.value = "x".repeat(16_385);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.evaluate(() => [...document.querySelectorAll("button")].find(button => button.textContent === "Search").click());
+  await page.waitForFunction(() => [...document.querySelectorAll('[role="alert"]')].some(element => element.textContent.includes("Search text exceeds")));
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll("button")].some(button => button.textContent === "Retry search" && !button.disabled)), true);
+  await page.evaluate(() => {
+    window.assemblyFixture.holdMethod = "app.history";
+    const input = document.querySelector("#idle-search");
+    input.value = "never-matches-anything";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.evaluate(() => [...document.querySelectorAll("button")].find(button => button.textContent === "Search").click());
+  await page.waitForFunction(() => window.assemblyFixture.held.length > 0);
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll('[role="status"]')].some(element => element.textContent === "Searching history…")), true);
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll("button")].find(button => button.textContent === "Search more").getAttribute("aria-disabled")), "true");
+  await page.evaluate(() => {
+    window.assemblyFixture.holdMethod = undefined;
+    for (const data of window.assemblyFixture.held.splice(0)) window.dispatchEvent(new MessageEvent("message", { data }));
+  });
+  await page.waitForFunction(() => [...document.querySelectorAll('[role="status"]')].some(element => element.textContent.includes("fields could not be searched")));
+  assert.equal(await page.evaluate(() => document.body.textContent.includes("0 loaded matches")), true);
+  assert.deepEqual(await page.evaluate(() => ["Next match", "Search more"].map(label => [...document.querySelectorAll("button")].find(button => button.textContent === label).disabled)), [true, true]);
+  assert.equal(await page.evaluate(() => document.querySelector('[role="alert"]')?.textContent ?? null), null);
+}
+
+async function checkReadyReplies(page, workspaceId) {
+  const workspaceCalls = await page.evaluate(() => window.assemblyFixture.requests.filter(request => request.method === "app.workspace").length);
+  await page.evaluate(() => {
+    const { data } = window.assemblyFixture.responses.find(({ request }) => request.method === "host.ready");
+    window.dispatchEvent(new MessageEvent("message", { data }));
+  });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(await page.$eval("#idle-workspace", element => element.value), workspaceId, "duplicate ready does not clear selection");
+  assert.equal(await page.evaluate(() => window.assemblyFixture.requests.filter(request => request.method === "app.workspace").length), workspaceCalls, "duplicate ready does not reload the directory");
+  await page.evaluate(() => {
+    window.assemblyFixture.holdMethod = "host.ready";
+    const { protocol, session } = window.assemblyFixture.responses[0].data;
+    window.dispatchEvent(new MessageEvent("message", { data: { protocol, session, event: "host.configurationChanged", params: {} } }));
+  });
+  await page.waitForFunction(() => [...document.querySelectorAll('[role="alert"]')].some(element => element.textContent.includes("The host did not respond")));
+  await page.waitForFunction(() => window.assemblyFixture.held.length > 0);
+  await page.evaluate(() => {
+    window.assemblyFixture.holdMethod = undefined;
+    for (const data of window.assemblyFixture.held.splice(0)) window.dispatchEvent(new MessageEvent("message", { data }));
+  });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(await page.evaluate(() => window.assemblyFixture.requests.filter(request => request.method === "app.workspace").length), workspaceCalls, "late ready cannot revive a timed-out connection");
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll('[role="alert"]')].some(element => element.textContent.includes("The host did not respond"))), true);
+  await page.evaluate(() => {
+    const { protocol, session } = window.assemblyFixture.responses[0].data;
+    window.dispatchEvent(new MessageEvent("message", { data: { protocol, session, event: "host.configurationChanged", params: {} } }));
+  });
+  await page.waitForSelector('#idle-workspace option[value^="local-workspace:"]');
+  await page.select("#idle-workspace", workspaceId);
+  await page.waitForSelector('[role="treeitem"]');
 }

@@ -36,7 +36,16 @@ struct Envelope {
 #[derive(Serialize)]
 struct Response {
     id: u64,
-    body: serde_json::Value,
+    body: ResponseBody,
+}
+
+// Serialize complete typed results directly; a JSON value per binary byte would
+// multiply native memory use before the transport can enforce its response limit.
+#[derive(Serialize)]
+#[serde(untagged)]
+enum ResponseBody {
+    Query(Box<app_core::history::QueryOutput>),
+    Native(Box<Result<Preview, Failure>>),
 }
 
 #[derive(Deserialize)]
@@ -46,14 +55,14 @@ struct QueryRequest {
     query: app_core::history::Query,
 }
 
-fn execute_body(binding: &Binding, body: serde_json::Value) -> io::Result<serde_json::Value> {
+fn execute_body(binding: &Binding, body: serde_json::Value) -> ResponseBody {
     if body.get("query").is_some() {
         let result = serde_json::from_value::<QueryRequest>(body)
             .map_err(|_error| app_core::module::EffectError {
                 message: "Invalid history query.".to_owned(),
             })
             .and_then(|request| read_query(binding, &request));
-        serde_json::to_value(result).map_err(io::Error::other)
+        ResponseBody::Query(Box::new(result))
     } else {
         let result = serde_json::from_value(body)
             .map_err(|_error| {
@@ -63,7 +72,7 @@ fn execute_body(binding: &Binding, body: serde_json::Value) -> io::Result<serde_
                 )
             })
             .and_then(|request| execute(binding, &request));
-        serde_json::to_value(result).map_err(io::Error::other)
+        ResponseBody::Native(Box::new(result))
     }
 }
 
@@ -126,16 +135,16 @@ pub fn serve(mut input: impl Read, mut output: impl Write, binding: &Binding) ->
         let request: Envelope = serde_json::from_slice(&bytes).map_err(io::Error::other)?;
         let response = Response {
             id: request.id,
-            body: execute_body(binding, request.body)?,
+            body: execute_body(binding, request.body),
         };
         let mut bytes = serde_json::to_vec(&response).map_err(io::Error::other)?;
         if bytes.len() > MAX_RESPONSE {
             bytes = serde_json::to_vec(&Response {
                 id: request.id,
-                body: serde_json::json!({"Err": Failure::new(
+                body: ResponseBody::Native(Box::new(Err(Failure::new(
                     FailureCode::TooLarge,
                     "The complete preview exceeds the native transport limit.",
-                )}),
+                )))),
             })
             .map_err(io::Error::other)?;
         }

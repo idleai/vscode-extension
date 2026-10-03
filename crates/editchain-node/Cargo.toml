@@ -1,0 +1,46 @@
+[package]
+name = "editchain-node"
+default-run = "editchain-legacy"
+autobins = false
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Native history service and editor capture for VS Code"
+repository = "https://github.com/idleai/vscode-extension"
+readme = "../../README.md"
+keywords = ["crdt", "edit-chain", "agent"]
+categories = ["data-structures", "database-implementations"]
+
+[[bin]]
+name = "editchain-legacy"
+path = "src/bin/editchain.rs"
+
+[[bin]]
+name = "editchain-vscode-service"
+path = "src/bin/editchain-vscode-service.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+editchain-editor-protocol = { path = "../editchain-editor-protocol" }
+history-geometry = { path = "../../../web-ui/crates/history-geometry" }
+editchain-index = { path = "../../../editchain/crates/editchain-index" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+ctrlc = { version = "3.5", features = ["termination"] }
+dirs = "6"
+editchain-core = { path = "../../../editchain/crates/editchain-core" }
+editchain-store = { path = "../../../editchain/crates/editchain-store" }
+editchain-import = { path = "../../../editchain/crates/editchain-import" }
+editchain-git = { path = "../../../editchain/crates/editchain-git" }
+editchain-project = { path = "../../../app-core/crates/editchain-project" }
+editchain-protocol = { path = "../../../app-core/crates/editchain-protocol" }
+blake3 = "1"
+tantivy = { version = "0.22", default-features = false, features = ["mmap"] }
+tempfile = "3"
+
+[dev-dependencies]
+editchain-sync = { path = "../../../editchain/crates/editchain-sync" }
+base64 = "0.22"

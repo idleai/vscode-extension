@@ -50,9 +50,9 @@ Sibling source repositories are build inputs; an installed extension resolves
 only configured absolute executables or its own packaged binaries. Build a
 platform-specific VSIX for each destination host.
 
-CI pins the app-core, web-ui and EditChain commits used for local verification.
-Publish the paired web-ui and EditChain commits before pushing this extension
-branch so checkout can fetch those commits. Local f43 commits have not been pushed.
+CI pins the app-core, web-ui, EditChain and Codex commits used for verification.
+Publish the paired commits before opening the extension PR so checkout can fetch
+the complete source set.
 
 Run `./scripts/check.sh`, then set `CHROME_BIN` and run `npm run test:webview`
 and `npm run test:assembly`. CI runs both browser checks. The latter extracts the
@@ -63,4 +63,4 @@ reopening the view without replacing the capture session.
 
 The legacy EditChain host still serves the live Codex importer and standalone
 peer consumer. Its source retirement conditions are recorded in
-[`ASSEMBLY-MIGRATION.md`](../../editchain/extensions/vscode-editchain/ASSEMBLY-MIGRATION.md).
+[`ASSEMBLY-MIGRATION.md`](../extensions/vscode-editchain/ASSEMBLY-MIGRATION.md).
