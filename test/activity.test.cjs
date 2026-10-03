@@ -2,10 +2,10 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { setTimeout: delay } = require('node:timers/promises');
 const { fixture, uri, loadWithVSCode } = require('./helpers/vscode.cjs');
-const { parsePreview } = require('../out/provenance/contracts');
+const { parsePreview } = require('../out/authorActivity/contracts');
 
 const f = fixture();
-const { ActivityDecorations } = loadWithVSCode('../../out/provenance', f.api);
+const { ActivityDecorations } = loadWithVSCode('../../out/authorActivity', f.api);
 const { HistoryHost } = loadWithVSCode('../../out/history', f.api);
 const { HostEffects } = require('../out/host/effects');
 const { documentUri, documentAddress } = loadWithVSCode('../../out/history/documents', f.api);

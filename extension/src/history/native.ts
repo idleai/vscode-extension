@@ -4,7 +4,7 @@ import { HostError, record } from "../host/protocol";
 import { resolveNativePath } from "../host/configuration";
 import * as vscode from "vscode";
 import { HistoryBinding, HistoryFailure, HistoryPreview, HistoryProvider, HistoryRequest, parseRecord } from "./contracts";
-import { ActivityPreview, ActivityRequest, parsePreview } from "../provenance/contracts";
+import { ActivityPreview, ActivityRequest, parsePreview } from "../authorActivity/contracts";
 
 /** Lazy packaged engine process; every request uses the installed storage binding. */
 export class NativeHistoryProvider implements HistoryProvider {

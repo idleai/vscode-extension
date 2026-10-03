@@ -14,7 +14,7 @@ import { BYTE_SCHEME, TEXT_SCHEME, HEX_SCHEME, DocumentAddress, HexDocuments, Te
 import { NativeHistoryProvider } from "./native";
 import { openWorkingFile } from "./workingFile";
 import { linkCancellation } from "./cancellation";
-import { ActivityPreview, ActivityRequest, parsePreview } from "../provenance/contracts";
+import { ActivityPreview, ActivityRequest, parsePreview } from "../authorActivity/contracts";
 
 export type { HistoryBinding, HistoryProvider, HistoryRequest, HistoryPreview, RepositoryBinding } from "./contracts";
 export { HistoryFailure } from "./contracts";

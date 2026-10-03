@@ -1,6 +1,6 @@
 import type * as vscode from "vscode";
 import { HostError, PublicHostError, record } from "../host/protocol";
-import type { ActivityPreview, ActivityRequest } from "../provenance/contracts";
+import type { ActivityPreview, ActivityRequest } from "../authorActivity/contracts";
 
 /** JSON contracts shared with idle-vscode-native::history and app-core. */
 export interface RepositoryBinding { workspace_id: string; repository_id: string; chain: string }

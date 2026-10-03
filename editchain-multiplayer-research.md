@@ -543,13 +543,13 @@ Scope fully reconciled with this peer
 
 These are not automatically the same milestone.
 
-### Preserve provenance and avoid replication loops
+### Preserve recorded authors and avoid replication loops
 
 Receiving Bob's copy of Alice's operation must preserve the original operation ID and recorded actor. Do not re-import it as a fresh Bob-authored event.
 
 Track canonical ingestion so forwarding does not cause unbounded echo or repeated physical append. A peer should be able to forward previously received, authorized operations and blobs—not only events it originally produced.
 
-Cryptographic transport identity authenticates the current sender, not the original historical author. Strong signed provenance would require additional event-level evidence and key binding.
+Cryptographic transport identity authenticates the current sender, not the original historical author. Verifying the original author would require signatures on individual events and bindings between authors and signing keys.
 
 ### Sharing history is not editing another working tree
 

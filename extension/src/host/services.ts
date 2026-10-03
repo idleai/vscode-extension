@@ -4,7 +4,7 @@ import { CaptureHost } from "../capture";
 import { CollectionHost } from "../collection";
 import { SharingHost } from "../sharing";
 import { HistoryHost } from "../history";
-import { ActivityDecorations } from "../provenance";
+import { ActivityDecorations } from "../authorActivity";
 import { HostConfiguration } from "./configuration";
 import { AssemblyHost } from "./assembly";
 import { HostCredentials } from "./credentials";
