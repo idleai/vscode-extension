@@ -57,7 +57,7 @@ Sibling source repositories are build inputs; an installed extension resolves
 only configured absolute executables or its own packaged binaries. Build a
 platform-specific VSIX for each destination host.
 
-CI pins the app-core, web-ui, EditChain and Codex commits used for verification.
+CI pins the app-core, web-ui, host-tools, EditChain and Codex commits used for verification.
 Publish the paired commits before opening the extension PR so checkout can fetch
 the complete source set.
 
@@ -70,11 +70,17 @@ reopening the view without replacing the capture session.
 
 ## Application ownership
 
-The extension owns provider imports (`idle-history-import`), import tooling
-(`idle-history-tools`), automatic collection and sharing platform adapters.
-`idle-history` in app-core owns source identity contracts and display taxonomy;
-`idle-peer-state` exposes its portable Rust connection state to Node. EditChain
-contains only storage, schemas, indexes, queries, replication and engine tooling.
+The extension owns its editor recorder, platform event adapters, credentials,
+trust checks and service lifecycle. `host-tools` owns provider imports, import
+commands, source discovery and collection, portable peer coordination and shared
+protocol/history contracts. Its `idle-peer-state` package exposes portable Rust
+connection helpers to Node. App-core owns the Crux model, effects and view models.
+EditChain contains only storage, schemas, indexes, queries, replication and engine tooling.
+
+Collection requests now ask the native collector to discover sources and run a
+bounded scan. The host retains only timers, cancellation and scoped notifications.
+The same native collector has a standalone watch mode for hosts without VS Code;
+see [host-tools](https://github.com/idleai/host-tools).
 
 The old extension, native viewer service, renderer and compatibility projection/
 protocol packages are retired. Reused layout and peer behavior checks run against

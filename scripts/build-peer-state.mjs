@@ -11,7 +11,7 @@ function run(command, args, capture = false) {
   return result.stdout;
 }
 
-const manifest = join(root, "../app-core/Cargo.toml");
+const manifest = join(root, "../host-tools/Cargo.toml");
 run("cargo", ["build", "--manifest-path", manifest, "--locked", "--release", "--target", "wasm32-unknown-unknown", "-p", "idle-peer-state"]);
 const metadata = JSON.parse(run("cargo", ["metadata", "--manifest-path", manifest, "--locked", "--no-deps", "--format-version", "1"], true));
 const output = join(root, "dist", "peer-state");

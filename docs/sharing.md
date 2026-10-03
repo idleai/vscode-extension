@@ -1,8 +1,8 @@
 # Standalone history sharing
 
 Sharing belongs to the extension host and continues with every view closed.
-It uses the existing portable coordinator from `codex/tools/history-runtime`,
-Rust connection state from app-core, the generic EditChain peer executable and
+It uses the existing portable coordinator from `host-tools/packages/history-runtime`,
+Rust connection helpers from host-tools, the generic EditChain peer executable and
 the host's Dev Tunnels adapters. It does not start an agent execution service.
 
 Sign in with **Idle: Sign In to GitHub**. On the joining device, use **Copy History
