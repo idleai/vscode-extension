@@ -24,6 +24,12 @@ async function smokeHistory(host, f, binary, extensionPath) {
       chain: fixture.binding.chain, action: { OperationDetails: { operation: fixture.requests[0].record.operation } },
     } });
     assert.deepEqual(details.Ok.OperationDetails.records[0].bytes, fixture.encoded, 'the assembled inspector receives exact retained record bytes');
+    const activity = await host.history.activity({ binding: fixture.binding, source: 'current',
+      selection: { Record: fixture.requests[0].record } }, new AbortController().signal);
+    assert.equal(activity.text, Buffer.from(fixture.after).toString('utf8'), 'packaged activity reads use the exact file snapshot');
+    assert.deepEqual(activity.record, fixture.requests[0].record);
+    assert.ok(activity.indicators.some(indicator => indicator.kind === 'unknown'), 'missing authors stay explicit');
+    assert.ok(activity.issues.some(issue => issue.includes('No exposure observations')), 'missing exposure is not classified as unread');
     await assert.rejects(host.history.query({ binding: fixture.binding, operation: { chain: 'another-chain', action: 'Invalid' } }), { code: 'binding_mismatch' });
     const documents = f.calls.fileProviders.find(value => value.scheme === 'idle-history').provider;
     const hex = f.calls.contentProviders.find(value => value.scheme === 'idle-history-hex').provider;

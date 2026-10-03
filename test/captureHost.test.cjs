@@ -65,9 +65,10 @@ async function setup({ trusted = true, folders = 1, enabled = true, archive = fa
     'tracking.jsonl.enabled': archive, 'tracking.jsonl.directory': path.join(root, 'archive') });
   let reads = 0;
   const docs = f.api.workspace.workspaceFolders.map(folder => ({ uri: uri(`${folder.uri.toString()}/a.ts`), version: 1,
-    isUntitled: false, text: 'unsaved 😀', getText() { reads++; return this.text; }, offsetAt(position) { return position.character; } }));
+    isUntitled: false, text: 'unsaved 😀', getText() { reads++; return this.text; }, offsetAt(position) { return position.character; },
+    lineAt(line) { return { range: { end: { line, character: this.text.split(/\r\n|\r|\n/)[line].length } } }; } }));
   f.api.workspace.textDocuments = docs;
-  const editor = { document: docs[0], visibleRanges: [{ start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }] };
+  const editor = { document: docs[0], visibleRanges: [{ start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }], setDecorations() {} };
   f.api.window.activeTextEditor = editor;
   f.api.window.visibleTextEditors = [editor];
   f.api.window.tabGroups.all = [{ tabs: docs.map(document => ({ input: new f.api.TabInputText(document.uri) })) }];
@@ -103,6 +104,8 @@ test('activation captures unsaved input before views open and after all views cl
     const changed = delivered.flatMap(batch => batch.events).find(event => event.event.type === 'document_changed');
     assert.equal(changed.event.before, 'unsaved 😀');
     assert.equal(changed.event.after, 'edited while every Idle view is closed');
+    assert.deepEqual(s.host.capture.revision(s.docs[0]), { session: changed.session, document: changed.event.document.id,
+      version: changed.event.document.version }, 'native indicators select the same captured buffer occurrence');
     const launchesBeforeReopen = launches.length;
     const reopened = view();
     f.calls.providers.at(-1).provider.resolveWebviewView(reopened);

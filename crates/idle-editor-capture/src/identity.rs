@@ -32,9 +32,15 @@ pub(crate) fn person(event: &EditorEvent) -> Option<ItemId> {
 }
 
 pub(crate) fn revision(event: &EditorEvent, document: &EditorDocument, version: u64) -> ItemId {
+    revision_id(&event.session, &document.id, version)
+}
+
+/// Identity of one recorded editor buffer occurrence, independent of its bytes.
+#[must_use]
+pub fn revision_id(session: &str, document: &str, version: u64) -> ItemId {
     ItemId::derive(
         "idle.vscode.revision.v1",
-        format!("{}\0{}\0{version}", event.session, document.id).as_bytes(),
+        format!("{session}\0{document}\0{version}").as_bytes(),
     )
 }
 

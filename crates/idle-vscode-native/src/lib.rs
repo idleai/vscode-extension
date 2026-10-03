@@ -3,6 +3,7 @@
 //! f41 owns native peer presentation over accepted shared coordination state.
 //! Editor capture is owned by the independent `idle-editor-capture` crate.
 
+pub mod activity;
 pub mod capture;
 pub mod history;
 pub mod presence;

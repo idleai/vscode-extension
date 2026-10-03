@@ -117,7 +117,7 @@ pub struct Failure {
 }
 
 impl Failure {
-    pub(super) fn new(code: FailureCode, message: &str) -> Self {
+    pub(crate) fn new(code: FailureCode, message: &str) -> Self {
         Self {
             code,
             message: message.to_owned(),

@@ -57,6 +57,11 @@ Workspace Trust. Editor capture continues while views are closed; use
 Codex import and chain-change monitoring also run with views closed. Use
 **Idle: Pause Agent History Import** or `idle.live.enabled` to pause collection.
 
+Native text editors show author and exposure observations for exact recorded
+revisions. Hover the indicators or use **Idle: Show Author and Exposure Sources**
+for recorded files, diffs and source records. Configure `idle.decorations.enabled`
+per resource; missing observations remain explicit.
+
 Standalone sharing uses **Idle: Copy History Join Request**, **Host Shared History**
 and **Join Shared History**. Each selected folder has its own chain, device
 approval and outgoing history scope. **Stop History Sharing** removes automatic
@@ -97,5 +102,6 @@ TLS and durable stores with an injected byte transport.
 - [Host APIs, peer providers and live relay testing](docs/host-integration.md)
 - [Editor capture and archive replay](docs/editor-capture.md)
 - [Native history actions](docs/native-history-actions.md)
+- [Author and exposure decorations](docs/author-activity-decorations.md)
 - [Shared collection and import tools](https://github.com/idleai/host-tools)
 - [Standalone history sharing](docs/sharing.md)

@@ -11,6 +11,7 @@ pub mod wire;
 mod writer;
 
 pub use context::observe_context;
+pub use identity::revision_id;
 pub use writer::CaptureWriter;
 
 /// Capture errors include invalid input, unavailable history and storage errors.

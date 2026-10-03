@@ -52,6 +52,12 @@ export class AssemblyHost implements vscode.Disposable {
     return localBinding(this.configuration.forResource(resource));
   }
 
+  /** Native editor reads must also work before a workspace webview is opened. */
+  ensureBindingFor(resource: vscode.Uri): RepositoryBinding {
+    this.list();
+    return this.bindingFor(resource);
+  }
+
   private workspace(params: unknown): unknown {
     if (!record(params)) throw new HostError("invalid_request", "Expected a workspace operation.");
     const workspaces = this.list();

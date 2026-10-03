@@ -111,6 +111,11 @@
         "enablement": "isWorkspaceTrusted"
       },
       {
+        "command": "idle.activity.showSources",
+        "title": "Idle: Show Author and Exposure Sources",
+        "enablement": "isWorkspaceTrusted && editorIsOpen"
+      },
+      {
         "command": "idle.history.openOriginal",
         "title": "Idle: Open Original",
         "enablement": "isWorkspaceTrusted"
@@ -190,6 +195,12 @@
           "default": ".editchain",
           "scope": "resource",
           "description": "Folder-local chain binding. Relative paths resolve against the explicitly selected workspace folder on the file-owning host."
+        },
+        "idle.decorations.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Show native author and exposure indicators for exact recorded file revisions, with source links and explicit observation gaps."
         },
         "idle.native.capturePath": {
           "type": "string",

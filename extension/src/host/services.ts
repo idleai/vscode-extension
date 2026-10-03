@@ -4,6 +4,7 @@ import { CaptureHost } from "../capture";
 import { CollectionHost } from "../collection";
 import { SharingHost } from "../sharing";
 import { HistoryHost } from "../history";
+import { ActivityDecorations } from "../provenance";
 import { HostConfiguration } from "./configuration";
 import { AssemblyHost } from "./assembly";
 import { HostCredentials } from "./credentials";
@@ -28,6 +29,7 @@ export class HostServices implements vscode.Disposable {
   readonly sharing: SharingHost;
   readonly history: HistoryHost;
   readonly assembly: AssemblyHost;
+  readonly activity: ActivityDecorations;
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChangeContext = this.changed.event;
   /** Byte adapters; the caller/Rust runtime owns protocol interpretation. */
@@ -51,6 +53,7 @@ export class HostServices implements vscode.Disposable {
       this.diagnostics.failure("Workspace " + folder, error);
       void this.diagnostics.notify("warning", "Idle cannot open " + folder + ": " + publicError(error).message);
     });
+    this.activity = new ActivityDecorations(this.history, this.capture, this.assembly, this.diagnostics);
     const refreshCaptureAccount = () => { void this.capture.refreshAccount(async () => (await this.credentials.account())?.label); };
     refreshCaptureAccount();
     this.accountChanged = this.credentials.onDidChange(() => {
@@ -146,6 +149,7 @@ export class HostServices implements vscode.Disposable {
     this.closed = true;
     this.accountChanged.dispose();
     this.presence.dispose();
+    this.activity.dispose();
     this.assembly.dispose();
     this.changed.dispose();
     this.effects.dispose();

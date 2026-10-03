@@ -46,6 +46,13 @@ struct Response {
 enum ResponseBody {
     Query(Box<app_core::history::QueryOutput>),
     Native(Box<Result<Preview, Failure>>),
+    Activity(Box<Result<crate::activity::Preview, Failure>>),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActivityRequest {
+    activity: crate::activity::Request,
 }
 
 #[derive(Deserialize)]
@@ -56,7 +63,14 @@ struct QueryRequest {
 }
 
 fn execute_body(binding: &Binding, body: serde_json::Value) -> ResponseBody {
-    if body.get("query").is_some() {
+    if body.get("activity").is_some() {
+        let result = serde_json::from_value::<ActivityRequest>(body)
+            .map_err(|_error| {
+                Failure::new(FailureCode::InvalidReference, "Invalid activity request.")
+            })
+            .and_then(|request| read_activity(binding, &request.activity));
+        ResponseBody::Activity(Box::new(result))
+    } else if body.get("query").is_some() {
         let result = serde_json::from_value::<QueryRequest>(body)
             .map_err(|_error| app_core::module::EffectError {
                 message: "Invalid history query.".to_owned(),
@@ -159,13 +173,32 @@ pub fn serve(mut input: impl Read, mut output: impl Write, binding: &Binding) ->
 }
 
 fn execute(binding: &Binding, request: &Request) -> Result<Preview, Failure> {
-    if request.binding != binding.repository {
+    let directory = directory(binding, &request.binding, request.source)?;
+    let mut queries = ChainQueries::open(directory)?;
+    prepare(&mut queries, &binding.repository, request.source, request)
+}
+
+fn read_activity(
+    binding: &Binding,
+    request: &crate::activity::Request,
+) -> Result<crate::activity::Preview, Failure> {
+    let directory = directory(binding, &request.binding, request.source)?;
+    let mut queries = ChainQueries::open(directory)?;
+    crate::activity::prepare(&mut queries, &binding.repository, request.source, request)
+}
+
+fn directory<'a>(
+    binding: &'a Binding,
+    repository: &RepositoryChainBinding,
+    source: Source,
+) -> Result<&'a PathBuf, Failure> {
+    if *repository != binding.repository {
         return Err(Failure::new(
             FailureCode::BindingMismatch,
             "The action belongs to a different repository or chain.",
         ));
     }
-    let directory = match request.source {
+    let directory = match source {
         Source::Current => &binding.chain_directory,
         Source::Retained => binding.retained_directory.as_ref().ok_or_else(|| {
             Failure::new(
@@ -180,6 +213,5 @@ fn execute(binding: &Binding, request: &Request) -> Result<Preview, Failure> {
             "The bound history source is unavailable.",
         ));
     }
-    let mut queries = ChainQueries::open(directory)?;
-    prepare(&mut queries, &binding.repository, request.source, request)
+    Ok(directory)
 }
