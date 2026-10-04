@@ -58,7 +58,7 @@ check "cargo clippy" cargo clippy --workspace --all-targets --all-features --loc
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
-check "engine integration tools" cargo build --manifest-path ../editchain/Cargo.toml --locked -p editchain -p editchain-sync --bins
+check "engine integration tools" python3 scripts/install-artifacts.py engine
 check "cargo test" cargo test --workspace --all-features --locked
 
 # ---------------------------------------------------------------------------

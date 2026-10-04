@@ -1,6 +1,7 @@
 name: CI
 on:
   push:
+    branches: ["**"]
   pull_request:
   workflow_dispatch:
 
@@ -18,36 +19,6 @@ jobs:
         with:
           path: vscode-extension
           persist-credentials: false
-      - uses: actions/checkout@v4
-        with:
-          repository: idleai/app-core
-          ref: 57719a40cacfb8fbc3f2672a04b3346dbfb7f85a
-          path: app-core
-          persist-credentials: false
-      - uses: actions/checkout@v4
-        with:
-          repository: idleai/web-ui
-          ref: 7cec6aa0c08e402e47e739b071430b85c3c4aa49
-          path: web-ui
-          persist-credentials: false
-      - uses: actions/checkout@v4
-        with:
-          repository: idleai/editchain
-          ref: 45b94c95a2cb185a59e58cf0763f589c666ab1e6
-          path: editchain
-          persist-credentials: false
-      - uses: actions/checkout@v4
-        with:
-          repository: idleai/codex-evo
-          ref: 903d7f1c62c621cf1f925362ac88893ec1f36b07
-          path: codex
-          persist-credentials: false
-      - uses: actions/checkout@v4
-        with:
-          repository: idleai/host-tools
-          ref: 4928e310d8b1a40483ebd2bac94deb4e8a8f1534
-          path: host-tools
-          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.0
@@ -62,11 +33,6 @@ jobs:
           cache: npm
           cache-dependency-path: vscode-extension/package-lock.json
       - run: cargo install --locked wasm-bindgen-cli --version 0.2.127
-      - name: Install and verify older-peer compatibility tools
-        working-directory: host-tools/packages/history-runtime
-        run: |
-          npm ci
-          npm test
       - run: npm ci
       - name: Install cargo-deny
         run: cargo install cargo-deny --locked --version 0.20.2

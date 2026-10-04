@@ -11,3 +11,7 @@
 .editchain/
 
 /outputs/
+
+/.artifacts/
+/releases/
+__pycache__/

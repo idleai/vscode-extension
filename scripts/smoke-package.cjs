@@ -23,12 +23,12 @@ async function main() {
     const files = execFileSync('unzip', ['-Z1', archive], { encoding: 'utf8' }).trim().split('\n');
     assert.ok(files.includes('extension/dist/pkg/idle_vscode_webview_bg.wasm'));
     assert.ok(!files.some(file => file.includes('/dist/peer-state/')), 'sharing runs in the native service');
-    assert.ok(!files.some(file => file.includes('editchain-vscode-service') || file.includes('editchain_history_renderer') || file.includes('editchain_client_state')));
+    assert.ok(!files.some(file => file.includes('editchain-peer') || file.includes('editchain-vscode-service') || file.includes('editchain_history_renderer') || file.includes('editchain_client_state')));
     const captureBinary = `bin/${process.platform}-${process.arch}/idle-editor-service${process.platform === 'win32' ? '.exe' : ''}`;
     assert.ok(files.includes(`extension/${captureBinary}`));
     const historyBinary = `bin/${process.platform}-${process.arch}/idle-history-service${process.platform === 'win32' ? '.exe' : ''}`;
     assert.ok(files.includes(`extension/${historyBinary}`));
-    for (const name of ['idle-history-collector', 'codex-session-exporter', 'editchain-peer', 'idle-coordination', 'idle-repository']) {
+    for (const name of ['idle-history-collector', 'codex-session-exporter', 'idle-coordination', 'idle-repository']) {
       assert.ok(files.includes(`extension/bin/${process.platform}-${process.arch}/${name}${process.platform === 'win32' ? '.exe' : ''}`));
     }
     assert.ok(!files.some(file => file.includes('/node_modules/') || file.includes('/out/host/') || file.endsWith('.map')));
@@ -47,7 +47,7 @@ async function main() {
     extension = createRequire(entry)(entry);
     const host = extension.activate(f.context);
     assert.equal(f.calls.auth.length, 0);
-    assert.equal(typeof host.native.startPeer, 'function');
+    assert.equal(host.native, undefined);
     assert.equal(typeof host.transport.bridgeDuplex, 'function');
     assert.equal(typeof host.presence.connect, 'function');
     assert.equal(f.commands.has('idle.presence.showPeers'), true);

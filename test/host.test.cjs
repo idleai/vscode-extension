@@ -144,12 +144,12 @@ test('credentials reject a session that resolves after an account-change event',
 test('activation and views share extension-lifetime services without acquiring credentials or starting processes', async () => {
   const authCalls = f.calls.auth.length;
   const host = extension.activate(f.context);
-  let nativeDisposed = 0;
-  const disposeNative = host.native.dispose.bind(host.native);
-  host.native.dispose = () => { nativeDisposed++; disposeNative(); };
+  let captureClosed = 0;
+  const shutdownCapture = host.capture.shutdown.bind(host.capture);
+  host.capture.shutdown = () => { captureClosed++; return shutdownCapture(); };
   assert.equal(f.calls.auth.length, authCalls);
   assert.equal(f.commands.has('idle.signIn'), true);
-  assert.equal(typeof host.native.startPeer, 'function');
+  assert.equal(host.native, undefined);
   assert.equal(typeof host.transport.bridgeDuplex, 'function');
   assert.equal(typeof host.presence.connect, 'function');
   assert.equal(f.commands.has('idle.presence.showPeers'), true);
@@ -161,14 +161,14 @@ test('activation and views share extension-lifetime services without acquiring c
   assert.ok(first.posted[0].result.capabilities.includes('external.open'));
   assert.ok(!first.posted[0].result.capabilities.includes('credentials.get'));
   first.dispose();
-  assert.equal(nativeDisposed, 0);
+  assert.equal(captureClosed, 0);
   const second = view();
   f.calls.providers[0].provider.resolveWebviewView(second);
   assert.notEqual(second.webview.html.match(/data-host-session="([^"]+)"/)[1], session);
   assert.equal(f.calls.auth.length, authCalls);
   await assert.rejects(host.effects.execute('external.open', { url: 'command:workbench.action.closeWindow' }, { session, signal: new AbortController().signal }), /Only HTTP/);
   await extension.deactivate();
-  assert.equal(nativeDisposed, 1);
+  assert.equal(captureClosed, 1);
   for (const disposable of f.context.subscriptions) disposable.dispose();
   assert.equal(JSON.stringify(f.calls.output).includes('TOKEN-NEVER-PRINT'), false);
 });

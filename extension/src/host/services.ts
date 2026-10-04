@@ -13,7 +13,6 @@ import { AssemblyHost } from "./assembly";
 import { HostCredentials } from "./credentials";
 import { HostDiagnostics } from "./diagnostics";
 import { HostEffects } from "./effects";
-import { NativeServices } from "./nativeServices";
 import { HostError, publicError, record, textParam } from "./protocol";
 import { bridgeDuplex, consumeTransport, writeTransport } from "./transport";
 
@@ -24,7 +23,6 @@ export class HostServices implements vscode.Disposable {
   readonly diagnostics = new HostDiagnostics();
   readonly effects = new HostEffects(() => vscode.workspace.isTrusted);
   readonly presence = new PeerAwarenessHost(this.diagnostics);
-  readonly native: NativeServices;
   readonly capture: CaptureHost;
   readonly collection: CollectionHost;
   readonly sharing: SharingHost;
@@ -44,7 +42,6 @@ export class HostServices implements vscode.Disposable {
     this.configuration = new HostConfiguration(context.extensionUri.fsPath);
     this.credentials = new HostCredentials(context.secrets, () => vscode.workspace.isTrusted,
       message => this.diagnostics.append(message));
-    this.native = new NativeServices(this.configuration);
     this.capture = new CaptureHost(context, this.configuration, this.diagnostics);
     this.collection = new CollectionHost(context, this.configuration, this.diagnostics);
     this.sharing = new SharingHost(context, this.configuration, this.credentials, this.diagnostics);
@@ -108,7 +105,7 @@ export class HostServices implements vscode.Disposable {
     this.effects.dispose();
     try {
       const services = await Promise.allSettled([this.sharing.shutdown(), this.capture.shutdown(),
-        this.collection.shutdown(), this.history.shutdown(), this.native.shutdown(), this.coordination.shutdown(), this.repository.shutdown()]);
+        this.collection.shutdown(), this.history.shutdown(), this.coordination.shutdown(), this.repository.shutdown()]);
       if (services.some(result => result.status === "rejected")) {
         throw new HostError("shutdown_failed", "Some host services did not close successfully.");
       }

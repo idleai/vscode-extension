@@ -6,8 +6,8 @@ For setup, builds and packaging, see the [root README](../README.md).
 ## Host services
 
 `activate()` returns `HostServices`. Native feature modules use
-`host.configuration.forResource(uri)` and `host.native.startPeer(uri)`;
-capture, collection and native-history modules own their typed service clients. Every
+`host.configuration.forResource(uri)`; capture, collection, coordination and
+native-history modules own their typed service clients. Every
 native operation resolves an explicit open workspace folder. Relative chain
 directories use that folder, and processes inherit its directory. Multi-root
 windows never silently choose their first folder. Unsupported virtual filesystems
@@ -16,10 +16,10 @@ and untrusted workspaces cannot launch native adapters or access credentials.
 The manifest declares `extensionKind: ["workspace"]`, so native adapters run with
 the files in remote SSH, containers and Codespaces. See VS Code's
 [workspace extension host documentation](https://code.visualstudio.com/api/advanced-topics/extension-host).
-`idle.native.peerPath` overrides the packaged `editchain-peer` executable with an
-absolute path. The package also contains `idle-history-service`,
-`idle-editor-service`, `idle-history-collector` and `codex-session-exporter` for
-its host platform. Capture and collection have corresponding explicit path settings.
+The package contains `idle-history-service`, `idle-editor-service`,
+`idle-history-collector`, `codex-session-exporter`, `idle-coordination` and
+`idle-repository` for its host platform. Capture and collection have corresponding
+explicit path settings. Sharing uses the coordinator's embedded peer engine.
 Workspace build directories and the UI machine's PATH are not searched.
 
 `host.effects.register(method, handler, requiresTrust)` installs an explicit

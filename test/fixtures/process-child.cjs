@@ -25,8 +25,7 @@ if (mode === 'stubborn') {
       if (buffered.length < length + 4) return;
       const message = JSON.parse(buffered.subarray(4, length + 4).toString('utf8'));
       buffered = buffered.subarray(length + 4);
-      if (mode === 'worker') send({ ok: true, result: { echo: message, cwd: process.cwd() } });
-      else send({ id: message.id, body: { echo: message.body, cwd: process.cwd() } });
+      send({ id: message.id, body: { echo: message.body, cwd: process.cwd() } });
     }
   });
 }

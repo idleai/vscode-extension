@@ -24,7 +24,6 @@ function setup(prepare = () => {}, customize = () => {}) {
       if (!folder) throw new HostError('workspace_unavailable', 'Folder was removed.');
       return { folder, chainDirectory: path.join(folder.uri.fsPath, f.configuration.get(uri.toString())?.chainDirectory ?? '.editchain') };
     },
-    peerBinary() { return '/peer'; },
   };
   const credentials = {
     async account() { accountCalls++; return f.api.authentication.session?.account; },

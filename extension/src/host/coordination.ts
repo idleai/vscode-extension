@@ -1,18 +1,18 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import * as vscode from 'vscode';
 import { RepositoryBinding } from '../history';
-import { FolderConfiguration, HostConfiguration, resolveNativePath } from './configuration';
+import { FolderConfiguration, HostConfiguration } from './configuration';
 import { CoordinationClient } from './coordinationClient';
+import { CoordinationProcess } from './coordinationProcess';
 import { ConfigurationJournal } from './configurationJournal';
 import { HostCallContext } from './effects';
 import { HostError, record } from './protocol';
 
 /** One private metadata authority per folder, owned by the extension lifetime. */
 export class CoordinationHost {
-  private readonly clients = new Map<string, Promise<CoordinationClient>>();
+  private readonly clients = new Map<string, CoordinationProcess>();
   private retiring: Promise<void> = Promise.resolve();
   private generation = 0;
   private closed = false;
@@ -46,24 +46,15 @@ export class CoordinationHost {
       await this.journal.prepare(binding, mutation.contributor, mutation.id, params.command);
       this.assertCurrent(generation, signal);
     }
-    let opening = this.clients.get(binding.workspace_id);
-    if (!opening) {
-      opening = this.open(config, binding, generation);
-      this.clients.set(binding.workspace_id, opening);
-      void opening.catch(() => { if (this.clients.get(binding.workspace_id) === opening) this.clients.delete(binding.workspace_id); });
+    let owner = this.clients.get(binding.workspace_id);
+    if (!owner) {
+      owner = new CoordinationProcess(this.context.extensionUri.fsPath,
+        () => this.installation(config, binding, generation), {}, undefined,
+        () => this.assertCurrent(generation));
+      this.clients.set(binding.workspace_id, owner);
     }
-    let client = await opening;
+    const client = await owner.acquire(true);
     this.assertCurrent(generation, signal);
-    if (!client.isRunning()) {
-      if (this.clients.get(binding.workspace_id) === opening) {
-        const previous = client;
-        opening = previous.shutdown().then(() => this.open(config, binding, generation));
-        this.clients.set(binding.workspace_id, opening);
-        void opening.catch(() => { if (this.clients.get(binding.workspace_id) === opening) this.clients.delete(binding.workspace_id); });
-      } else opening = this.clients.get(binding.workspace_id)!;
-      client = await opening;
-      this.assertCurrent(generation, signal);
-    }
     if (command.kind === 'presence') await this.publishPresence(client, config, binding, signal);
     // A watch owns no cursor in JavaScript. Rust supplies the original exact cursor.
     const deadline = Date.now() + 20_000;
@@ -133,7 +124,7 @@ export class CoordinationHost {
     if (this.closed || generation !== this.generation || signal?.aborted) throw new HostError('cancelled', 'Coordination context changed.');
   }
 
-  private async open(config: FolderConfiguration, binding: RepositoryBinding, generation: number): Promise<CoordinationClient> {
+  private async installation(config: FolderConfiguration, binding: RepositoryBinding, generation: number) {
     // Retirement may already be waiting for this queued restart to settle.
     this.assertCurrent(generation);
     await this.retiring;
@@ -141,20 +132,14 @@ export class CoordinationHost {
     this.assertCurrent(generation);
     const key = createHash('sha256').update(binding.workspace_id).digest('hex');
     const directory = path.join(this.context.globalStorageUri.fsPath, 'coordination', key);
-    await mkdir(directory, { recursive: true, mode: 0o700 });
-    const file = path.join(directory, 'host.json');
-    await writeFile(file, JSON.stringify({
+    return { directory, cwd: config.cwd, configuration: {
       state_directory: path.join(directory, 'state'), chain_directory: config.chainDirectory,
       device_directory: path.join(directory, 'device'),
       workspace: { id: binding.workspace_id, name: config.folder.name, chain: binding.chain,
         mode: { kind: 'standalone', repository: { id: binding.repository_id, name: config.folder.name, remote: null } } },
       contributor: { contributor_id: `local-contributor:${subject}`, authenticated_as: { issuer: 'idle-vscode-local', subject } },
       runtime: null, credential_variable: null, discovery_repository: null, resume_sharing: false,
-    }), { mode: 0o600 });
-    this.assertCurrent(generation);
-    const client = new CoordinationClient();
-    client.start(resolveNativePath('', this.context.extensionUri.fsPath, 'idle-coordination'), { args: ['--config', file], cwd: config.cwd });
-    return client;
+    } };
   }
 
   reset(): void {
@@ -163,7 +148,7 @@ export class CoordinationHost {
     this.clients.clear();
     const previous = this.retiring;
     this.retiring = previous.then(async () => {
-      const results = await Promise.allSettled(clients.map(client => client.then(value => value.shutdown(), () => {})));
+      const results = await Promise.allSettled(clients.map(client => client.shutdown()));
       if (results.some(result => result.status === 'rejected')) throw new HostError('shutdown_failed', 'A coordinator did not close.');
     });
     void this.retiring.catch(() => {});
