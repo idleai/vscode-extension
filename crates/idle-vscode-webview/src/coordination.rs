@@ -135,7 +135,6 @@ impl Adapter {
                 .is_some_and(|binding| {
                     binding.workspace_id == context.workspace && binding.chain == context.chain
                 })
-                && view.subscriptions.context.as_ref() != Some(*context)
         }) else {
             return Vec::new();
         };
@@ -153,21 +152,28 @@ impl Adapter {
             chain: resource.chain.clone(),
             mode: resource.mode,
         };
-        let mut events = vec![
-            Event::Subscriptions(subscriptions::Event::Connect(context.clone())),
-            Event::Projections(projections::Event::Connect(context.clone())),
-            Event::Resources(resources::Event::Connect(resource)),
-            Event::Configuration(configuration::Event::Connect(configuration)),
-        ];
+        let mut events = if view.subscriptions.context.as_ref() == Some(context) {
+            Vec::new()
+        } else {
+            vec![
+                Event::Subscriptions(subscriptions::Event::Connect(context.clone())),
+                Event::Projections(projections::Event::Connect(context.clone())),
+                Event::Resources(resources::Event::Connect(resource)),
+                Event::Configuration(configuration::Event::Connect(configuration)),
+            ]
+        };
         if self.repository_enabled
             && let Some(binding) = &view.workspace.repository_binding
         {
-            events.push(Event::Repository(app_core::repository::Event::Connect(
-                app_core::repository::RepositoryContext {
-                    connection: context.clone(),
-                    repository_id: binding.repository_id.clone(),
-                },
-            )));
+            let repository = app_core::repository::RepositoryContext {
+                connection: context.clone(),
+                repository_id: binding.repository_id.clone(),
+            };
+            if view.repository.context.as_ref() != Some(&repository) {
+                events.push(Event::Repository(app_core::repository::Event::Connect(
+                    repository,
+                )));
+            }
         }
         events
     }

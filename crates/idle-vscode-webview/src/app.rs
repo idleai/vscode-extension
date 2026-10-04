@@ -84,11 +84,11 @@ pub fn App() -> Element {
     let open = EventHandler::new(move |url: String| {
         #[cfg(target_arch = "wasm32")]
         if let Some(connection) = &link_connection {
-            connection.open_url(url);
+            connection.open_url(&url);
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let _url = url;
+            drop(url);
             error.set(Some(
                 "External links require an installed host adapter.".into(),
             ));

@@ -6,7 +6,8 @@ Workspace, Users, Sessions, Projections, Compute hosts, Model providers and comp
 Activity stay in that order, followed by Settings and Agent Rules. Selecting
 Activity opens the full history inspector; selecting Projections mounts f33's
 panels. The detail tab exposes the same complete set of destinations. Each document
-has separate selection and presentation state. Capture, bindings and native
+has separate selection and presentation state. Shell protocol 13 includes the
+shared repository state and exact recorded-session selections. Capture, bindings and native
 processes belong to the extension lifetime.
 
 `host.ready` negotiates installed actions before the first workspace request.
@@ -14,7 +15,7 @@ Every effect has a document-local transport identity. Context changes immediatel
 clear the old view and capabilities, retire pending continuations and negotiate
 again. Old and duplicate replies cannot populate the new view. Malformed results,
 failed sends and request timeouts become visible failures. Closing a document
-removes its listeners, timers and pending reads without stopping native services.
+removes its listeners, timers and pending reads. A repository reader with no remaining waiters stops; capture and collection keep running.
 
 ## Local workspace coordination
 
@@ -57,8 +58,12 @@ disclosure when those records still exist.
 
 `app.projection` reads the same bound chain through app-core's projection engine
 adapter. Recorded Activity has source references, bounded reads and explicit gaps.
-Task, error, triage and human-input projections are explicitly unavailable while
-no controller supplies them; an absent provider does not become a zero total.
+The packaged `idle-repository` supplies Tasks from open GitHub issues/PRs,
+Errors from failed HEAD checks/runs, and Triage/human input from explicit labels
+or requested reviewers. Exact stored response hashes are checked before rows are
+admitted. Missing or changed sources remove affected rows with partial coverage;
+a repository failure leaves local Activity readable. Source-page buttons use the
+host external-link capability. An unavailable source never becomes a zero total.
 
 Collection and peer receipts publish scoped `history.changed` events. The Rust
 runtime refreshes history and derived projections only for its current binding.
@@ -71,7 +76,7 @@ changes trigger a strict replay into a new source generation. A larger in-place
 rewrite is checked on collector restart; normal live polls read appended bytes.
 Imports checkpoint source positions after durable writes.
 
-## Remaining integrations
+## Shared product surfaces
 
 The shared f35 resource screens display actual publication owners, health,
 provider-qualified models, controller leases and runtime progress. Compute,
@@ -87,15 +92,23 @@ saves without automatic resubmission. Conflicts retain the original draft and
 require explicit review of the current saved revision. Unknown fields and exact
 64-bit revisions survive the JavaScript boundary.
 
-Git/GitHub data and recorded-session directories are the remaining standalone
-assembly work. Managed providers and new live runtime implementations are deferred.
+The repository overview resolves the selected checkout, branch, HEAD, worktree
+status and sanitized remote. Users separates local membership/presence from Git
+authors, GitHub contributors and accessible collaborators. Recorded sessions keep
+full logical IDs, recorded labels and exact source records. Selection is retained
+per contributor, binding and surface; it survives view and host restart. Native
+reads share in-flight work, cancel each waiter independently and discard account
+caches on replacement. Automatic updates reuse GitHub data for up to 60 seconds
+with its original check time; explicit refresh revalidates it. Git reads work
+offline and never fetch. See the [shared reader contract](../../host-tools/docs/repository.md).
+Managed providers and new live runtime implementations are deferred.
 
 Session components have unavailable actions until an execution provider supplies
 real capabilities and explicit session-to-history mappings. Directory membership
 or a controller lease cannot establish a running session. Creation, input,
 compute and model actions remain disabled; f17's live running-session lifetime
 acceptance is still required. Runtime fixtures continue to verify both workspace
-modes. The broader f43 feature remains open.
+modes. Those later runtime tasks are outside standalone f43 acceptance.
 
 Existing peer sharing commands retain their established runtime and saved consent.
 The local coordinator does not start discovery, resume sharing or migrate peer
@@ -104,13 +117,13 @@ identities automatically.
 ## Assets and checks
 
 The build bundles theme, navigation, projection, history, details, session,
-configuration and resource styles with the application WASM. VS Code CSS variables update the shared theme.
+configuration, resource and repository styles with the application WASM. VS Code CSS variables update the shared theme.
 The CSP permits graph coordinates while restricting scripts and style elements
 to packaged assets.
 
 The VSIX includes `idle-editor-service`, `idle-history-service`,
-`idle-history-collector`, `codex-session-exporter`, `editchain-peer` and
-`idle-coordination` for the build host's OS/architecture. Installed copies resolve
+`idle-history-collector`, `codex-session-exporter`, `editchain-peer`,
+`idle-coordination` and `idle-repository` for the build host's OS/architecture. Installed copies resolve
 configured absolute executables or packaged tools; sibling source checkouts are
 build inputs only. Build a platform-specific VSIX for each destination host.
 
@@ -118,9 +131,9 @@ build inputs only. Build a platform-specific VSIX for each destination host.
 
 | Repository | Revision |
 | --- | --- |
-| app-core | `1cda8c9bff6ae21aabb0087f079666543a57b5db` |
-| web-ui | `bdb581c39f95e258209fa23aba943866a7c4a6a4` |
-| host-tools | `eba843a421a11769173d62117250aff5a7d89951` |
+| app-core | `e867c4f4580d91fcf72a3cf3bb02d8ed8a9404c7` |
+| web-ui | `ca419d8eeb89bc33250d8b0ea1a56d23d129600a` |
+| host-tools | `2a1f861ce78907fc36bfc3d212de58e0903a7ec1` |
 | EditChain | `45b94c95a2cb185a59e58cf0763f589c666ab1e6` |
 | Codex exporter | `903d7f1c62c621cf1f925362ac88893ec1f36b07` |
 
@@ -129,13 +142,18 @@ native VSIX checks. Then run `test:webview` and `test:assembly` with `CHROME_BIN
 set to a Chrome executable. They use isolated browser profiles, synthetic
 workspaces and packaged native tools. The assembly check covers navigation,
 compact Activity, projection availability, multiple folders, exact previews,
-recorded updates, host theme changes and document reconnection.
+recorded updates, host theme changes, Git authors, recorded-session selection
+recovery, projection source URLs, exact stored Originals, conditional saves and
+document reconnection.
 
 Run `VSCODE_BIN=/absolute/path/to/code npm run test:vscode` on Linux with
 `xvfb-run` available. This installs the VSIX into a disposable extension directory,
-starts a separate desktop VS Code profile and checks native metadata, exact
-record/file/diff opens, author/exposure reads and capture across view closure and
-reopening. It does not attach to an existing editor profile. CI runs this check
+starts a separate desktop VS Code profile and checks native metadata, Git and
+recorded sessions, exact record/file/diff opens, author/exposure reads and capture
+across view closure. A second launch verifies the saved session selection and
+exact unfinished settings draft. The normal development driver retains VS Code
+profile storage; extension-test mode would replace mementos with memory storage.
+Profile, extensions and shared storage all use temporary directories. CI runs this check
 with VS Code 1.140.0.
 
 ## Application ownership

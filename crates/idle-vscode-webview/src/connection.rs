@@ -73,7 +73,7 @@ impl Connection {
         self.publish(calls);
     }
 
-    pub(crate) fn open_url(self: &Rc<Self>, url: String) {
+    pub(crate) fn open_url(self: &Rc<Self>, url: &str) {
         if !self
             .runtime
             .borrow()

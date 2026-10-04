@@ -40,8 +40,8 @@ export async function checkRepository(browser, origin, records, fixture, enableP
     await page.waitForFunction(id => document.body.textContent.includes(id) && document.body.textContent.includes('Inspect record'), {}, records.session_id);
     await click(page, 'Activity');
     await page.waitForSelector('#idle-history [role="treeitem"]');
-    const lastHistory = await page.evaluate(() => window.assemblyFixture.requests.filter(request => request.method === 'app.history' && request.params.query.action.History).at(-1));
-    assert.equal(lastHistory.params.query.action.History.filter.session, null, 'Activity clears the session filter');
+    const lastHistory = await page.evaluate(() => window.assemblyFixture.requests.filter(request => request.method === 'app.history' && request.params.operation.action.History).at(-1));
+    assert.equal(lastHistory.params.operation.action.History.filter.session, null, 'Activity clears the session filter');
 
     enableProjections();
     await click(page, 'Projections');
@@ -57,7 +57,7 @@ export async function checkRepository(browser, origin, records, fixture, enableP
     await page.waitForSelector('#idle-history [role="treeitem"]');
     await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent === 'Inspect record'));
     await click(page, 'Inspect record');
-    await page.waitForFunction(() => document.body.textContent.includes('github') && document.body.textContent.includes('Fixture issue'));
+    await page.waitForFunction(() => document.body.textContent.includes('Original captured content') && document.body.textContent.includes('Fixture issue'));
     assert(await page.evaluate(hash => document.body.textContent.includes(hash), records.github_source.record_hash), 'the inspector retains the exact stored source hash');
     await capture(page, 'github-source', savePage);
     await click(page, 'Projections');

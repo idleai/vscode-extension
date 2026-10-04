@@ -123,3 +123,23 @@ test('coordination rejects stale and mismatched folder bindings', async () => {
     host.dispose(); effects.dispose();
   }
 });
+
+test('repository failures leave local Activity projection reads available', async () => {
+  const effects = new HostEffects(() => true);
+  const bindings = [];
+  const reads = [];
+  const failures = [];
+  const history = { connect(binding) { bindings.push(binding); return { dispose() {} }; },
+    async projection(params, signal, inputs) { reads.push({ params, signal, inputs }); return { Ok: 'local activity' }; } };
+  const repository = { async snapshot() { throw new Error('Repository reader exited'); }, reset() {} };
+  const host = new AssemblyHost(new HostConfiguration('/extension'), history, effects, (...failure) => failures.push(failure), undefined, repository);
+  const context = { session: 'view', signal: new AbortController().signal };
+  try {
+    await effects.execute('app.workspace', { operation: 'List' }, context);
+    const params = { binding: bindings[0].repository, operation: {} };
+    assert.deepEqual(await effects.execute('app.projection', params, context), { Ok: 'local activity' });
+    assert.equal(reads.length, 1);
+    assert.equal(reads[0].inputs, undefined, 'native adapter supplies explicit unavailable derived views');
+    assert.equal(failures.length, 1, 'source failure remains reportable');
+  } finally { host.dispose(); effects.dispose(); }
+});
