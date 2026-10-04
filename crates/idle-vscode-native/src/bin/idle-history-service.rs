@@ -21,3 +21,5 @@ fn main() -> io::Result<()> {
     let binding: service::Binding = serde_json::from_str(&binding).map_err(io::Error::other)?;
     service::serve(io::stdin().lock(), io::stdout().lock(), &binding)
 }
+
+use idle_repository as _;

@@ -5,8 +5,11 @@ history actions. The TypeScript host lives here; shared application state lives
 in `app-core`, Rust/WASM rendering lives in `web-ui`, and shared contracts,
 collection and peer coordination live in `host-tools`.
 
-Local history browsing, automatic collection, standalone peer sharing and native actions are connected. Production session and
-coordination integrations remain in progress; see the [assembly notes](docs/assembly.md).
+Workspace navigation, local metadata and presence, recorded Activity, automatic
+collection, standalone peer sharing, configuration saves, shared resource screens
+and native actions are connected. Git/GitHub data and recorded-session browsing
+are being assembled; live session execution requires a runtime;
+see the [assembly notes](docs/assembly.md).
 
 ## Setup
 
@@ -88,6 +91,15 @@ The packaged browser/native checks use a simulated VS Code API, real browser
 rendering and the bundled native services. Native sharing tests use real mutual
 TLS and durable stores with an injected byte transport.
 
+To verify the installed extension in a disposable desktop VS Code profile on
+Linux, with `xvfb-run` available:
+
+```sh
+VSCODE_BIN=/absolute/path/to/code npm run test:vscode
+```
+
+This check uses its own workspace, settings and extension directory.
+
 ## Repository layout
 
 | Path | Purpose |
@@ -105,3 +117,15 @@ TLS and durable stores with an injected byte transport.
 - [Author and exposure decorations](docs/author-activity-decorations.md)
 - [Shared collection and import tools](https://github.com/idleai/host-tools)
 - [Standalone history sharing](docs/sharing.md)
+
+Standalone repository surfaces now show Git checkout/worktree details, bounded
+Git authors and GitHub contributors/collaborators, issues/PRs, failed HEAD checks,
+explicit triage/input requests, and local/imported recorded sessions. GitHub
+source pages open through the host; exact response records open in Activity.
+GitHub access uses VS Code authentication and the packaged `idle-repository`
+reader. The repository access button explicitly requests repository scope.
+Public/offline/partial reads and retry deadlines remain visible. Session selection
+is retained separately for sidebar and detail under the exact repository binding.
+No runtime is required to browse captured sessions; execution remains unavailable
+until a runtime is connected. See the shared
+[repository adapter contract](../host-tools/docs/repository.md).

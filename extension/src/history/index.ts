@@ -142,6 +142,26 @@ export class HistoryHost implements vscode.Disposable {
     } finally { linked.dispose(); }
   }
 
+  /** Derived views preserve the selected workspace and chain through native reads. */
+  async projection(params: unknown, signal?: AbortSignal, inputs?: unknown[]): Promise<unknown> {
+    if (!record(params) || !record(params.operation) || !record(params.operation.context)) throw new HostError("invalid_request", "Expected a bound projection query.");
+    const connection = this.connection(parseBinding(params.binding));
+    const context = params.operation.context;
+    if (context.workspace !== connection.binding.repository.workspace_id || context.chain !== connection.binding.repository.chain) {
+      throw new HostError("binding_mismatch", "The projection belongs to a different workspace or chain.");
+    }
+    if (!connection.provider.projection) throw new HostError("unavailable", "Projection reads are unavailable on this connection.");
+    this.assertCurrent(connection, signal);
+    if (connection.ready) await connection.ready;
+    this.assertCurrent(connection, signal);
+    const linked = linkCancellation(connection.abort.signal, signal);
+    try {
+      const result = await connection.provider.projection(params.operation, linked.signal, inputs);
+      this.assertCurrent(connection, signal);
+      return result;
+    } finally { linked.dispose(); }
+  }
+
   /** Adapter for app-core QueryAction::Open; the reducer receives Opened after editor success. */
   async openQuery(params: unknown, signal?: AbortSignal): Promise<"Opened"> {
     if (!record(params) || !record(params.query) || !record(params.query.action) || !record(params.query.action.Open)) {

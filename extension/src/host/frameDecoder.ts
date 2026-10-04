@@ -1,7 +1,9 @@
 /** A deliberate allocation limit for history frames, configurable by the host. */
 export const DEFAULT_MAX_FRAME_BYTES = 64 * 1024 * 1024;
 
-/** Length-prefixed little-endian frames, assembled with one copy per input byte. */
+export type ByteOrder = "little" | "big";
+
+/** Length-prefixed frames, assembled with one copy per input byte. */
 export class FrameDecoder {
   private readonly header = Buffer.alloc(4);
   private headerBytes = 0;
@@ -9,7 +11,7 @@ export class FrameDecoder {
   private payloadBytes = 0;
   private failed = false;
 
-  constructor(private readonly maxFrameBytes = DEFAULT_MAX_FRAME_BYTES) {
+  constructor(private readonly maxFrameBytes = DEFAULT_MAX_FRAME_BYTES, private readonly byteOrder: ByteOrder = "little") {
     if (!Number.isSafeInteger(maxFrameBytes) || maxFrameBytes < 1 || maxFrameBytes > 0xffffffff) {
       throw new RangeError('Invalid native frame limit.');
     }
@@ -25,7 +27,7 @@ export class FrameDecoder {
         this.headerBytes += length;
         offset += length;
         if (this.headerBytes < 4) break;
-        const size = this.header.readUInt32LE();
+        const size = this.byteOrder === "big" ? this.header.readUInt32BE() : this.header.readUInt32LE();
         if (size > this.maxFrameBytes) {
           this.failed = true;
           throw new Error('Native frame exceeds the configured limit.');
@@ -47,11 +49,11 @@ export class FrameDecoder {
 }
 
 /** Copy serialized UTF-8 parts directly into their final frame. */
-export function encodeFrame(parts: readonly (string | Buffer)[], limit: number): Buffer {
+export function encodeFrame(parts: readonly (string | Buffer)[], limit: number, byteOrder: ByteOrder = "little"): Buffer {
   const length = parts.reduce((sum, part) => sum + Buffer.byteLength(part), 0);
   if (length > limit || length > 0xffffffff) throw new Error('Native request exceeds the configured limit.');
   const frame = Buffer.allocUnsafe(4 + length);
-  frame.writeUInt32LE(length);
+  if (byteOrder === "big") frame.writeUInt32BE(length); else frame.writeUInt32LE(length);
   let offset = 4;
   for (const part of parts) {
     offset += typeof part === 'string' ? frame.write(part, offset, 'utf8') : part.copy(frame, offset);

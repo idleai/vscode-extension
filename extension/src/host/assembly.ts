@@ -1,8 +1,11 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { createHash } from "node:crypto";
 import * as vscode from "vscode";
 import { HistoryHost, RepositoryBinding } from "../history";
 import { FolderConfiguration, HostConfiguration } from "./configuration";
-import { HostEffects } from "./effects";
+import { CoordinationHost } from "./coordination";
+import { RepositoryHost } from "./repository";
+import { HostCallContext, HostEffects } from "./effects";
 import { HostError, record } from "./protocol";
 
 interface LocalWorkspace {
@@ -17,15 +20,36 @@ interface LocalWorkspace {
 /** Local folder bindings. Coordination adapters can install their own effect routes. */
 export class AssemblyHost implements vscode.Disposable {
   private directory: LocalWorkspace[] | undefined;
+  private readonly folders = new Map<string, vscode.Uri>();
   private readonly bindings: vscode.Disposable[] = [];
   private readonly installed: { dispose(): void }[];
 
   constructor(private readonly configuration: HostConfiguration, private readonly history: HistoryHost, effects: HostEffects,
-    private readonly report: (folder: string, error: unknown) => void) {
+    private readonly report: (folder: string, error: unknown) => void, private readonly coordination?: CoordinationHost,
+    private readonly repository?: RepositoryHost) {
     this.installed = [
       effects.register("app.workspace", params => this.workspace(params)),
       effects.register("app.history", (params, context) => history.query(params, context.signal)),
+      effects.register("app.projection", (params, context) => this.projection(params, context)),
     ];
+    if (repository) this.installed.push(effects.register("app.repository", (params, context) => {
+      const { config, binding } = this.selected(params);
+      return repository.read(config, binding, params, context);
+    }));
+    if (coordination) this.installed.push(
+      effects.register("app.coordination", (params, context) => this.coordinate(params, context)),
+      effects.register("app.configurationState", (params, context) => this.coordinate(params, context, true)),
+      effects.register("app.subscription", async (params, context) => {
+        if (!record(params) || !record(params.operation) || !record(params.operation.action)) throw new HostError("invalid_request", "Invalid subscription operation.");
+        const action = params.operation.action;
+        if (record(action.Leave)) return { Ok: "Left" };
+        if (record(action.Wait) && Number.isInteger(action.Wait.delay_ms) && Number(action.Wait.delay_ms) >= 0 && Number(action.Wait.delay_ms) <= 30_000) {
+          await delay(Number(action.Wait.delay_ms), undefined, { signal: context.signal });
+          return { Ok: "Elapsed" };
+        }
+        throw new HostError("unavailable", "This subscription is unavailable.");
+      }),
+    );
   }
 
   private list(): LocalWorkspace[] {
@@ -39,6 +63,7 @@ export class AssemblyHost implements vscode.Disposable {
         const { repository_id: repository, chain, workspace_id: workspace } = localBinding(config);
         this.bindings.push(this.history.connect({ root: folder.uri, chainDirectory: config.chainDirectory,
           repository: { workspace_id: workspace, repository_id: repository, chain } }));
+        this.folders.set(workspace, folder.uri);
         workspaces.push({ id: workspace, name: folder.name, chain, revision: 1, mode: "Standalone",
           repositories: [{ id: repository, name: folder.name, remote: null }] });
       } catch (error) { this.report(folder.name, error); }
@@ -58,6 +83,39 @@ export class AssemblyHost implements vscode.Disposable {
     return this.bindingFor(resource);
   }
 
+  private coordinate(params: unknown, context: HostCallContext, state = false): Promise<unknown> {
+    const { config, binding } = this.selected(params);
+    return state ? this.coordination!.configurationState(binding, params, context)
+      : this.coordination!.read(config, binding, params, context);
+  }
+
+  private async projection(params: unknown, context: HostCallContext): Promise<unknown> {
+    if (!this.repository) return this.history.projection(params, context.signal);
+    const { config, binding } = this.selected(params);
+    let inputs: unknown[] | undefined;
+    const refresh = record(params) && record(params.operation) && params.operation.refresh_sources === true;
+    try { inputs = (await this.repository.snapshot(config, binding, context.signal, refresh ? 'refresh' : 'projection')).projections; }
+    catch (error) {
+      if (context.signal.aborted || (error instanceof HostError && error.code === 'cancelled')) throw error;
+      this.report(config.folder.name, error);
+    }
+    return this.history.projection(params, context.signal, inputs);
+  }
+
+  private selected(params: unknown): { config: FolderConfiguration; binding: RepositoryBinding } {
+    this.list();
+    if (!record(params) || !record(params.binding) || typeof params.binding.workspace_id !== "string") throw new HostError("invalid_request", "Coordination requires a repository binding.");
+    const folder = this.folders.get(params.binding.workspace_id);
+    if (folder) {
+      const config = this.configuration.forResource(folder);
+      const binding = localBinding(config);
+      if (binding.workspace_id === params.binding.workspace_id && binding.repository_id === params.binding.repository_id && binding.chain === params.binding.chain) {
+        return { config, binding };
+      }
+    }
+    throw new HostError("unavailable", "This coordination binding is no longer available.");
+  }
+
   private workspace(params: unknown): unknown {
     if (!record(params)) throw new HostError("invalid_request", "Expected a workspace operation.");
     const workspaces = this.list();
@@ -74,6 +132,9 @@ export class AssemblyHost implements vscode.Disposable {
 
   reset(): void {
     this.directory = undefined;
+    this.folders.clear();
+    this.coordination?.reset();
+    this.repository?.reset();
     for (const binding of this.bindings.splice(0)) binding.dispose();
   }
 

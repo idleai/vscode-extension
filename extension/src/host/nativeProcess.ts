@@ -1,5 +1,5 @@
 import { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio, spawn } from 'node:child_process';
-import { DEFAULT_MAX_FRAME_BYTES, FrameDecoder, encodeFrame } from './frameDecoder';
+import { ByteOrder, DEFAULT_MAX_FRAME_BYTES, FrameDecoder, encodeFrame } from './frameDecoder';
 
 export interface ProcessStartOptions {
   readonly args?: readonly string[];
@@ -14,6 +14,7 @@ export type ProcessSpawner = (
 export interface NativeProcessOptions {
   readonly spawn?: ProcessSpawner;
   readonly maxFrameBytes?: number;
+  readonly byteOrder?: ByteOrder;
   readonly maxQueuedBytes?: number;
   readonly terminationGraceMs?: number;
   readonly shutdownTimeoutMs?: number;
@@ -65,7 +66,7 @@ export class NativeProcess {
   constructor(private readonly events: ProcessEvents, private readonly options: NativeProcessOptions = {}) {
     this.maxFrameBytes = options.maxFrameBytes ?? DEFAULT_MAX_FRAME_BYTES;
     // Validate the frame limit before creating a process.
-    new FrameDecoder(this.maxFrameBytes);
+    new FrameDecoder(this.maxFrameBytes, this.options.byteOrder);
     this.maxQueuedBytes = options.maxQueuedBytes ?? 2 * (this.maxFrameBytes + 4);
     this.terminationGraceMs = options.terminationGraceMs ?? 1000;
     this.shutdownTimeoutMs = options.shutdownTimeoutMs ?? 5000;
@@ -87,7 +88,7 @@ export class NativeProcess {
     const owned: OwnedChild = { child, terminating: false };
     this.children.set(child, owned);
     const generation: Generation = {
-      child, decoder: new FrameDecoder(this.maxFrameBytes), writes: [], queuedBytes: 0, writing: false,
+      child, decoder: new FrameDecoder(this.maxFrameBytes, this.options.byteOrder), writes: [], queuedBytes: 0, writing: false,
     };
     this.current = generation;
     child.stdout.on('data', (chunk: Buffer) => this.receive(generation, chunk));
@@ -120,7 +121,7 @@ export class NativeProcess {
       if (generation.queuedBytes + frameLength > this.maxQueuedBytes) {
         throw new Error('Native process write queue is full.');
       }
-      frame = encodeFrame(parts, this.maxFrameBytes);
+      frame = encodeFrame(parts, this.maxFrameBytes, this.options.byteOrder);
     } catch (error) {
       return Promise.reject(error);
     }

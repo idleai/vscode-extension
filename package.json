@@ -317,14 +317,17 @@
     "test:assembly": "node scripts/smoke-assembly.mjs idle.vsix",
     "build:host": "node scripts/build-host.mjs",
     "build:wasm": "node scripts/build-wasm.mjs",
-    "build": "npm run compile && npm run build:host && npm run build:wasm && npm run build:peer-state && npm run build:capture && npm run build:history && npm run build:collection && npm run build:engine",
+    "build": "npm run compile && npm run build:host && npm run build:wasm && npm run build:peer-state && npm run build:capture && npm run build:history && npm run build:collection && npm run build:engine && npm run build:coordination && npm run build:repository",
     "check": "bash scripts/check.sh",
     "package": "vsce package --no-dependencies --out idle.vsix",
     "build:capture": "node scripts/build-capture.mjs",
     "build:history": "node scripts/build-history.mjs",
     "build:collection": "node scripts/build-collection.mjs",
     "build:engine": "node scripts/build-engine.mjs",
-    "build:peer-state": "node scripts/build-peer-state.mjs"
+    "build:peer-state": "node scripts/build-peer-state.mjs",
+    "build:coordination": "node scripts/build-coordination.mjs",
+    "test:vscode": "node scripts/smoke-vscode.cjs idle.vsix",
+    "build:repository": "node scripts/build-repository.mjs"
   },
   "devDependencies": {
     "@types/node": "22.19.17",

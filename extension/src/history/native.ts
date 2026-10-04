@@ -29,6 +29,10 @@ export class NativeHistoryProvider implements HistoryProvider {
     return this.request({ binding: this.binding.repository, query }, signal);
   }
 
+  async projection(projection: unknown, signal: AbortSignal, inputs?: unknown[]): Promise<unknown> {
+    return this.request({ binding: this.binding.repository, projection, inputs }, signal);
+  }
+
   async activity(request: ActivityRequest, signal: AbortSignal): Promise<ActivityPreview> {
     const response = await this.request({ activity: request }, signal);
     if (record(response) && record(response.Err) && typeof response.Err.code === 'string' && typeof response.Err.message === 'string') {

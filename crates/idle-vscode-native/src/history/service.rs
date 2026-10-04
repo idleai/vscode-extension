@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{Failure, FailureCode, Preview, Request, Source, prepare, validate_binding};
 
-const MAX_REQUEST: usize = 1024 * 1024;
+const MAX_REQUEST: usize = 8 * 1024 * 1024;
 const MAX_RESPONSE: usize = 64 * 1024 * 1024;
 
 /// Storage locations supplied by the trusted host, never by an action request.
@@ -45,6 +45,7 @@ struct Response {
 #[serde(untagged)]
 enum ResponseBody {
     Query(Box<app_core::history::QueryOutput>),
+    Projection(Box<app_core::projections::ProjectionOutput>),
     Native(Box<Result<Preview, Failure>>),
     Activity(Box<Result<crate::activity::Preview, Failure>>),
 }
@@ -62,8 +63,24 @@ struct QueryRequest {
     query: app_core::history::Query,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProjectionRequest {
+    binding: RepositoryChainBinding,
+    projection: app_core::projections::ProjectionQuery,
+    #[serde(default)]
+    inputs: Option<Vec<idle_protocol::v1::projections::ProjectionInput>>,
+}
+
 fn execute_body(binding: &Binding, body: serde_json::Value) -> ResponseBody {
-    if body.get("activity").is_some() {
+    if body.get("projection").is_some() {
+        let result = serde_json::from_value::<ProjectionRequest>(body)
+            .map_err(|_error| app_core::module::EffectError {
+                message: "Invalid projection query.".to_owned(),
+            })
+            .and_then(|request| read_projection(binding, &request));
+        ResponseBody::Projection(Box::new(result))
+    } else if body.get("activity").is_some() {
         let result = serde_json::from_value::<ActivityRequest>(body)
             .map_err(|_error| {
                 Failure::new(FailureCode::InvalidReference, "Invalid activity request.")
@@ -105,6 +122,61 @@ fn read_query(binding: &Binding, request: &QueryRequest) -> app_core::history::Q
     let mut queries = ChainQueries::open(&binding.chain_directory)
         .map_err(|_error| failure("Unable to read the bound history source."))?;
     app_core::history::engine::execute(&mut queries, &binding.repository.chain, &request.query)
+}
+
+fn read_projection(
+    binding: &Binding,
+    request: &ProjectionRequest,
+) -> app_core::projections::ProjectionOutput {
+    let failure = |message: &str| app_core::module::EffectError {
+        message: message.to_owned(),
+    };
+    if request.binding != binding.repository
+        || request.projection.context.workspace != binding.repository.workspace_id
+        || request.projection.context.chain != binding.repository.chain
+    {
+        return Err(failure(
+            "The projection belongs to a different repository or chain.",
+        ));
+    }
+    if !binding.chain_directory.is_dir() {
+        return Err(failure("The bound history source is unavailable."));
+    }
+    let mut queries = ChainQueries::open(&binding.chain_directory)
+        .map_err(|_error| failure("Unable to read the bound history source."))?;
+    app_core::projections::engine::execute(
+        &mut queries,
+        &binding.repository.chain,
+        &request.projection,
+        &RepositoryMapper {
+            inputs: request.inputs.as_deref(),
+        },
+    )
+}
+
+struct RepositoryMapper<'a> {
+    inputs: Option<&'a [idle_protocol::v1::projections::ProjectionInput]>,
+}
+
+impl app_core::projections::engine::ProjectionMapper for RepositoryMapper<'_> {
+    fn inputs(
+        &self,
+        queries: &ChainQueries,
+        read: &app_core::projections::engine::ProjectionRead,
+    ) -> Result<Vec<idle_protocol::v1::projections::ProjectionInput>, app_core::module::EffectError>
+    {
+        let Some(inputs) = self.inputs else {
+            let mut inputs =
+                app_core::projections::engine::UnavailableMapper.inputs(queries, read)?;
+            for input in &mut inputs {
+                for gap in &mut input.gaps {
+                    gap.message = "The repository reader is unavailable. Refresh repository to retry; local Activity remains readable.".into();
+                }
+            }
+            return Ok(inputs);
+        };
+        Ok(idle_repository::checked_inputs(queries, inputs))
+    }
 }
 
 /// Serve length-prefixed JSON until the host closes standard input.

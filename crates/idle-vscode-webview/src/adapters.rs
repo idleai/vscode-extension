@@ -10,6 +10,8 @@ use web_ui::host::{HostCapabilities, HostCapability, HostKind};
 
 use crate::bridge::BridgeError;
 
+mod drafts;
+
 /// One platform call. Its identity is valid only in this document.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Call {
@@ -27,6 +29,8 @@ pub struct Runtime {
     pending: BTreeMap<String, Effect>,
     next: u64,
     capabilities: HostCapabilities,
+    coordination: crate::coordination::Adapter,
+    drafts: drafts::State,
 }
 
 impl std::fmt::Debug for Runtime {
@@ -45,6 +49,8 @@ impl Default for Runtime {
             pending: BTreeMap::new(),
             next: 0,
             capabilities: HostCapabilities::new(HostKind::VsCode),
+            coordination: crate::coordination::Adapter::default(),
+            drafts: drafts::State::default(),
         }
     }
 }
@@ -54,6 +60,12 @@ impl Runtime {
     #[must_use]
     pub fn view(&self) -> ViewModel {
         self.core.view()
+    }
+
+    /// Latest coordinator clock for freshness labels, without inventing runtime state.
+    #[must_use]
+    pub const fn now_ms(&self) -> Option<u64> {
+        self.coordination.now_ms
     }
 
     /// Presentation hints negotiated with the host, denied before its handshake.
@@ -67,6 +79,8 @@ impl Runtime {
         self.pending.clear();
         self.core = Core::new();
         self.capabilities = HostCapabilities::new(HostKind::VsCode);
+        self.coordination = crate::coordination::Adapter::default();
+        self.drafts = drafts::State::default();
     }
 
     /// Start or reset after account, trust or workspace configuration changes.
@@ -76,6 +90,23 @@ impl Runtime {
     pub fn ready(&mut self, value: &Value) -> Result<Vec<Call>, String> {
         self.invalidate();
         self.capabilities = capabilities(value);
+        self.configure_drafts(value);
+        self.coordination.enabled = value
+            .get("capabilities")
+            .and_then(Value::as_array)
+            .is_some_and(|methods| {
+                methods
+                    .iter()
+                    .any(|method| method.as_str() == Some("app.coordination"))
+            });
+        self.coordination.repository_enabled = value
+            .get("capabilities")
+            .and_then(Value::as_array)
+            .is_some_and(|methods| {
+                methods
+                    .iter()
+                    .any(|method| method.as_str() == Some("app.repository"))
+            });
         let mut calls = self.dispatch(Event::Start)?;
         calls.extend(self.dispatch(Event::Workspace(app_core::workspace::Event::Load))?);
         Ok(calls)
@@ -86,6 +117,12 @@ impl Runtime {
     /// # Errors
     /// Returns a serialization or Crux continuation failure.
     pub fn dispatch(&mut self, event: Event) -> Result<Vec<Call>, String> {
+        if matches!(
+            event,
+            Event::Configuration(app_core::configuration::Event::Refresh)
+        ) {
+            self.drafts.retry_load();
+        }
         self.enqueue(self.core.process_event(event))
     }
 
@@ -105,7 +142,10 @@ impl Runtime {
         if self.core.view().workspace.repository_binding.as_ref() != Some(&binding) {
             return Ok(Vec::new());
         }
-        self.dispatch(Event::History(app_core::history::Event::Refresh))
+        let mut calls = self.dispatch(Event::History(app_core::history::Event::Refresh))?;
+        calls.extend(self.dispatch(Event::Projections(app_core::projections::Event::Changed))?);
+        calls.extend(self.dispatch(Event::Repository(app_core::repository::Event::Changed))?);
+        Ok(calls)
     }
 
     /// Resolve a matching host response; retired or duplicate responses do nothing.
@@ -118,10 +158,13 @@ impl Runtime {
         id: &str,
         result: Result<Value, BridgeError>,
     ) -> Result<Vec<Call>, String> {
+        if self.drafts.has_request(id) {
+            return self.receive_drafts(id, result);
+        }
         let Some(mut effect) = self.pending.remove(id) else {
             return Ok(Vec::new());
         };
-        let failure = unavailable(
+        let mut failure = unavailable(
             &effect,
             result
                 .as_ref()
@@ -130,8 +173,36 @@ impl Runtime {
                     error.message.as_str()
                 }),
         );
+        if self.coordination.enabled
+            && matches!(&effect, Effect::Subscription(_))
+            && result.as_ref().is_err_and(|error| {
+                matches!(error.code.as_str(), "unavailable" | "host_timeout" | "busy")
+            })
+            && let Some(kind) = failure.pointer_mut("/Err/kind")
+        {
+            *kind = json!("Transport");
+        }
         let value = result.unwrap_or_else(|_error| failure.clone());
-        let effects = match &mut effect {
+        let value = match self
+            .coordination
+            .decode(&effect, value, id, &self.core.view())
+        {
+            Ok(Some(value)) => value,
+            Ok(None) => {
+                let mut effects = self.tick();
+                effects.extend(self.core.process_event(Event::Workspace(
+                    app_core::workspace::Event::RefreshPresence,
+                )));
+                effects.push(effect);
+                return self.enqueue(effects);
+            }
+            Err(message) => unavailable(&effect, &message),
+        };
+        let refresh_workspace = matches!(&effect, Effect::Subscription(_))
+            && value
+                .get("Ok")
+                .is_some_and(|value| value == "Changed" || value.get("Joined").is_some());
+        let mut effects = match &mut effect {
             Effect::Workspace(request) => resolve(&self.core, request, value, failure),
             Effect::History(request) => resolve(&self.core, request, value, failure),
             Effect::Subscription(request) => resolve(&self.core, request, value, failure),
@@ -139,9 +210,36 @@ impl Runtime {
             Effect::Projection(request) => resolve(&self.core, request, value, failure),
             Effect::Resource(request) => resolve(&self.core, request, value, failure),
             Effect::Configuration(request) => resolve(&self.core, request, value, failure),
+            Effect::Repository(request) => resolve(&self.core, request, value, failure),
             Effect::Render(_) | Effect::HostInfo(_) => Ok(Vec::new()),
         }?;
+        effects.extend(self.tick());
+        if refresh_workspace {
+            effects.extend(self.core.process_event(Event::Workspace(
+                app_core::workspace::Event::RefreshWorkspace,
+            )));
+            effects.extend(self.core.process_event(Event::Workspace(
+                app_core::workspace::Event::RefreshPresence,
+            )));
+        }
+        for event in self.coordination.connect(&self.core.view()) {
+            effects.extend(self.core.process_event(event));
+        }
         self.enqueue(effects)
+    }
+
+    fn tick(&self) -> Vec<Effect> {
+        let Some(now) = self.coordination.now_ms else {
+            return Vec::new();
+        };
+        [
+            Event::Workspace(app_core::workspace::Event::Tick(now)),
+            Event::Resources(app_core::resources::Event::AdvanceClock(now)),
+            Event::Sessions(app_core::sessions::Event::Tick(now)),
+        ]
+        .into_iter()
+        .flat_map(|event| self.core.process_event(event))
+        .collect()
     }
 
     fn enqueue(&mut self, mut effects: Vec<Effect>) -> Result<Vec<Call>, String> {
@@ -161,7 +259,7 @@ impl Runtime {
                 );
                 continue;
             }
-            let (method, operation) = match &effect {
+            let (mut method, operation) = match &effect {
                 Effect::Workspace(request) => ("app.workspace", json!(request.operation)),
                 Effect::History(request) => ("app.history", json!(request.operation)),
                 Effect::Subscription(request) => ("app.subscription", json!(request.operation)),
@@ -169,6 +267,7 @@ impl Runtime {
                 Effect::Projection(request) => ("app.projection", json!(request.operation)),
                 Effect::Resource(request) => ("app.resource", json!(request.operation)),
                 Effect::Configuration(request) => ("app.configuration", json!(request.operation)),
+                Effect::Repository(request) => ("app.repository", json!(request.operation)),
                 Effect::Render(_) | Effect::HostInfo(_) => continue,
             };
             self.next = self
@@ -176,11 +275,22 @@ impl Runtime {
                 .checked_add(1)
                 .ok_or("Host request identities exhausted")?;
             let id = format!("app:{}", self.next);
-            calls.push(Call { id: id.clone(), method, params: json!({
-                "operation": operation, "binding": self.core.view().workspace.repository_binding,
-            }) });
+            let params = if let Some(params) =
+                self.coordination.route(&effect, &self.core.view(), &id)
+            {
+                method = "app.coordination";
+                params
+            } else {
+                json!({"operation": operation, "binding": self.core.view().workspace.repository_binding})
+            };
+            calls.push(Call {
+                id: id.clone(),
+                method,
+                params,
+            });
             let _previous = self.pending.insert(id, effect);
         }
+        calls.extend(self.collect_drafts());
         Ok(calls)
     }
 }
@@ -209,7 +319,11 @@ fn unavailable(effect: &Effect, message: &str) -> Value {
         Effect::Session(_) | Effect::Resource(_) => {
             json!({ "code": "Unavailable", "message": message, "retry": "Never" })
         }
-        Effect::History(_) | Effect::Projection(_) | Effect::HostInfo(_) | Effect::Render(_) => {
+        Effect::History(_)
+        | Effect::Projection(_)
+        | Effect::Repository(_)
+        | Effect::HostInfo(_)
+        | Effect::Render(_) => {
             json!({ "message": message })
         }
     };

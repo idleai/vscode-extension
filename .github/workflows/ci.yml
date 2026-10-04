@@ -21,13 +21,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: idleai/app-core
-          ref: 038c29d081d141201381406e58fac2538676a70b
+          ref: 81fa331076848ada3d14cad63223b84e9dcfe4a7
           path: app-core
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: idleai/web-ui
-          ref: 5a6567ca240eb077894e8ef7add69484713af019
+          ref: 7512aa6617588ef675d10d4acda8c4a49a81c0b4
           path: web-ui
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: idleai/host-tools
-          ref: edb3989d04e12fbc2ba4dd60b911d7bc1332e5a6
+          ref: cb2ab122a0af387f5e454312f754f79a9ee6b115
           path: host-tools
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
@@ -89,3 +89,12 @@ jobs:
           name: idle-vscode
           path: vscode-extension/idle.vsix
           if-no-files-found: error
+      - name: Install desktop VS Code for isolated extension checks
+        run: |
+          mkdir -p "$RUNNER_TEMP/idle-vscode"
+          curl --fail --location --retry 3 https://update.code.visualstudio.com/1.140.0/linux-x64/stable -o "$RUNNER_TEMP/idle-vscode/archive.tar.gz"
+          tar -xzf "$RUNNER_TEMP/idle-vscode/archive.tar.gz" -C "$RUNNER_TEMP/idle-vscode"
+      - name: Verify installed VSIX in an isolated VS Code profile
+        env:
+          VSCODE_BIN: ${{ runner.temp }}/idle-vscode/VSCode-linux-x64/bin/code
+        run: npm run test:vscode

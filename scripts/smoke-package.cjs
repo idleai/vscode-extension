@@ -9,6 +9,7 @@ const { pathToFileURL } = require('node:url');
 const { fixture, uri } = require('../test/helpers/vscode.cjs');
 const { smokeCapture } = require('./smoke-capture.cjs');
 const { smokeHistory } = require('./smoke-history.cjs');
+const { smokeCoordination } = require('./smoke-coordination.cjs');
 const { smokeCollection } = require('./smoke-collection.cjs');
 
 async function main() {
@@ -27,12 +28,13 @@ async function main() {
     assert.ok(files.includes(`extension/${captureBinary}`));
     const historyBinary = `bin/${process.platform}-${process.arch}/idle-history-service${process.platform === 'win32' ? '.exe' : ''}`;
     assert.ok(files.includes(`extension/${historyBinary}`));
-    for (const name of ['idle-history-collector', 'codex-session-exporter', 'editchain-peer']) {
+    for (const name of ['idle-history-collector', 'codex-session-exporter', 'editchain-peer', 'idle-coordination', 'idle-repository']) {
       assert.ok(files.includes(`extension/bin/${process.platform}-${process.arch}/${name}${process.platform === 'win32' ? '.exe' : ''}`));
     }
     assert.ok(!files.some(file => file.includes('/node_modules/') || file.includes('/out/host/') || file.endsWith('.map')));
     execFileSync('unzip', ['-q', archive, '-d', temporary]);
     const entry = path.join(temporary, 'extension/out/extension.js');
+    f.context.globalStorageUri = uri(pathToFileURL(path.join(temporary, 'private')).toString());
     f.context.extensionUri = uri(pathToFileURL(path.join(temporary, 'extension')).toString());
     Module._load = function(name, ...args) {
       if (name === 'vscode') return f.api;
@@ -57,6 +59,7 @@ async function main() {
     peerState.begin();
     assert.equal(peerState.status, 'Connecting');
     peerState.free();
+    await smokeCoordination(host, f, temporary);
     await smokeHistory(host, f, path.join(temporary, 'extension', historyBinary), path.join(temporary, 'extension'));
     await extension.deactivate();
     assert.deepEqual(external, []);

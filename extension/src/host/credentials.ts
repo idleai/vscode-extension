@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { HostError } from "./protocol";
 
 export const GITHUB_SCOPES = ["read:user", "read:org"] as const;
+export const GITHUB_REPOSITORY_SCOPES = ["repo", "read:user", "read:org"] as const;
 export interface Account { readonly id: string; readonly label: string }
 
 /** VS Code stores credentials. Tokens never cross the webview boundary. */
@@ -21,6 +22,23 @@ export class HostCredentials implements vscode.Disposable {
   async account(interactive = false): Promise<Account | undefined> {
     const session = await this.session(interactive);
     return session && { id: session.account.id, label: session.account.label };
+  }
+
+  /** Repository access is requested only by its explicit connect action. */
+  async repositorySession(interactive = false): Promise<vscode.AuthenticationSession | undefined> {
+    this.assertTrusted();
+    const generation = this.generation;
+    let session: vscode.AuthenticationSession | undefined;
+    try {
+      session = await vscode.authentication.getSession("github", GITHUB_REPOSITORY_SCOPES,
+        interactive ? { createIfNone: true } : { silent: true });
+      if (!session && !interactive) session = await this.session(false);
+    } catch {
+      throw new HostError("authentication_failed", "GitHub repository authentication was cancelled or is unavailable.");
+    }
+    this.assertTrusted();
+    if (!interactive && generation !== this.generation) throw new HostError("account_changed", "The GitHub account changed during the repository read.");
+    return session;
   }
 
   /** Every use rechecks trust and identity, including SDK refresh callbacks. */

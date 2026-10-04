@@ -40,6 +40,8 @@ export function activate(context: vscode.ExtensionContext): HostServices {
     register("idle.restartNative", async () => {
       host.configuration.assertTrusted();
       host.native.reset();
+      host.coordination.reset();
+      provider.broadcast("host.configurationChanged", host.configuration.snapshot());
       await Promise.all([host.history.restart(), host.capture.restart(), host.collection.restart(), host.sharing.reset(true)]);
       host.diagnostics.append("Native adapters restarted.");
     }),
