@@ -684,6 +684,7 @@ fn native_projection_reads_real_activity_and_rejects_other_bindings() {
             chain: "chain".into(),
         },
         limit: 20,
+        refresh_sources: false,
     };
     let installed = service::Binding {
         repository: binding(),

@@ -6,7 +6,7 @@ Workspace, Users, Sessions, Projections, Compute hosts, Model providers and comp
 Activity stay in that order, followed by Settings and Agent Rules. Selecting
 Activity opens the full history inspector; selecting Projections mounts f33's
 panels. The detail tab exposes the same complete set of destinations. Each document
-has separate selection and presentation state. Shell protocol 13 includes the
+has separate selection and presentation state. Shell protocol 14 includes the
 shared repository state and exact recorded-session selections. Capture, bindings and native
 processes belong to the extension lifetime.
 
@@ -61,9 +61,13 @@ adapter. Recorded Activity has source references, bounded reads and explicit gap
 The packaged `idle-repository` supplies Tasks from open GitHub issues/PRs,
 Errors from failed HEAD checks/runs, and Triage/human input from explicit labels
 or requested reviewers. Exact stored response hashes are checked before rows are
-admitted. Missing or changed sources remove affected rows with partial coverage;
+admitted. Missing or changed sources, including missing or corrupt Original
+bytes, remove affected rows with partial coverage;
 a repository failure leaves local Activity readable. Source-page buttons use the
 host external-link capability. An unavailable source never becomes a zero total.
+Manual projection refresh revalidates GitHub sources, including when a recent
+automatic read is cached or in progress. Background history changes keep their
+normal source refresh bounds.
 
 Collection and peer receipts publish scoped `history.changed` events. The Rust
 runtime refreshes history and derived projections only for its current binding.
@@ -91,13 +95,17 @@ ID, deadline, revision and complete JSON command. Reopening recovers uncertain
 saves without automatic resubmission. Conflicts retain the original draft and
 require explicit review of the current saved revision. Unknown fields and exact
 64-bit revisions survive the JavaScript boundary.
+Edits made while draft storage is loading retain their text and recover any
+original unresolved save. New saves wait until that request is resolved.
 
 The repository overview resolves the selected checkout, branch, HEAD, worktree
 status and sanitized remote. Users separates local membership/presence from Git
 authors, GitHub contributors and accessible collaborators. Recorded sessions keep
 full logical IDs, recorded labels and exact source records. Selection is retained
-per contributor, binding and surface; it survives view and host restart. Native
-reads share in-flight work, cancel each waiter independently and discard account
+per contributor, binding and surface; it survives view and host restart. Recorded
+history stays visible when the selection is cleared. A delayed repository read
+may restore the saved session preference without filtering an open Activity view.
+Native reads share in-flight work, cancel each waiter independently and discard account
 caches on replacement. Automatic updates reuse GitHub data for up to 60 seconds
 with its original check time; explicit refresh revalidates it. Git reads work
 offline and never fetch. See the [shared reader contract](../../host-tools/docs/repository.md).
@@ -131,9 +139,9 @@ build inputs only. Build a platform-specific VSIX for each destination host.
 
 | Repository | Revision |
 | --- | --- |
-| app-core | `e867c4f4580d91fcf72a3cf3bb02d8ed8a9404c7` |
-| web-ui | `ca419d8eeb89bc33250d8b0ea1a56d23d129600a` |
-| host-tools | `2a1f861ce78907fc36bfc3d212de58e0903a7ec1` |
+| app-core | `81fa331076848ada3d14cad63223b84e9dcfe4a7` |
+| web-ui | `7512aa6617588ef675d10d4acda8c4a49a81c0b4` |
+| host-tools | `cb2ab122a0af387f5e454312f754f79a9ee6b115` |
 | EditChain | `45b94c95a2cb185a59e58cf0763f589c666ab1e6` |
 | Codex exporter | `903d7f1c62c621cf1f925362ac88893ec1f36b07` |
 
@@ -144,7 +152,8 @@ workspaces and packaged native tools. The assembly check covers navigation,
 compact Activity, projection availability, multiple folders, exact previews,
 recorded updates, host theme changes, Git authors, recorded-session selection
 recovery, projection source URLs, exact stored Originals, conditional saves and
-document reconnection.
+document reconnection. Regression checks also cover clearing the session filter,
+late selection restoration, manual source refresh and edits during save recovery.
 
 Run `VSCODE_BIN=/absolute/path/to/code npm run test:vscode` on Linux with
 `xvfb-run` available. This installs the VSIX into a disposable extension directory,

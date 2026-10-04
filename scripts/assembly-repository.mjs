@@ -31,8 +31,30 @@ export async function checkRepository(browser, origin, records, fixture, enableP
     await page.waitForSelector(selected);
     await remembered(page);
     await capture(page, 'sessions', savePage);
+    await click(page, 'Show all recorded history');
+    await page.waitForFunction(() => {
+      const request = window.assemblyFixture.requests.findLast(request => request.method === 'app.history' && request.params.operation.action.History);
+      return request?.params.operation.action.History.filter.session === null
+        && window.assemblyFixture.responses.some(response => response.request.id === request.id);
+    });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert(await page.$('#idle-recorded-history'), 'clearing the session keeps the history graph mounted');
+    assert.equal(await page.$eval('#idle-search', input => input.type), 'search', 'clearing the session keeps history search mounted');
+    await click(page, 'Imported smoke session');
+    await page.waitForSelector(selected);
+    await remembered(page);
     await page.close();
-    page = await open(browser, origin, 'sidebar', errors);
+    page = await open(browser, origin, 'sidebar', errors, true);
+    await click(page, 'Activity');
+    await page.waitForSelector('#idle-history [role="treeitem"]');
+    await page.waitForFunction(() => window.assemblyFixture.held.length > 0);
+    await page.evaluate(() => {
+      window.assemblyFixture.holdMethod = undefined;
+      for (const data of window.assemblyFixture.held.splice(0)) window.dispatchEvent(new MessageEvent('message', { data }));
+    });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const restoredHistory = await page.evaluate(() => window.assemblyFixture.requests.findLast(request => request.method === 'app.history' && request.params.operation.action.History));
+    assert.equal(restoredHistory.params.operation.action.History.filter.session, null, 'delayed session restoration leaves Activity unfiltered');
     await click(page, 'Sessions');
     await page.waitForSelector(selected);
     await page.waitForSelector('#idle-recorded-history [role="treeitem"]');
@@ -47,6 +69,7 @@ export async function checkRepository(browser, origin, records, fixture, enableP
     await click(page, 'Projections');
     await click(page, 'Refresh projections');
     await page.waitForFunction(() => document.body.textContent.includes('Repository fixture need_input'));
+    assert(await page.evaluate(() => window.assemblyFixture.requests.some(request => request.method === 'app.projection' && request.params.operation.refresh_sources === true)), 'manual refresh revalidates upstream sources');
     for (const kind of ['task', 'error', 'triage', 'need_input']) assert(await page.evaluate(kind => document.body.textContent.includes(`Repository fixture ${kind}`), kind));
     const before = fixture.calls.external.length;
     await click(page, 'Open source page');
@@ -66,7 +89,7 @@ export async function checkRepository(browser, origin, records, fixture, enableP
   } finally { if (passed) await page.close(); }
 }
 
-async function open(browser, origin, kind, errors) {
+async function open(browser, origin, kind, errors, holdRepository = false) {
   const page = await browser.newPage();
   page.on('pageerror', error => errors.push(String(error)));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -74,6 +97,7 @@ async function open(browser, origin, kind, errors) {
   await page.goto(`${origin}/?kind=${kind}`);
   await page.waitForSelector('select[id$=-workspace] option[value^="local-workspace:"]');
   const workspace = await page.$eval('select[id$=-workspace] option[value^="local-workspace:"]', option => option.value);
+  if (holdRepository) await page.evaluate(() => { window.assemblyFixture.holdMethod = 'app.repository'; });
   await page.select('select[id$=-workspace]', workspace);
   return page;
 }

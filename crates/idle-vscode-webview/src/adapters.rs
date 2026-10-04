@@ -143,7 +143,7 @@ impl Runtime {
             return Ok(Vec::new());
         }
         let mut calls = self.dispatch(Event::History(app_core::history::Event::Refresh))?;
-        calls.extend(self.dispatch(Event::Projections(app_core::projections::Event::Refresh))?);
+        calls.extend(self.dispatch(Event::Projections(app_core::projections::Event::Changed))?);
         calls.extend(self.dispatch(Event::Repository(app_core::repository::Event::Changed))?);
         Ok(calls)
     }

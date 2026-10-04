@@ -93,7 +93,8 @@ export class AssemblyHost implements vscode.Disposable {
     if (!this.repository) return this.history.projection(params, context.signal);
     const { config, binding } = this.selected(params);
     let inputs: unknown[] | undefined;
-    try { inputs = (await this.repository.snapshot(config, binding, context.signal)).projections; }
+    const refresh = record(params) && record(params.operation) && params.operation.refresh_sources === true;
+    try { inputs = (await this.repository.snapshot(config, binding, context.signal, refresh ? 'refresh' : 'projection')).projections; }
     catch (error) {
       if (context.signal.aborted || (error instanceof HostError && error.code === 'cancelled')) throw error;
       this.report(config.folder.name, error);

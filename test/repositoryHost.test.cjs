@@ -7,9 +7,11 @@ const path = require('node:path');
 const { fixture, loadWithVSCode, uri } = require('./helpers/vscode.cjs');
 const { fakeChild } = require('./fixtures/process-fake.cjs');
 const { FrameDecoder } = require('../out/host/frameDecoder');
+const { HostEffects } = require('../out/host/effects');
 const f = fixture();
 const { HostConfiguration } = loadWithVSCode('../../out/host/configuration', f.api);
 const { RepositoryHost } = loadWithVSCode('../../out/host/repository', f.api);
+const { AssemblyHost } = loadWithVSCode('../../out/host/assembly', f.api);
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const binding = { workspace_id: 'workspace', repository_id: 'repository', chain: 'chain' };
 const operation = action => ({ operation: { context: { connection: { provider: 'idle-local', workspace: 'workspace', contributor: 'member', chain: 'chain' }, repository_id: 'repository' }, action } });
@@ -39,8 +41,8 @@ async function harness(t) {
   const configuration = new HostConfiguration(directory);
   const host = new RepositoryHost(f.context, configuration, { repositorySession: async () => session }, async () => 'member');
   const config = configuration.forResource(f.api.workspace.workspaceFolders[0].uri);
-  const result = (value = 'read') => ({ repository: { scope: binding, value }, projections: [] });
-  const reply = (child = children.at(-1), value) => child.reply({ id: child.requests.at(-1).id, body: { Ok: result(value) } });
+  const result = (value = 'read', scope = binding) => ({ repository: { scope, value }, projections: [] });
+  const reply = (child = children.at(-1), value, scope) => child.reply({ id: child.requests.at(-1).id, body: { Ok: result(value, scope) } });
   t.after(async () => { await host.shutdown(); await fs.rm(directory, { recursive: true, force: true }); });
   return { host, config, children, reply, result, setSession: value => { session = value; } };
 }
@@ -61,6 +63,34 @@ test('two views share one read and closing one promptly cancels only its waiter'
   assert.deepEqual(await second, h.result());
   assert.deepEqual(await h.host.snapshot(h.config, binding, new AbortController().signal), h.result());
   assert.equal(h.children[0].requests.length, 1, 'projection reuses the recent bound snapshot');
+});
+
+test('manual projection refresh bypasses recent results and revalidates GitHub', { timeout: 5000 }, async t => {
+  const h = await harness(t);
+  const effects = new HostEffects(() => true);
+  const installed = [];
+  const history = {
+    connect(value) { installed.push(value.repository); return { dispose() {} }; },
+    async projection(params, signal, inputs) { return inputs; },
+  };
+  const assembly = new AssemblyHost(new HostConfiguration('/extension'), history, effects,
+    (_folder, error) => assert.fail(String(error)), undefined, h.host);
+  t.after(() => { assembly.dispose(); effects.dispose(); });
+  await effects.execute('app.workspace', { operation: 'List' }, context());
+  const selected = installed[0];
+  const params = refresh_sources => ({ binding: selected, operation: { refresh_sources } });
+  const initial = effects.execute('app.projection', params(false), context());
+  await tick();
+  h.reply(undefined, 'initial', selected);
+  await initial;
+  await effects.execute('app.projection', params(false), context());
+  assert.equal(h.children[0].requests.length, 1, 'automatic updates can share recent results');
+  const manual = effects.execute('app.projection', params(true), context());
+  await tick();
+  assert.equal(h.children[0].requests.length, 2, 'manual refresh bypasses the host cache');
+  assert.equal(h.children[0].requests[1].body.refresh_github, true, 'manual refresh reaches the native GitHub reader');
+  h.reply(undefined, 'refreshed', selected);
+  await manual;
 });
 
 test('closing the last waiter stops the reader and a later view starts a new one', { timeout: 5000 }, async t => {
