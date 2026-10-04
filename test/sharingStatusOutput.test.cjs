@@ -199,7 +199,7 @@ test('unknown totals, empty checks, missing content and a new pass have explicit
 });
 
 test('work validation rejects contradictory counts and percentages never round incomplete work to 100', () => {
-  const { validWorkProgress, checkPercent } = require('@idle/history-runtime/progress');
+  const { validWorkProgress, checkPercent } = require('../out/sharing/progress');
   assert.equal(validWorkProgress(work()), true);
   for (const incoming of [check({ checked_records: 1001 }), check({ checked_records: -1 }), check({ total_records: NaN }),
     check({ total_records: null, complete: true }), check({ complete: true }), check({ total_records: Number.MAX_SAFE_INTEGER + 1 })]) {
@@ -224,7 +224,7 @@ test('completed checks stay quiet across unchanged passes', t => {
 });
 
 test('effective outgoing scope is visible and a new cutoff updates without a receipt', t => {
-  const { describeScope, validScope } = require('@idle/history-runtime/scope');
+  const { describeScope, validScope } = require('../out/sharing/scope');
   const { sharingDetails } = require('../out/sharing/statusBar');
   const scope = { space: 'test-space', mode: 'all', active: true, revision: 1, cutoff_ms: null, legacy_excluded_records: 0 };
   const { lines, output, tick } = observe(t, { ...status(), scope });

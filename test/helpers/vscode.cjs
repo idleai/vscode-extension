@@ -27,6 +27,7 @@ function fixture() {
     FileSystemError: { NoPermissions: message => Object.assign(new Error(message), { code: 'NoPermissions' }) },
     Uri: { parse: uri, joinPath: (base, ...parts) => uri(`${base.toString()}/${parts.join('/')}`) },
     StatusBarAlignment: { Left: 1, Right: 2 }, ViewColumn: { Active: 1 },
+    ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
     CodeLens: class { constructor(range, command) { this.range = range; this.command = command; } },
     Range: class { constructor(...coordinates) { this.coordinates = coordinates; } },
     ThemeColor: class { constructor(id) { this.id = id; } },

@@ -1,10 +1,12 @@
 // Synthetic VS Code API for the packaged application/native-service integration.
 let state;
 let acquired = false;
-const fixture = window.assemblyFixture = { requests: [], responses: [], held: [], holdMethod: undefined };
+const fixture = window.assemblyFixture = { requests: [], responses: [], held: [], timeouts: [], holdMethod: undefined };
 const nativeTimeout = window.setTimeout.bind(window);
-window.setTimeout = (callback, delay, ...args) => nativeTimeout(callback,
-  delay === 60_000 && fixture.holdMethod === "host.ready" ? 100 : delay, ...args);
+window.setTimeout = (callback, delay, ...args) => {
+  if (delay >= 60_000) fixture.timeouts.push(delay);
+  return nativeTimeout(callback, delay === 60_000 && fixture.holdMethod === "host.ready" ? 100 : delay, ...args);
+};
 window.acquireVsCodeApi = () => {
   if (acquired) throw new Error("The editor API was acquired twice.");
   acquired = true;

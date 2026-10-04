@@ -1,40 +1,32 @@
 'use strict';
-
-const { test } = require('node:test');
+const test = require('node:test');
 const assert = require('node:assert/strict');
-const { SharedConnection, SharedJoin } = require('../dist/peer-state/idle_peer_state.js');
-const connectionState = () => new SharedConnection();
-const joinState = () => new SharedJoin();
+const { environment, until } = require('./helpers/sharing.cjs');
 
-test('the shipped Rust join model rejects an approval after stop and resume', () => {
-  const state = joinState();
-  const old = state.generation;
-  state.retire();
-  assert.equal(state.enable(state.generation), true);
-  assert.equal(state.enable(old), false);
-  assert.equal(state.is_current(old), false);
-  assert.equal(state.enabled, true);
+test('native status stays stopped after a delayed command and resumes only retained approvals', async () => {
+  const env = environment();
+  try {
+    const a = env.files.workspace('a'), b = env.files.workspace('b');
+    const host = env.create(a), guest = env.create(b);
+    const request = await guest.joinRequest();
+    await host.stop();
+    await assert.rejects(host.hostHistory(request, true), { code: 'cancelled' });
+    assert.equal(host.status().enabled, false);
+    const resumed = env.create(a);
+    await assert.rejects(resumed.resume(), { code: 'invalid_request' });
+    assert.equal(resumed.status().enabled, false);
+  } finally { await env.stop(); }
 });
 
-test('the shipped Rust connection model waits for reconciliation and late content', () => {
-  const state = connectionState();
-  const token = state.begin();
-  const progress = { accepted: true, synchronizing: false, rounds: 0, unavailable: 0 };
-  state.progress(token, JSON.stringify(progress));
-  assert.equal(state.status, 'Catching up');
-  state.progress(token, JSON.stringify({ ...progress, rounds: 1, unavailable: 1 }));
-  assert.equal(state.status, 'Waiting for content');
-  state.progress(token, JSON.stringify({ ...progress, rounds: 1 }));
-  assert.equal(state.status, 'Live');
-  state.waiting(token);
-  state.waiting(token);
-  assert.equal(state.retry_delay_ms, 1000, 'duplicate failures do not multiply retries');
-  const current = state.begin();
-  state.ready(token);
-  assert.equal(state.status, 'Connecting', 'a late result cannot complete a new attempt');
-  state.ready(current);
-  assert.equal(state.status, 'Live');
-  state.stop();
-  state.waiting(current);
-  assert.equal(state.status, 'Stopped', 'closed connections cannot schedule recovery');
+test('the native status model reports ready only after authenticated inventory and content checks', async () => {
+  const env = environment();
+  try {
+    const a = env.files.workspace('a'), b = env.files.workspace('b'); await a.start(); await a.edit('before', 'after');
+    const host = env.create(a), guest = env.create(b);
+    await guest.joinHistory(await host.hostHistory(await guest.joinRequest(), true), true);
+    await until(() => guest.status().peers.some(peer => peer.state === 'Live'), 'native peer must finish reconciliation');
+    const progress = guest.status().peers[0].progress;
+    assert.equal(progress.accepted, true); assert.equal(progress.incoming.complete, true);
+    assert.equal(progress.pending_records, 0); assert.equal(progress.pending_blobs, 0);
+  } finally { await env.stop(); }
 });

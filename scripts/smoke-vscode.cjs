@@ -57,7 +57,7 @@ exports.activate = async () => {
   const result = JSON.parse(readFileSync(report, 'utf8'));
   assert.equal(result.passed, true);
   assert.equal(result.restarted, true);
-  console.log(`PASS: installed VSIX in VS Code ${result.version}; repository/session reads, exact record/file/diff opens, capture across view closure, and session/draft recovery after process restart.`);
+  console.log(`PASS: installed VSIX in VS Code ${result.version}; dedicated Idle container, repository/session reads, exact record/file/diff opens, capture across view closure, and session/draft recovery after process restart.`);
 } catch (error) {
   const logs = path.join(temporary, 'profile', 'logs');
   if (existsSync(logs)) {

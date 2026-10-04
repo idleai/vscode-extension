@@ -1,8 +1,8 @@
 import { build } from "esbuild";
-import { createRequire } from "node:module";
+import { rm } from "node:fs/promises";
 
-// The installed extension includes the SDKs; it never resolves sibling source
-// checkouts or runtime node_modules. VS Code supplies its own API module.
+// The installed extension bundles VS Code glue; native services own transports.
+await rm("out/extension.js.LEGAL.txt", { force: true });
 await build({
   entryPoints: ["extension/src/extension.ts"],
   outfile: "out/extension.js",
@@ -11,9 +11,6 @@ await build({
   target: "node18",
   format: "cjs",
   external: ["vscode"],
-  // Linked runtime dependencies resolve their optional logging peer here, so
-  // their own node_modules location cannot leave an external require in the VSIX.
-  alias: { "supports-color": createRequire(import.meta.url).resolve("supports-color") },
   sourcemap: false,
   legalComments: "linked",
 });

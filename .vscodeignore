@@ -2,7 +2,9 @@
 !package.json
 !README.md
 !LICENSE
+!resources/idle.svg
 !out/extension.js
 !out/extension.js.LEGAL.txt
 !dist/**
 !bin/**
+dist/peer-state/**

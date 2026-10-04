@@ -1,12 +1,13 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { randomUUID } = require('node:crypto');
-const { execFile, execFileSync } = require('node:child_process');
+const { randomUUID, createHash } = require('node:crypto');
+const { execFile, execFileSync, spawn } = require('node:child_process');
 const { promisify } = require('node:util');
 const { StdioClient } = require('../../out/host/processes');
-const { MultiplayerManager: RuntimeManager } = require('@idle/history-runtime/manager');
-const { SharedConnection, SharedJoin } = require('../../dist/peer-state/idle_peer_state.js');
+const { NativeProcess } = require('../../out/host/nativeProcess');
+const { fixture: vscodeFixture, loadWithVSCode } = require('./vscode.cjs');
+const { NativeSharing } = loadWithVSCode('../../out/sharing/runtime', vscodeFixture().api);
 
 const root = path.resolve(__dirname, '../..');
 const suffix = process.platform === 'win32' ? '.exe' : '';
@@ -14,14 +15,56 @@ const binaries = {
   peer: path.join(root, '../editchain/target/debug/editchain-peer' + suffix),
   service: path.join(root, 'target/debug/idle-editor-service' + suffix),
   engine: path.join(root, '../editchain/target/debug/editchain' + suffix),
+  coordinator: path.join(root, '../host-tools/target/debug/idle-coordination' + suffix),
+  loopback: path.join(root, '../host-tools/target/debug/examples/loopback-coordinator' + suffix),
 };
 
-class MultiplayerManager extends RuntimeManager {
-  constructor(options) {
-    super({ ...options, state: { joinState: () => new SharedJoin(), connectionState: () => new SharedConnection() },
-      relay: options.relay ?? { host() { throw new Error('Network access is not part of this test.'); },
-        client() { throw new Error('Network access is not part of this test.'); }, async remove() {} } });
+const children = new WeakMap();
+function createSharing(local, overrides = {}, production = false) {
+  const key = createHash('sha256').update(local.root).digest('hex');
+  const manager = new NativeSharing({ key, account: 'fixture-account', name: path.basename(local.root), cwd: local.root,
+    chain: local.chain, deviceDirectory: local.device, stateDirectory: path.join(local.root, '.sharing'),
+    credential: async () => { throw new Error('The loopback fixture must not request cloud credentials.'); },
+    changed() {}, async saveEnabled() {}, ...overrides,
+  }, root, { spawn: (_binary, args, options) => {
+    const child = spawn(production ? binaries.coordinator : binaries.loopback, args, options);
+    children.set(manager, child); return child;
+  } });
+  return manager;
+}
+async function crash(manager) {
+  const child = children.get(manager);
+  if (child && child.exitCode === null && child.signalCode === null) {
+    const ended = new Promise(resolve => child.once('exit', resolve)); child.kill('SIGKILL'); await ended;
   }
+}
+
+
+async function control(request) {
+  let resolve, reject;
+  const response = new Promise((done, failed) => { resolve = done; reject = failed; });
+  const native = new NativeProcess({ frame: bytes => resolve(JSON.parse(bytes)), closed: reject });
+  const timer = setTimeout(() => reject(new Error('Native fixture control timed out.')), 30_000);
+  try {
+    native.start(binaries.peer);
+    await native.write([JSON.stringify(request)]);
+    const reply = await response;
+    assertNative(reply);
+    return reply.result;
+  } finally { clearTimeout(timer); await native.shutdown(); }
+}
+function assertNative(reply) {
+  if (reply?.ok !== true) throw new Error('Native fixture control failed.');
+}
+function decode(text) { return JSON.parse(Buffer.from(text.slice('editchain:'.length), 'base64url')); }
+function encode(value) { return 'editchain:' + Buffer.from(JSON.stringify(value)).toString('base64url'); }
+
+function environment() {
+  const files = fixture(), managers = new Map();
+  return { files, create(local, options) {
+    const manager = createSharing(local, options); managers.set(local.root, manager); return manager;
+  }, async stopSharing() { await Promise.all([...managers.values()].map(manager => manager.stop())); managers.clear(); },
+  async stop() { await Promise.all([...managers.values()].map(manager => manager.stop())); managers.clear(); await files.stop(); } };
 }
 
 function fixture() {
@@ -110,4 +153,4 @@ async function diffs(local) {
   return values;
 }
 
-module.exports = { fixture, binaries, until, blobs, rows, diffs, query, MultiplayerManager };
+module.exports = { fixture, binaries, until, blobs, rows, diffs, query, createSharing, control, decode, encode, environment, crash };

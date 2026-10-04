@@ -28,6 +28,9 @@ exports.smokeCoordination = async (host, f, temporary) => {
   assert.ok(Number(presence[0].valid_until) > Date.now());
   await assert.rejects(host.effects.execute('app.coordination', { binding, command: '{"kind":"mutate"}' }, context), { code: 'denied' });
   await assert.rejects(host.effects.execute('app.coordination', { binding: { ...binding, chain: 'other-chain' }, command: '{"kind":"snapshot"}' }, context), { code: 'unavailable' });
+  for (const kind of ['host', 'join', 'inspect_invitation', 'import_sharing', 'import_cleanup', 'configure_directory', 'cleanup']) {
+    await assert.rejects(read({ kind }), { code: 'denied' }, 'private sharing operations never become webview effects');
+  }
   const cancel = new AbortController();
   const waiting = host.effects.execute('app.coordination', { binding, command: JSON.stringify({ kind: 'catch_up', data: { after: first.as_of, limit: 256 } }), watch: true }, { ...context, signal: cancel.signal });
   const rejected = assert.rejects(waiting);

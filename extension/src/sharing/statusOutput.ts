@@ -1,7 +1,7 @@
-import type { DiscoveryStatus } from '@idle/history-runtime/discovery';
-import type { SharingStatus } from '@idle/history-runtime/manager';
-import { describeCheck, describeDownload, workSignature } from '@idle/history-runtime/progress';
-import { describeScope } from '@idle/history-runtime/scope';
+import type { DiscoveryStatus } from './types';
+import type { SharingStatus } from './types';
+import { describeCheck, describeDownload, workSignature } from './progress';
+import { describeScope } from './scope';
 
 type Status = SharingStatus & { discovery?: DiscoveryStatus };
 type Peer = SharingStatus['peers'][number];

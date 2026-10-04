@@ -40,23 +40,25 @@ asset-only resource roots and a restrictive
 [webview content security policy](https://code.visualstudio.com/api/extension-guides/webview#content-security-policy).
 
 `host.credentials` adapts VS Code GitHub sessions and namespaced SecretStorage.
-SDK callbacks re-read a token for the originally selected account; only account
-metadata reaches UI. `host.devTunnels()` lazily supplies pinned encrypted relay
-streams, with local port forwarding disabled. Caller-supplied Rust/runtime code
-owns authorization, invitations, peer protocol and reconnect decisions. The generic byte adapter pins the supplied relay key. The standalone sharing
-adapter can explicitly refresh the endpoint of the same relay resource after
-a host restart; native mutual TLS still requires the approved device certificate.
+The packaged `idle-coordination` process owns sharing, Microsoft relay adapters,
+reconnect policy, device approvals, discovery and cleanup. VS Code sends approved
+commands over a private framed pipe and answers on-demand credential requests.
+Each callback rechecks Workspace Trust and the selected account. Repository
+discovery uses its separately approved GitHub session. Tokens never enter native
+configuration, process arguments, status events or webview messages.
 
-Tunnel shutdown suspends established leases and removes incomplete new hosts;
-explicit `stop()` deletes a resource. An account-scoped journal retains cleanup
-markers, checks known active window/process leases and releases them on shutdown.
-It is a local VS Code cleanup journal, not a distributed ownership service.
-Cancelled SDK calls dispose late streams/resources, and failed cleanup remains
-retryable. SDK SSH disconnect/close events terminate the owned Node streams;
-destroying a V2 stream also disposes its encryption session. Default automated
-tests use injected SDKs and real local encrypted SSH
-streams. The opt-in live probe below exercises the migrated adapters against the
-Microsoft relay with both endpoints on one machine.
+Sharing uses one native owner per physical folder, chain and account. Its private
+state lock prevents two windows from owning the same saved session. Metadata and
+configuration reads use the same Rust service library through a separate local
+authority binding. Their webview allowlist excludes sharing and credential
+commands. All network transports and peer policy remain in Rust.
+
+Native journals keep exact resource ownership across suspension and failed
+cleanup. The old VS Code marker journal remains solely for migration: active
+window leases are respected, and a marker is removed only after native storage
+acknowledges it. The native and upstream SDK suites check ownership, host keys,
+transport backpressure, reconnection and cleanup. Extension tests exercise native
+processes and production capture with a loopback relay fixture.
 
 Commands: **Open Workspace**, **Open Detail View**, **Show Output**, **Open Extension
 Settings**, **Restart Native Adapters**, **Sign In to GitHub**, **Show File Peers**, and **Clean Up Dev
@@ -129,24 +131,16 @@ revocation, expiry, branch changes, multi-root isolation and cancellation.
 
 ## Live relay probe
 
-With an existing `gh auth login` for GitHub, run the cloud probe explicitly:
+With an existing `gh auth login` for GitHub, run the shared native probe explicitly:
 
 ```sh
-npm run test:tunnels:live
+npm run test:tunnels:live -- --github-auth
 ```
 
-This creates a temporary private tunnel, verifies 1 MiB of synthetic bytes in each
-direction, suspends/resumes its host, reconnects with the approved new key, rejects
-the previous host key, cancels a live port wait, and deletes the tunnel. It
-checks the service independently for remaining resources. Credentials and relay
-descriptors stay in memory; only cleanup markers are persisted in the printed
-temporary journal path. The probe does not read or transmit workspace files.
-If cleanup fails or the process is killed, retain that journal and, after the
-original process has exited, retry with the same GitHub account:
-
-```sh
-npm run test:tunnels:live -- --cleanup /path/from/probe/cleanup.json
-```
-
-The live probe is separate from CI. It does not cover another machine/network,
-another account, or the assembled multiplayer UI in VS Code.
+Alternatively set `IDLE_TUNNELS_GITHUB_TOKEN` in the probe environment. The probe
+creates a private relay for two synthetic native stores, verifies authenticated
+inventory exchange, reconnect and process restart, then requests owned-resource
+deletion. It retains private native state if cleanup fails. Recovery uses that
+printed state directory with the same account and the native service's `stop`
+command. Credentials stay outside command arguments and configuration files.
+The probe is not part of the default automated checks.

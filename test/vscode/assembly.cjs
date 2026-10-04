@@ -44,6 +44,7 @@ exports.run = async () => {
   const captured = host.capture.revision(document);
   assert.ok(captured, 'capture starts before opening a view');
   assert.equal(await document.save(), true);
+  await vscode.commands.executeCommand('workbench.view.extension.idle');
   await vscode.commands.executeCommand('idle.open');
   await vscode.commands.executeCommand('idle.openDetail');
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');

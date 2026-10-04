@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import puppeteer from "puppeteer-core";
 import { checkConfiguration } from "./assembly-configuration.mjs";
 import { checkRepository, repositoryInputs } from "./assembly-repository.mjs";
+import { checkAuthentication } from "./assembly-authentication.mjs";
 
 // Isolated browser and synthetic chain. This never attaches to the user's editor.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -16,7 +17,7 @@ const chrome = process.env.CHROME_BIN;
 if (!chrome) throw new Error("Set CHROME_BIN to run the assembled extension check.");
 const temporary = await mkdtemp(join(tmpdir(), "idle-assembly-"));
 const require = createRequire(import.meta.url);
-const { fixture, loadWithVSCode } = require("../test/helpers/vscode.cjs");
+const { fixture, view, loadWithVSCode } = require("../test/helpers/vscode.cjs");
 const f = fixture();
 let browser;
 let server;
@@ -49,7 +50,13 @@ try {
     return projectionFixture ? { ...result, projections: repositoryInputs(records.github_source) } : result;
   };
   const { webviewHtml } = loadWithVSCode("../../out/host/webviews", f.api);
-  const { WebviewBridge } = require("../out/host/messageBridge");
+  // Keep transport and host errors in the same compiled bundle. Loading the
+  // source bridge separately would turn packaged HostErrors into generic ones.
+  const provider = f.calls.providers.find(item => item.id === 'idle.workspace').provider;
+  const mounted = view();
+  provider.resolveWebviewView(mounted);
+  const WebviewBridge = [...provider.views][0].bridge.constructor;
+  mounted.dispose();
   const expectedFailures = [];
   server = createServer(async (request, response) => {
     try {
@@ -135,9 +142,10 @@ try {
   const origin = `http://127.0.0.1:${server.address().port}`;
   await checkRepository(browser, origin, records, f, () => { projectionFixture = true; }, errors, savePage);
   await checkConfiguration(browser, origin, errors, savePage);
-  assert.deepEqual(errors, [], "the packaged views have no browser or CSP errors");
   assert.deepEqual(expectedFailures, [], "host operations succeed");
-  console.log("PASS: packaged sidebar/detail, Git repository/authors, recorded sessions and reopened selection, projection URLs/exact Originals, native history, configuration conflicts/drafts and original-request recovery.");
+  await checkAuthentication(browser, origin, f, host, errors, expectedFailures);
+  assert.deepEqual(errors, [], "the packaged views have no browser or CSP errors");
+  console.log("PASS: packaged sidebar/detail, Git repository/authors, recorded sessions and reopened selection, projection URLs/exact Originals, native history, configuration conflicts/drafts, original-request recovery and GitHub authentication/reconnection.");
 } catch (error) {
   for (const [index, page] of (await browser?.pages() ?? []).entries()) {
     try { await savePage(page, `failure-${index}`, process.env.IDLE_ASSEMBLY_OUTPUT ?? join(root, 'outputs', 'assembly')); } catch {}

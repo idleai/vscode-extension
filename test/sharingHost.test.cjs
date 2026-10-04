@@ -1,85 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const path = require('node:path');
-const { fixture, loadWithVSCode } = require('./helpers/vscode.cjs');
-const { HostError } = require('../out/host/protocol');
-
-function deferred() {
-  let resolve;
-  const promise = new Promise(done => { resolve = done; });
-  return { promise, resolve };
-}
-async function until(check) {
-  for (let i = 0; i < 200; i++) { if (check()) return; await new Promise(resolve => setTimeout(resolve, 5)); }
-  assert.fail('Sharing transition did not finish.');
-}
-
-function setup(prepare = () => {}) {
-  const f = fixture(), managers = [], errors = [], notices = [], log = [], secrets = new Map();
-  let selected = 0, accountCalls = 0, tunnelCalls = 0;
-  const configuration = {
-    assertTrusted() { if (!f.api.workspace.isTrusted) throw new HostError('workspace_untrusted', 'Trust is required.'); },
-    forResource(uri) {
-      this.assertTrusted();
-      const folder = f.api.workspace.workspaceFolders.find(folder => folder.uri.toString() === uri.toString());
-      if (!folder) throw new HostError('workspace_unavailable', 'Folder was removed.');
-      return { folder, chainDirectory: path.join(folder.uri.fsPath, f.configuration.get(uri.toString())?.chainDirectory ?? '.editchain') };
-    },
-    peerBinary() { return '/peer'; },
-  };
-  const credentials = {
-    async account() { accountCalls++; return f.api.authentication.session?.account; },
-    async get(key) { return secrets.get(key); },
-    async store(key, _name, value) { secrets.set(key, value); },
-    async delete(key) { secrets.delete(key); },
-  };
-  const diagnostics = { append: value => log.push(value), show() {},
-    failure: (operation, error) => errors.push({ operation, error }),
-    async notify(_level, text) { notices.push(text); },
-    async command(operation, run) { try { return await run(); } catch (error) { errors.push({ operation, error }); } },
-  };
-  f.api.window.showQuickPick = async choices => {
-    f.calls.choices.push(choices);
-    return choices[0]?.folder ? choices[selected] : choices[0];
-  };
-  f.api.window.showInputBox = async () => 'private fixture input';
-  f.api.window.showWarningMessage = async (_text, _options, action) => action;
-  const factory = options => {
-    const state = { enabled: false, hosting: false, peers: [] };
-    const saved = { version: 1, space: 'space', peers: [], host: { marker: 'idle-relay-' + 'a'.repeat(24) } };
-    const manager = {
-      options, stopped: 0, suspended: 0, hosted: [], resumed: [], reconnected: 0,
-      status: () => ({ ...state }), async joinRequest() { return 'public request'; },
-      async inspectRequest() { return { device: { fingerprint: 'a'.repeat(64) } }; },
-      async inspectInvitation() { return { space: 'space', host: { fingerprint: 'b'.repeat(64) } }; },
-      async sharingScope() { return state.enabled ? { active: true, mode: 'all' } : undefined; },
-      async hostHistory(_text, scope) {
-        manager.hosted.push(scope); state.enabled = true; state.hosting = true;
-        await options.saveSpace('space'); await options.saveSession(saved);
-        options.changed(state, false); return 'private invitation';
-      },
-      async joinHistory() { state.enabled = true; await options.saveSession(saved); options.changed(state, false); },
-      async resume(value) { manager.resumed.push(value); state.enabled = true; options.changed(state, false); },
-      async reconnect() { manager.reconnected++; },
-      async devices() { return [{ fingerprint: 'a'.repeat(64) }]; },
-      async revoke() { await options.saveSession(saved); },
-      async changeScope() {},
-      async stop() { manager.stopped++; state.enabled = false; options.changed(state, false); await options.saveSession(undefined); },
-      async suspend() { manager.suspended++; state.enabled = false; options.changed(state, false); },
-    };
-    managers.push(manager); return manager;
-  };
-  delete require.cache[require.resolve('../out/sharing')];
-  const { SharingHost, sharingKey } = loadWithVSCode('../../out/sharing', f.api);
-  const key = index => sharingKey(f.api.workspace.workspaceFolders[index].uri,
-    configuration.forResource(f.api.workspace.workspaceFolders[index].uri).chainDirectory);
-  prepare({ f, credentials, key, secrets });
-  const host = new SharingHost(f.context, configuration, credentials, diagnostics,
-    async () => { tunnelCalls++; return {}; }, factory);
-  return { f, host, managers, errors, notices, log, secrets, credentials, key,
-    choose: index => { selected = index; }, accounts: () => accountCalls, tunnels: () => tunnelCalls,
-    run: name => f.commands.get('idle.sharing.' + name)() };
-}
+const { setup, deferred, until } = require('./helpers/sharingHost.cjs');
 
 test('sharing activation is offline and hosting binds the chosen folder with explicit scope and consent', async () => {
   const s = setup();
@@ -92,7 +13,8 @@ test('sharing activation is offline and hosting binds the chosen folder with exp
     assert.deepEqual(s.managers[0].hosted, [false], 'new records are the first scope choice');
     assert.equal(s.f.context.workspaceState.get('idle.sharing.enabled.' + s.key(0)), undefined);
     assert.equal(s.f.context.workspaceState.get('idle.sharing.enabled.' + s.key(1)), true);
-    assert.ok(s.secrets.has(s.key(1)));
+    assert.equal(s.secrets.size, 0, 'native persistence owns new sessions');
+    assert.equal(s.f.context.workspaceState.get('idle.sharing.account.' + s.key(1)), 'account');
     assert.deepEqual(s.f.calls.clipboard, ['private invitation']);
     const notifications = [];
     const subscription = s.host.onDidChange(uri => notifications.push(uri.toString()));
@@ -119,7 +41,7 @@ test('Stop during a pending approval prevents hosting and the late callback cann
     await s.run('stop');
     approval.resolve('Approve device'); await running;
     assert.deepEqual(s.managers[0].hosted, []);
-    await s.managers[0].options.saveSession({ version: 1, space: 'stale', peers: [] });
+    await s.managers[0].options.saveEnabled(true);
     assert.equal(s.secrets.size, 0);
     assert.equal(s.f.context.workspaceState.get('idle.sharing.enabled.' + s.key(0)), undefined);
     assert.equal(s.errors.at(-1).error.code, 'cancelled');
@@ -176,7 +98,7 @@ test('saved sessions resume only for the approving account and survive a normal 
     assert.deepEqual(s.managers[1].resumed, []);
     assert.equal(s.errors.at(-1).error.code, 'account_changed');
     await s.host.shutdown();
-    assert.equal(s.secrets.size, 2, 'suspension retains private sessions');
+    assert.equal(s.secrets.size, 1, 'only the acknowledged account is migrated; other accounts retain their old copy');
     assert.equal(s.f.context.workspaceState.get('idle.sharing.enabled.' + s.key(0)), true);
   } finally { await s.host.shutdown(); }
 });
@@ -195,5 +117,55 @@ test('untrusted workspaces and denied device consent never enable sharing', asyn
     assert.deepEqual(s.managers[0].hosted, []);
     assert.equal(s.secrets.size, 0);
     assert.deepEqual(s.f.calls.clipboard, []);
+  } finally { await s.host.shutdown(); }
+});
+
+test('a retired migration cannot remove the replacement folder owner after a delayed SecretStorage read', async () => {
+  const gate = deferred(); let delayed = true;
+  const saved = JSON.stringify({ account: 'account', session: { version: 1, space: 'space', peers: [] } });
+  const s = setup(({ f, credentials, key, secrets }) => {
+    f.context.workspaceState.update('idle.sharing.enabled.' + key(0), true);
+    secrets.set(key(0), saved);
+    const original = credentials.get;
+    credentials.get = (...args) => { if (delayed) { delayed = false; return gate.promise; } return original(...args); };
+  });
+  try {
+    await until(() => s.managers.length === 1);
+    await s.host.reset(true);
+    assert.equal(s.managers.length, 2);
+    gate.resolve(saved); await s.host.ready;
+    const status = await s.run('status');
+    assert.equal(status.length, 1);
+    assert.equal(status[0].enabled, true);
+  } finally { gate.resolve(saved); await s.host.shutdown(); }
+});
+
+test('Stop waits for prior workspace flag writes so a late completion cannot re-enable automatic sharing', async () => {
+  const s = setup(), gate = deferred(); let writing = false;
+  try {
+    await s.run('request');
+    const original = s.f.context.workspaceState.update;
+    s.f.context.workspaceState.update = async (key, value) => {
+      if (key.startsWith('idle.sharing.account.')) { writing = true; await gate.promise; }
+      await original(key, value);
+    };
+    const saved = s.managers[0].options.saveEnabled(true);
+    await until(() => writing);
+    const stopped = s.run('stop');
+    gate.resolve(); await Promise.all([saved, stopped]);
+    assert.equal(s.f.context.workspaceState.get('idle.sharing.enabled.' + s.key(0)), undefined);
+  } finally { gate.resolve(); await s.host.shutdown(); }
+});
+
+test('Stop clears native resumption even when that saved folder has no active sharing owner', async () => {
+  const s = setup(({ f, key }) => {
+    f.context.workspaceState.update('idle.sharing.account.' + key(0), 'account');
+  });
+  try {
+    await s.host.ready;
+    assert.equal(s.managers.length, 0);
+    await s.run('stop');
+    assert.equal(s.managers.length, 1);
+    assert.equal(s.managers[0].stopped, 1);
   } finally { await s.host.shutdown(); }
 });

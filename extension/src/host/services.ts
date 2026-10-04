@@ -11,12 +11,10 @@ import { CoordinationHost } from "./coordination";
 import { RepositoryHost } from "./repository";
 import { AssemblyHost } from "./assembly";
 import { HostCredentials } from "./credentials";
-import type { DevTunnelsAdapters } from "./devTunnels";
 import { HostDiagnostics } from "./diagnostics";
 import { HostEffects } from "./effects";
 import { NativeServices } from "./nativeServices";
 import { HostError, publicError, record, textParam } from "./protocol";
-import { TunnelJournal } from "./tunnelJournal";
 import { bridgeDuplex, consumeTransport, writeTransport } from "./transport";
 
 /** Extension-lifetime platform services consumed by capture, history and Rust effects. */
@@ -39,20 +37,17 @@ export class HostServices implements vscode.Disposable {
   readonly onDidChangeContext = this.changed.event;
   /** Byte adapters; the caller/Rust runtime owns protocol interpretation. */
   readonly transport = { bridgeDuplex, consumeTransport, writeTransport };
-  private tunnels: Promise<DevTunnelsAdapters> | undefined;
-  private readonly journals = new Map<DevTunnelsAdapters, TunnelJournal>();
-  private readonly retiring = new Set<Promise<void>>();
-  private closed = false;
   private shutdownWork: Promise<void> | undefined;
   private readonly accountChanged: vscode.Disposable;
 
-  constructor(private readonly context: vscode.ExtensionContext) {
+  constructor(context: vscode.ExtensionContext) {
     this.configuration = new HostConfiguration(context.extensionUri.fsPath);
-    this.credentials = new HostCredentials(context.secrets, () => vscode.workspace.isTrusted);
+    this.credentials = new HostCredentials(context.secrets, () => vscode.workspace.isTrusted,
+      message => this.diagnostics.append(message));
     this.native = new NativeServices(this.configuration);
     this.capture = new CaptureHost(context, this.configuration, this.diagnostics);
     this.collection = new CollectionHost(context, this.configuration, this.diagnostics);
-    this.sharing = new SharingHost(context, this.configuration, this.credentials, this.diagnostics, () => this.devTunnels());
+    this.sharing = new SharingHost(context, this.configuration, this.credentials, this.diagnostics);
     this.history = new HistoryHost(context.extensionUri.fsPath, this.effects, this.diagnostics);
     this.coordination = new CoordinationHost(context, this.configuration);
     this.repository = new RepositoryHost(context, this.configuration, this.credentials, () => this.coordination.contributor());
@@ -70,61 +65,13 @@ export class HostServices implements vscode.Disposable {
       this.history.disconnect();
       this.assembly.reset();
       void this.sharing.reset(false).catch(error => this.diagnostics.failure("Account sharing reset", error));
-      this.retireTunnels();
       this.changed.fire();
     });
     this.registerPlatformEffects();
   }
 
-  /** Called only from trusted native adapters. SDKs, tokens and connection grants stay here. */
-  devTunnels(): Promise<DevTunnelsAdapters> {
-    if (this.closed) return Promise.reject(new HostError("host_closed", "The extension host is shutting down."));
-    this.configuration.assertTrusted();
-    if (!this.tunnels) {
-      const opening = this.openTunnels();
-      this.tunnels = opening;
-      void opening.catch(() => { if (this.tunnels === opening) this.tunnels = undefined; });
-    }
-    return this.tunnels;
-  }
-
-  private async openTunnels(): Promise<DevTunnelsAdapters> {
-    const account = await this.credentials.account();
-    if (!account) throw new HostError("authentication_required", "Run Idle: Sign In to GitHub first.");
-    const { DevTunnelsAdapters: Adapters } = await import("./devTunnels/index.js");
-    if (this.closed) throw new HostError("host_closed", "The extension host is shutting down.");
-    const journal = new TunnelJournal(this.context.globalState, account.id);
-    const adapters = new Adapters({
-      githubToken: this.credentials.tokenProvider(account.id),
-      journal,
-    });
-    this.journals.set(adapters, journal);
-    return adapters;
-  }
-
-  /** Cleanup uses only resource markers recorded for the currently authorized account. */
-  async cleanupTunnels(): Promise<void> {
-    const account = await this.credentials.account();
-    if (!account) throw new HostError("authentication_required", "Run Idle: Sign In to GitHub first.");
-    const adapters = await this.devTunnels();
-    const markers = this.journals.get(adapters)?.inactiveMarkers() ?? [];
-    for (const marker of markers) await adapters.cleanup(marker);
-    await this.diagnostics.notify("info", `Cleaned up ${markers.length} inactive Dev Tunnel resources.`);
-  }
-
-  private retireTunnels(): void {
-    const tunnels = this.tunnels;
-    this.tunnels = undefined;
-    if (!tunnels) return;
-    const work = tunnels.then(async adapters => {
-      try { await adapters.shutdown(); }
-      finally { await this.journals.get(adapters)?.release(); this.journals.delete(adapters); }
-    }).catch(error => {
-      this.diagnostics.failure("Closing Dev Tunnels", error);
-    });
-    this.retiring.add(work);
-    void work.finally(() => this.retiring.delete(work));
-  }
+  /** Cleanup runs in the native sharing service using the authorized account. */
+  cleanupTunnels(): Promise<void> { return this.sharing.cleanup(); }
 
   private registerPlatformEffects(): void {
     this.effects.register("host.ready", () => ({ capabilities: this.effects.available(), configuration: this.configuration.snapshot(), mutation_prefix: randomUUID() }), false);
@@ -153,7 +100,6 @@ export class HostServices implements vscode.Disposable {
   }
 
   private async close(): Promise<void> {
-    this.closed = true;
     this.accountChanged.dispose();
     this.presence.dispose();
     this.activity.dispose();
@@ -163,9 +109,7 @@ export class HostServices implements vscode.Disposable {
     try {
       const services = await Promise.allSettled([this.sharing.shutdown(), this.capture.shutdown(),
         this.collection.shutdown(), this.history.shutdown(), this.native.shutdown(), this.coordination.shutdown(), this.repository.shutdown()]);
-      this.retireTunnels();
-      const tunnels = await Promise.allSettled(this.retiring);
-      if ([...services, ...tunnels].some(result => result.status === "rejected")) {
+      if (services.some(result => result.status === "rejected")) {
         throw new HostError("shutdown_failed", "Some host services did not close successfully.");
       }
     }

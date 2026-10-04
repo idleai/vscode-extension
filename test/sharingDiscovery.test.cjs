@@ -1,92 +1,62 @@
 'use strict';
-const { test } = require('node:test');
+const test = require('node:test');
 const assert = require('node:assert/strict');
-const { GitHubDirectory, DirectorySync, advertisement, advertisementName, repositoryName } = require('@idle/history-runtime/discovery');
-const { NativeWorker, PEER_PROTOCOL } = require('@idle/history-runtime/native');
-const { fixture, binaries, until } = require('./helpers/sharing.cjs');
+const { setup, deferred, until } = require('./helpers/sharingHost.cjs');
 
-async function candidate(files) {
-  const worker = new NativeWorker(binaries.peer);
+test('repository discovery requires explicit host approval and passes only its repository binding to Rust', async () => {
+  const s = setup();
   try {
-    const device = await worker.request({ type: 'identity', device_dir: files.directory + '/device' });
-    return { version: 1, protocol: PEER_PROTOCOL, encoding: 1, space: 'known-space', device, instance: 'idle-relay-' + 'a'.repeat(24),
-      endpoint: { tunnelId: 'known-tunnel', clusterId: 'use', hostId: 'host', hostPublicKeys: ['YWJj'], clientRelayUri: 'wss://use.rel.tunnels.api.visualstudio.com/tunnel' }, expiresAt: Date.now() + 600_000 };
-  } finally { worker.stop(); }
-}
-const response = (body, status = 200) => new Response(status === 204 ? null : JSON.stringify(body), { status });
-
-test('GitHub publication contains only public fields and upserts only after 404', async () => {
-  const files = fixture();
-  try {
-    const ad = await candidate(files), calls = [];
-    const api = new GitHubDirectory('owner/repository', async () => 'private-account-token', async (url, request) => {
-      assert.ok(url.startsWith('https://api.github.com/repos/owner/repository/actions/variables'));
-      assert.equal(request.redirect, 'error');
-      calls.push({ method: request.method, body: request.body });
-      return response({}, request.method === 'PATCH' ? 404 : request.method === 'POST' ? 201 : 204);
-    });
-    await api.publish({ ...ad, connectToken: 'private-invitation-token', arbitrary: 'untrusted extra' });
-    assert.deepEqual(calls.map(call => call.method), ['PATCH', 'POST']);
-    assert.ok(!JSON.stringify(calls).includes('private-account-token'));
-    assert.ok(!JSON.stringify(calls).includes('private-invitation-token'));
-    assert.ok(!JSON.stringify(calls).includes('untrusted extra'));
-    assert.equal(JSON.parse(calls[1].body).name, advertisementName(ad));
-    await api.remove(ad);
-    assert.equal(calls[2].method, 'DELETE');
-    const forbidden = new GitHubDirectory('owner/repository', async () => '', async (_url, request) => {
-      assert.equal(request.method, 'PATCH'); return response({ message: 'secret server details' }, 403);
-    });
-    await assert.rejects(forbidden.publish(ad), error => /HTTP 403/.test(error.message) && !error.message.includes('secret'));
-  } finally { await files.stop(); }
+    await s.run('host');
+    assert.deepEqual(s.f.calls.auth, [], 'hosting never requests discovery permissions');
+    s.f.api.window.showInputBox = async () => 'owner/repository';
+    await s.run('discovery');
+    assert.deepEqual(s.errors, []);
+    assert.deepEqual(s.managers[0].directories, ['owner/repository']);
+    assert.deepEqual(s.f.calls.auth[0].slice(0, 2), ['github', ['repo']]);
+    assert.equal(s.f.calls.auth[0][2].createIfNone, true);
+    assert.deepEqual(s.f.context.workspaceState.get('idle.sharing.directory.' + s.key(0)), { repository: 'owner/repository', account: 'account' });
+    assert.equal(await s.managers[0].options.credential('discovery'), 'TOKEN-NEVER-PRINT');
+    assert.equal(s.f.calls.auth.at(-1)[2].silent, true);
+    assert.ok(!JSON.stringify(s.log).includes('TOKEN-NEVER-PRINT'));
+    s.f.api.window.showQuickPick = async choices => choices[0]?.folder ? choices[0] : choices[1];
+    await s.run('discovery');
+    assert.deepEqual(s.managers[0].directories, ['owner/repository', undefined]);
+    assert.equal(await s.managers[0].options.credential('discovery'), undefined);
+  } finally { await s.host.shutdown(); }
 });
 
-test('directory ignores stale, incompatible, misnamed and other-space advertisements across pages', async () => {
-  const files = fixture();
+test('denied discovery consent and a different repository account cannot configure native publication', async () => {
+  const s = setup();
   try {
-    const ad = await candidate(files);
-    const variable = value => ({ name: advertisementName(value), value: JSON.stringify(value) });
-    let pages = 0;
-    const api = new GitHubDirectory('owner/repository', async () => '', async () => {
-      pages++;
-      return response({ total_count: 35, variables: pages === 1 ? Array.from({ length: 30 }, (_, i) => ({ name: `APP_${i}`, value: 'unrelated' })) : [
-        variable({ ...ad, expiresAt: 1 }), variable({ ...ad, protocol: 99 }), variable({ ...ad, space: 'other-space' }),
-        { ...variable(ad), name: 'EDITCHAIN_PEER_INCORRECT' }, variable(ad),
-      ] });
-    });
-    assert.deepEqual(await api.read('known-space'), [ad]);
-    assert.equal(pages, 2);
-    assert.throws(() => repositoryName('owner/repo/../../secret'), /owner\/repository/);
-    assert.throws(() => advertisement({ ...ad, protocol: 1 }), /Invalid or stale/);
-    assert.throws(() => advertisement({ ...ad, endpoint: { ...ad.endpoint, clientRelayUri: 'https://evil.example/' } }), /Microsoft/);
-    const oversized = new GitHubDirectory('owner/repo', async () => '', async () => new Response('x'.repeat(2 * 1024 * 1024 + 1)));
-    await assert.rejects(oversized.read(ad.space), /limit/);
-    const leaking = new GitHubDirectory('owner/repo', async () => { throw new Error('credential-secret'); });
-    await assert.rejects(leaking.read(ad.space), error => !error.message.includes('credential-secret'));
-  } finally { await files.stop(); }
+    await s.run('host');
+    s.f.api.window.showInputBox = async () => 'owner/repository';
+    s.f.api.window.showWarningMessage = async () => undefined;
+    await s.run('discovery');
+    assert.deepEqual(s.f.calls.auth, []);
+    assert.deepEqual(s.managers[0].directories, []);
+    s.f.api.window.showWarningMessage = async (_message, _options, action) => action;
+    s.f.api.authentication.getSession = async () => ({ account: { id: 'other-account' }, accessToken: 'other-private-token' });
+    await s.run('discovery');
+    assert.equal(s.errors.at(-1).error.code, 'account_changed');
+    assert.deepEqual(s.managers[0].directories, []);
+  } finally { await s.host.shutdown(); }
 });
 
-test('directory outage leaves target connections alone; stopping cancels publication and withdraws its own entry', async () => {
-  const files = fixture();
+test('discovery credentials recheck trust after provider completion and reject a retired owner', async () => {
+  const s = setup(), gate = deferred();
   try {
-    const ad = await candidate(files), states = [], applied = [];
-    let pending = false, removed = false;
-    const api = new GitHubDirectory('owner/repo', async () => '', async (_url, request) => {
-      if (request.method === 'DELETE') { removed = true; return response({}, 204); }
-      pending = true;
-      return new Promise((_resolve, reject) => request.signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true }));
-    });
-    const sync = new DirectorySync(api, { space: () => ad.space, describe: async () => ad, discover: async items => applied.push(items) }, state => states.push(state));
-    const started = sync.start();
-    await until(() => pending, 'publication did not begin');
-    await sync.stop(); await started;
-    assert.equal(removed, true);
-    assert.deepEqual(applied, []);
-    assert.equal(states.at(-1).state, 'Stopped');
-    const unavailable = new DirectorySync(new GitHubDirectory('owner/repo', async () => { throw new Error('offline'); }),
-      { space: () => ad.space, describe: async () => undefined, discover: async items => applied.push(items) }, state => states.push(state));
-    await unavailable.start();
-    assert.equal(states.at(-1).state, 'Unavailable; peer synchronization continues');
-    assert.deepEqual(applied, []);
-    await unavailable.stop();
-  } finally { await files.stop(); }
+    await s.run('host');
+    s.f.api.window.showInputBox = async () => 'owner/repository';
+    await s.run('discovery');
+    let requested = false;
+    s.f.api.authentication.getSession = () => { requested = true; return gate.promise; };
+    const credential = s.managers[0].options.credential('discovery');
+    const denied = assert.rejects(credential, { code: 'workspace_untrusted' });
+    await until(() => requested);
+    s.f.api.workspace.isTrusted = false;
+    gate.resolve({ account: { id: 'account' }, accessToken: 'late-private-token' }); await denied;
+    s.f.api.workspace.isTrusted = true;
+    await s.host.reset(false);
+    await assert.rejects(s.managers[0].options.credential('management'), { code: 'cancelled' });
+  } finally { await s.host.shutdown(); }
 });

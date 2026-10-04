@@ -95,3 +95,65 @@ test('coordinator timeouts remain retryable and permission failures stop retries
   assert.deepEqual(messages(child).at(-1), { kind: 'cancel', data: id });
   t.mock.timers.reset();
 });
+
+test('private credential callbacks remain usable while a service request is waiting', async t => {
+  const child = fakeChild(), requested = [];
+  const client = new CoordinationClient({ spawn: () => child }, async purpose => {
+    requested.push(purpose); return 'private-' + requested.length;
+  });
+  t.after(() => client.shutdown());
+  client.start('/coordinator', {});
+  const call = client.request('{"kind":"cleanup"}');
+  await tick();
+  const id = messages(child)[0].data.id;
+  for (const [index, purpose] of ['management', 'management', 'discovery'].entries()) {
+    reply(child, { kind: 'credential', data: { id: 'credential-' + index, purpose } });
+    await tick();
+    assert.deepEqual(messages(child).at(-1), { kind: 'credential', data: { id: 'credential-' + index, token: 'private-' + (index + 1) } });
+  }
+  reply(child, { version: 1, id, result: { Ok: null } });
+  assert.equal(JSON.parse(await call).result.Ok, null);
+  assert.deepEqual(requested, ['management', 'management', 'discovery'], 'each callback requests current host authorization');
+});
+
+test('credential denial and late provider results never disclose exception text or retired tokens', async t => {
+  const child = fakeChild(); let release;
+  let reject = true;
+  const client = new CoordinationClient({ spawn: () => child }, () => {
+    if (reject) throw new Error('private provider diagnostic');
+    return new Promise(resolve => { release = resolve; });
+  });
+  t.after(() => client.shutdown());
+  client.start('/coordinator', {});
+  reply(child, { kind: 'credential', data: { id: 'denied', purpose: 'management' } });
+  await tick();
+  assert.deepEqual(messages(child), [{ kind: 'credential', data: { id: 'denied', token: null } }]);
+  reject = false;
+  reply(child, { kind: 'credential', data: { id: 'retired', purpose: 'management' } });
+  await tick();
+  await client.shutdown();
+  release('stale private token'); await tick();
+  assert.equal(messages(child).length, 1, 'closed native owners cannot receive late credentials');
+  assert.ok(!JSON.stringify(messages(child)).includes('private'));
+});
+
+test('unknown credential purposes and oversized callback queues close the private connection', async t => {
+  for (const value of [{ id: 'bad', purpose: 'untrusted' }, { id: '', purpose: 'management' }]) {
+    const child = fakeChild();
+    let credentials = 0;
+    const client = new CoordinationClient({ spawn: () => child }, async () => { credentials++; return 'private'; });
+    client.start('/coordinator', {});
+    reply(child, { kind: 'credential', data: value }); await tick();
+    assert.equal(client.isRunning(), false); assert.equal(credentials, 0);
+    await client.shutdown();
+  }
+  const child = fakeChild(), waiting = [];
+  const client = new CoordinationClient({ spawn: () => child }, () => new Promise(resolve => waiting.push(resolve)));
+  t.after(() => client.shutdown());
+  client.start('/coordinator', {});
+  for (let index = 0; index < 9; index++) reply(child, { kind: 'credential', data: { id: String(index), purpose: 'management' } });
+  assert.equal(client.isRunning(), false);
+  assert.equal(waiting.length, 8);
+  waiting.forEach(resolve => resolve('retired')); await tick();
+  assert.deepEqual(messages(child), []);
+});
