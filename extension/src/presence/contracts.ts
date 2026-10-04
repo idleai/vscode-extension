@@ -1,6 +1,6 @@
 import type * as vscode from "vscode";
 
-/** JSON view types from idle-vscode-native::presence, checked by the shared fixture. */
+/** JSON view types from app-core::presence, checked by the shared fixture. */
 export type CoordinationMode = "Standalone" | "Managed";
 export interface RepositoryBinding { workspace_id: string; repository_id: string; chain: string }
 export interface EditorContext {

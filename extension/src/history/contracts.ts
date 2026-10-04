@@ -2,7 +2,7 @@ import type * as vscode from "vscode";
 import { HostError, PublicHostError, record } from "../host/protocol";
 import type { ActivityPreview, ActivityRequest } from "../authorActivity/contracts";
 
-/** JSON contracts shared with idle-vscode-native::history and app-core. */
+/** JSON contracts shared with idle-history-native::history. */
 export interface RepositoryBinding { workspace_id: string; repository_id: string; chain: string }
 export interface RecordReference { operation: string; hash: string }
 export type RecordSource = "current" | "retained";

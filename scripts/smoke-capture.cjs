@@ -79,7 +79,7 @@ async function smokeCapture(binary) {
 
 module.exports = { smokeCapture };
 if (require.main === module) {
-  const metadata = JSON.parse(execFileSync('cargo', ['metadata', '--no-deps', '--locked', '--format-version', '1'], { encoding: 'utf8' }));
+  const metadata = JSON.parse(execFileSync('cargo', ['metadata', '--manifest-path', '../host-tools/Cargo.toml', '--no-deps', '--locked', '--format-version', '1'], { encoding: 'utf8' }));
   const binary = process.argv[2] ?? path.join(metadata.target_directory, 'debug', `idle-editor-service${process.platform === 'win32' ? '.exe' : ''}`);
   smokeCapture(binary).catch(error => { console.error(error); process.exitCode = 1; });
 }

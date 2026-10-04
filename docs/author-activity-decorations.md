@@ -15,7 +15,7 @@ painting ranges. Equal content in another revision, window or checkout does not
 transfer authorship or exposure. Unsaved buffers are supported. Buffers without
 an active capture occurrence display unavailable observations.
 
-The Rust projection in `idle-vscode-native::activity` distinguishes recorded
+The Rust projection in `idle-history-native::activity` distinguishes recorded
 person/agent/tool authors from recorder identities. Editor input receipts can
 arrive later and refer to the exact earlier change. Recorded UTF-16 replacements
 are replayed against their full base snapshot and checked against the resulting

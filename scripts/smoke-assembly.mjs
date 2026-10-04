@@ -28,8 +28,8 @@ try {
   const assets = join(extensionRoot, "dist");
   const workspace = join(temporary, "workspace");
   const otherWorkspace = join(temporary, "other-workspace");
-  execFileSync("cargo", ["run", "--quiet", "--locked", "-p", "idle-vscode-native", "--example", "history-fixture", "--", workspace], { cwd: root, stdio: "inherit" });
-  execFileSync("cargo", ["run", "--quiet", "--locked", "-p", "idle-vscode-native", "--example", "history-fixture", "--", otherWorkspace], { cwd: root, stdio: "inherit" });
+  execFileSync("cargo", ["run", "--manifest-path", "../host-tools/Cargo.toml", "--quiet", "--locked", "-p", "idle-history-native", "--example", "history-fixture", "--", workspace], { cwd: root, stdio: "inherit" });
+  execFileSync("cargo", ["run", "--manifest-path", "../host-tools/Cargo.toml", "--quiet", "--locked", "-p", "idle-history-native", "--example", "history-fixture", "--", otherWorkspace], { cwd: root, stdio: "inherit" });
   execFileSync('git', ['init', '-b', 'main', workspace], { stdio: 'ignore' });
   await writeFile(join(workspace, 'README.txt'), 'Isolated repository fixture.\n');
   execFileSync('git', ['-C', workspace, 'add', 'README.txt']);

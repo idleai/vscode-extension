@@ -3,7 +3,9 @@
 VS Code host for Idle's workspace and history views, editor capture, and native
 history actions. The TypeScript host lives here; shared application state lives
 in `app-core`, Rust/WASM rendering lives in `web-ui`, and shared contracts,
-collection and peer coordination live in `host-tools`.
+capture/history services, collection and peer coordination live in `host-tools`.
+The only Rust crate in this workspace is `idle-vscode-webview`, which mounts the
+shared UI and connects it to the TypeScript host.
 
 Workspace navigation, local metadata and presence, recorded Activity, automatic
 collection, standalone peer sharing, configuration saves, shared resource screens
@@ -23,7 +25,7 @@ repos/
   app-core/
   web-ui/
   editchain/
-  host-tools/           # shared contracts, collection and peer coordination
+  host-tools/           # shared contracts and native services
   codex/                # tools/codex-session-exporter
 ```
 
@@ -115,7 +117,7 @@ This check uses its own workspace, settings and extension directory.
 | Path | Purpose |
 | --- | --- |
 | `extension/src/` | TypeScript activation, platform adapters and editor integration |
-| `crates/` | Native services, editor protocol, capture and WASM integration |
+| `crates/idle-vscode-webview/` | Rust/WASM entrypoint and webview bridge for app-core/web-ui |
 | `docs/` | Platform host, capture, history actions and sharing contracts |
 
 ## Reference

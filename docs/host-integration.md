@@ -110,7 +110,7 @@ branch notifications. Peer summaries remain exactly the supplied records.
 
 Join choices reference an existing `Observe` session grant or `Connect` compute
 grant for the current contributor. On selection, the adapter refreshes shared
-state, calls `presence::prepare_join`, and routes that exact intent through the
+state, calls `app_core::presence::prepare_join`, and routes that exact intent through the
 selected provider's existing authorization and transport. The helper returns
 current discovery references and session runtime identity; it does not issue
 credentials or grants. The authority and runtime still authenticate, authorize
@@ -126,7 +126,7 @@ alongside app-core selection/subscription assembly; f18 and f52 supply their
 standalone and managed services. Until an adapter is installed, **Show File
 Peers** reports unavailable. No production fixture or implicit network
 connection is installed. The native projection and both host adapter modes are
-tested with the same `test/fixtures/peer-view.json` contract fixture, including
+tested with app-core's `crates/app-core/tests/fixtures/peer-view.json` contract fixture, including
 revocation, expiry, branch changes, multi-root isolation and cancellation.
 
 ## Live relay probe

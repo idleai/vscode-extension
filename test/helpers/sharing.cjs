@@ -13,7 +13,7 @@ const root = path.resolve(__dirname, '../..');
 const suffix = process.platform === 'win32' ? '.exe' : '';
 const binaries = {
   peer: path.join(root, '../editchain/target/debug/editchain-peer' + suffix),
-  service: path.join(root, 'target/debug/idle-editor-service' + suffix),
+  service: path.join(root, '../host-tools/target/debug/idle-editor-service' + suffix),
   engine: path.join(root, '../editchain/target/debug/editchain' + suffix),
   coordinator: path.join(root, '../host-tools/target/debug/idle-coordination' + suffix),
   loopback: path.join(root, '../host-tools/target/debug/examples/loopback-coordinator' + suffix),

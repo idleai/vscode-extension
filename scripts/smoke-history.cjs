@@ -10,7 +10,7 @@ async function smokeHistory(host, f, binary, extensionPath) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'idle-native-history-'));
   let lease;
   try {
-    execFileSync('cargo', ['run', '--quiet', '--locked', '-p', 'idle-vscode-native', '--example', 'history-fixture', '--', root], { stdio: 'inherit' });
+    execFileSync('cargo', ['run', '--manifest-path', '../host-tools/Cargo.toml', '--quiet', '--locked', '-p', 'idle-history-native', '--example', 'history-fixture', '--', root], { stdio: 'inherit' });
     const fixture = JSON.parse(await fs.readFile(path.join(root, 'history.json'), 'utf8'));
     const resource = f.api.Uri.parse(pathToFileURL(root).toString());
     f.api.workspace.workspaceFolders = [{ name: 'history', uri: resource }];
