@@ -51,11 +51,11 @@ export class PeerAwarenessHost implements vscode.CodeLensProvider, vscode.Dispos
   /** Replace the explicitly selected binding. No authentication/network work occurs until installed. */
   connect(binding: CheckoutBinding, provider: PeerAwarenessProvider): vscode.Disposable {
     if (this.closed) throw new HostError("host_closed", "The extension host is shutting down.");
-    if (!vscode.workspace.isTrusted) throw new HostError("workspace_untrusted", "Trust this workspace before sharing presence.");
+    if (!vscode.workspace.isTrusted) throw new HostError("workspace_untrusted", "Trust this workspace before sharing your active file and branch.");
     resolveFolder(binding.root);
     if (!binding.context.binding.workspace_id || !binding.context.binding.repository_id || !binding.context.binding.chain ||
         !binding.context.contributor_id || !binding.context.connection_id || binding.root.query || binding.root.fragment) {
-      throw new HostError("invalid_request", "Presence requires an explicit workspace, repository and contributor.");
+      throw new HostError("invalid_request", "Peer activity requires an explicit workspace, repository and contributor.");
     }
     this.disconnect();
     const connection: Connection = {
@@ -136,10 +136,10 @@ export class PeerAwarenessHost implements vscode.CodeLensProvider, vscode.Dispos
           if (this.connection !== connection || connection.serial !== serial || connection.abort.signal.aborted) continue;
           if (!vscode.workspace.isTrusted) { this.disconnect(); return; }
           if (!sameEditor(supplied.editor, editor) || !Number.isSafeInteger(supplied.valid_for_ms) || supplied.valid_for_ms <= 0) {
-            throw new HostError("invalid_presence", "The presence provider returned an invalid editor context or lifetime.");
+            throw new HostError("invalid_presence", "The peer activity provider returned an invalid editor context or lifetime.");
           }
           const expiresAt = started + Math.min(supplied.valid_for_ms, 30_000);
-          if (performance.now() >= expiresAt) throw new HostError("stale_presence", "The presence response expired before it arrived.");
+          if (performance.now() >= expiresAt) throw new HostError("stale_presence", "The peer activity response expired before it arrived.");
           this.view = structuredClone(supplied);
           this.view.invitations = this.view.invitations.filter(invitation => !connection.acknowledgedInvitations.has(invitation.id));
           for (const id of acknowledged) connection.acknowledgedInvitations.delete(id);

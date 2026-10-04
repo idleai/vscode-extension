@@ -20,7 +20,7 @@ export async function checkRepository(browser, origin, records, fixture, enableP
     await capture(page, 'repository', savePage);
     await click(page, 'Users');
     await page.waitForFunction(() => document.querySelector('[aria-label="Git authors"]')?.textContent.includes('Repository Fixture'));
-    assert(await page.evaluate(() => document.body.textContent.includes('Idle members and presence')));
+    assert(await page.evaluate(() => document.body.textContent.includes('Idle members and online status')));
     await capture(page, 'users', savePage);
     await click(page, 'Sessions');
     await page.waitForFunction(() => document.body.textContent.includes('Imported smoke session'));

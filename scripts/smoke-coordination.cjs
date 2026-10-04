@@ -43,5 +43,5 @@ exports.smokeCoordination = async (host, f, temporary) => {
   f.api.workspace.isTrusted = false;
   await assert.rejects(read({ kind: 'snapshot' }), { code: 'workspace_untrusted' });
   f.api.workspace.isTrusted = true;
-  console.log('PASS: packaged coordinator metadata, local presence, restart persistence, cancellation, trust and binding checks.');
+  console.log('PASS: packaged coordinator metadata, local peer activity, restart persistence, cancellation, trust and binding checks.');
 };

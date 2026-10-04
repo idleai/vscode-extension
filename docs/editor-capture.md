@@ -1,8 +1,8 @@
 # Editor capture (f39)
 
 `extension/src/capture` observes VS Code on the file-owning host.
-`idle-editor-capture` owns the editor wire contract, validation, conversion and
-durable writer. `idle-vscode-native::capture` re-exports this boundary. The
+`idle-editor-capture` in host-tools owns the editor wire contract, validation,
+conversion and durable writer. The extension packages its executable. The
 `idle-editor-service` executable serves capture RPC independently of the
 history service, peer process and webviews.
 
@@ -87,8 +87,10 @@ absolute destination on the importing host to replay archives from another
 platform; Windows drive and UNC source paths and POSIX source paths remain
 unchanged. A relative destination resolves against the original workspace only
 when that workspace is absolute on the importing platform. Use this
-editor-owned adapter for new archives. Application archive import lives in `idle-history-import`; replay into live
-editor capture uses the editor-owned wire and validation rules.
+shared capture adapter for new archives. `idle-history-import` currently retains
+its existing archive conversion identities. Unifying that CLI conversion with
+live capture is a separate compatibility follow-up; moving the crate does not
+change already-written records or make the two conversion paths identical.
 
 Existing EC02 chains are never silently converted. The engine refuses an EC02
 append; pending capture remains in the outbox. Configure an explicitly migrated
@@ -107,11 +109,12 @@ perform migration automatically.
 
 The retired editor protocol and native viewer service have no remaining consumers.
 The current capture service owns validation and schema-three conversion; source
-identity contracts live in app-core's `idle-history`. Old archive bytes remain
+identity contracts live in host-tools' `idle-history`. Old archive bytes remain
 readable by the application import and capture adapters.
 
-f39 owns the new capture crate, capture executable, manifest settings,
-activation/shutdown hooks and capture packaging script. Its webview uses the
+The f39 capture behavior remains unchanged. Host-tools now owns the capture crate
+and executable; this extension owns manifest settings, activation/shutdown hooks
+and the packaging script. Its webview uses the
 published `app-core` interface; the f25 projection API is not a prerequisite.
 Use the sibling revisions pinned in `.github/workflows/ci.yml` for the same build
 as CI. Production projection connections remain with f43.

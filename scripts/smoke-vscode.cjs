@@ -41,7 +41,7 @@ exports.activate = async () => {
   } finally { await vscode.commands.executeCommand('workbench.action.quit'); }
 };
 `);
-  execFileSync('cargo', ['run', '--quiet', '--locked', '-p', 'idle-vscode-native', '--example', 'history-fixture', '--', workspace], { cwd: root, stdio: 'inherit' });
+  execFileSync('cargo', ['run', '--manifest-path', '../host-tools/Cargo.toml', '--quiet', '--locked', '-p', 'idle-history-native', '--example', 'history-fixture', '--', workspace], { cwd: root, stdio: 'inherit' });
   execFileSync('git', ['init', '-b', 'main', workspace], { stdio: 'ignore' });
   execFileSync('git', ['-C', workspace, 'add', 'capture.txt']);
   execFileSync('git', ['-C', workspace, '-c', 'user.name=Installed fixture', '-c', 'user.email=fixture@example.test', '-c', 'commit.gpgSign=false', 'commit', '-m', 'fixture'], { stdio: 'ignore' });

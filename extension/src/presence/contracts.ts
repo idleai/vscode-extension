@@ -1,6 +1,6 @@
 import type * as vscode from "vscode";
 
-/** JSON view types from idle-vscode-native::presence, checked by the shared fixture. */
+/** JSON view types from app-core::peer_activity, checked by the shared fixture. */
 export type CoordinationMode = "Standalone" | "Managed";
 export interface RepositoryBinding { workspace_id: string; repository_id: string; chain: string }
 export interface EditorContext {
@@ -48,18 +48,18 @@ export interface CheckoutBinding {
 
 /** Installed by the standalone or managed adapter, independently of webview lifetimes. */
 export interface PeerAwarenessProvider {
-  /** Invalidate on metadata/presence changes, disconnect, revocation or recovery reset. */
+  /** Invalidate on metadata or peer activity changes, disconnect, revocation or recovery reset. */
   onDidChange: vscode.Event<void>;
   /**
    * Publish a changed editor observation and maintain its bounded lease until the
    * next publication or abort. Renew independently of update, including on recovery.
-   * Abort detaches this presence connection; failed renewal lets its lease expire.
+   * Abort stops sharing this connection's activity; failed renewal lets its lease expire.
    * Identity and summaries come from coordination, never from Git author/host labels.
    */
   publish(editor: EditorContext, signal: AbortSignal): Promise<void>;
   /**
    * Acknowledge delivered invitation IDs with PeerAwareness::acknowledge_invitations,
-   * reconcile app-core, then return PeerAwareness::update without publishing presence.
+   * reconcile app-core, then return PeerAwareness::update without publishing peer activity.
    * Publish and update calls are serialized. Retain one Rust instance per installed
    * connection, resetting its baseline on reconnect/visibility reset. Invitation IDs
    * remain unique for that instance, including across resets; only delivery is acked.

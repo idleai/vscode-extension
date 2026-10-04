@@ -33,10 +33,10 @@ runtime identities. No bearer token enters the webview or coordinator configurat
 The metadata store has one process owner; another process using the same store
 is reported as unavailable.
 
-The host accepts bounded snapshot, presence and catch-up reads and configuration
-writes bound to its persisted local contributor. Other mutations are unavailable
-through this view adapter.
-It publishes expiring local presence itself, including an active file only when
+The host accepts bounded snapshot, peer activity and catch-up reads and
+configuration writes bound to its persisted local contributor. Other mutations
+are unavailable through this view adapter.
+It publishes expiring local peer activity itself, including an active file only when
 it is within the selected folder. Account, folder or configuration changes retire
 the corresponding processes and pending reads. Native restart reopens the saved
 metadata. A closed view does not delete it.
@@ -99,8 +99,8 @@ Edits made while draft storage is loading retain their text and recover any
 original unresolved save. New saves wait until that request is resolved.
 
 The repository overview resolves the selected checkout, branch, HEAD, worktree
-status and sanitized remote. Users separates local membership/presence from Git
-authors, GitHub contributors and accessible collaborators. Recorded sessions keep
+status and sanitized remote. Users separates local membership and online status
+from Git authors, GitHub contributors and accessible collaborators. Recorded sessions keep
 full logical IDs, recorded labels and exact source records. Selection is retained
 per contributor, binding and surface; it survives view and host restart. Recorded
 history stays visible when the selection is cleared. A delayed repository read

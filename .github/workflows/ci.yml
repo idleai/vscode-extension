@@ -21,13 +21,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: idleai/app-core
-          ref: 81fa331076848ada3d14cad63223b84e9dcfe4a7
+          ref: 57719a40cacfb8fbc3f2672a04b3346dbfb7f85a
           path: app-core
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
           repository: idleai/web-ui
-          ref: d90451ccb428f0e10c8117465dde1313b0ee8537
+          ref: 7cec6aa0c08e402e47e739b071430b85c3c4aa49
           path: web-ui
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: idleai/host-tools
-          ref: 9b33fecc3f15f5ab86600717d2f5593d1645ae6a
+          ref: 4928e310d8b1a40483ebd2bac94deb4e8a8f1534
           path: host-tools
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable

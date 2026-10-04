@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { setImmediate: turn, setTimeout: delay } = require('node:timers/promises');
 const { fixture, uri, loadWithVSCode } = require('./helpers/vscode.cjs');
-const golden = require('./fixtures/peer-view.json');
+const golden = require('../../app-core/crates/app-core/tests/fixtures/peer-view.json');
 const f = fixture();
 const { PeerAwarenessHost } = loadWithVSCode('../../out/presence', f.api);
 const { relativeFile } = loadWithVSCode('../../out/presence/editor', f.api);
@@ -202,7 +202,7 @@ test('trust, root binding, and provider failures clear UI and prevent joins', as
   assert.equal(s.calls.updates[0].signal.aborted, true);
 });
 
-test('expired presence is cleared while refreshing, and slow responses cannot extend its lifetime', async t => {
+test('expired peer activity is cleared while refreshing, and slow responses cannot extend its lifetime', async t => {
   const s = setup(t);
   s.template.valid_for_ms = 30;
   const original = s.provider.update;
@@ -244,7 +244,7 @@ test('Git observations track only the explicitly bound checkout, including detac
   const observed = s.calls.updates.length;
   stateChanged.fire();
   await settle();
-  assert.equal(s.calls.updates.length, observed, 'ordinary Git status updates do not republish unchanged presence or cancel joins');
+  assert.equal(s.calls.updates.length, observed, 'ordinary Git status updates do not republish unchanged peer activity or cancel joins');
   repository.state.HEAD.name = 'feature';
   stateChanged.fire();
   await settle();

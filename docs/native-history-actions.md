@@ -1,7 +1,7 @@
 # Native history actions
 
 The TypeScript host binds VS Code documents and commands to
-`idle-vscode-native::history`. The Rust adapter resolves records and content
+`idle-history-native::history`. The Rust adapter resolves records and content
 through `editchain_engine::queries::ChainQueries`. It does not interpret rendered
 history rows, shorten IDs, read the working tree, apply partial patches or run Git
 to invent a missing snapshot.
@@ -127,7 +127,7 @@ and deletion are denied by the provider.
 This moves the responsibilities of EditChain's `JsonContentProvider`,
 `DiffContentProvider`, `openDiffEditor` and raw-record command routing from
 `extensions/vscode-editchain/src/extension.ts` into `extension/src/history/`,
-with engine resolution in `crates/idle-vscode-native/src/history/`.
+with engine resolution in `host-tools/crates/idle-history-native/src/history/`.
 The old pretty-printed JSON and hunk-only documents are replaced by exact record
 and snapshot reads. Missing snapshots cannot be presented as whole-file diffs.
 
