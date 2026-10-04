@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{Failure, FailureCode, Preview, Request, Source, prepare, validate_binding};
 
-const MAX_REQUEST: usize = 1024 * 1024;
+const MAX_REQUEST: usize = 8 * 1024 * 1024;
 const MAX_RESPONSE: usize = 64 * 1024 * 1024;
 
 /// Storage locations supplied by the trusted host, never by an action request.
@@ -68,6 +68,8 @@ struct QueryRequest {
 struct ProjectionRequest {
     binding: RepositoryChainBinding,
     projection: app_core::projections::ProjectionQuery,
+    #[serde(default)]
+    inputs: Option<Vec<idle_protocol::v1::projections::ProjectionInput>>,
 }
 
 fn execute_body(binding: &Binding, body: serde_json::Value) -> ResponseBody {
@@ -146,8 +148,35 @@ fn read_projection(
         &mut queries,
         &binding.repository.chain,
         &request.projection,
-        &app_core::projections::engine::UnavailableMapper,
+        &RepositoryMapper {
+            inputs: request.inputs.as_deref(),
+        },
     )
+}
+
+struct RepositoryMapper<'a> {
+    inputs: Option<&'a [idle_protocol::v1::projections::ProjectionInput]>,
+}
+
+impl app_core::projections::engine::ProjectionMapper for RepositoryMapper<'_> {
+    fn inputs(
+        &self,
+        queries: &ChainQueries,
+        read: &app_core::projections::engine::ProjectionRead,
+    ) -> Result<Vec<idle_protocol::v1::projections::ProjectionInput>, app_core::module::EffectError>
+    {
+        let Some(inputs) = self.inputs else {
+            let mut inputs =
+                app_core::projections::engine::UnavailableMapper.inputs(queries, read)?;
+            for input in &mut inputs {
+                for gap in &mut input.gaps {
+                    gap.message = "The repository reader is unavailable. Refresh repository to retry; local Activity remains readable.".into();
+                }
+            }
+            return Ok(inputs);
+        };
+        Ok(idle_repository::checked_inputs(queries, inputs))
+    }
 }
 
 /// Serve length-prefixed JSON until the host closes standard input.

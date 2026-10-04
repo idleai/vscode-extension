@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 #[derive(Default)]
 pub(crate) struct Adapter {
     pub(crate) enabled: bool,
+    pub(crate) repository_enabled: bool,
     context: Option<subscriptions::Context>,
     pub(crate) now_ms: Option<u64>,
     latest_join: Option<String>,
@@ -64,6 +65,7 @@ impl Adapter {
             | Effect::History(_)
             | Effect::Session(_)
             | Effect::Projection(_)
+            | Effect::Repository(_)
             | Effect::Resource(_) => return None,
         };
         let binding = binding(effect, view)?;
@@ -120,7 +122,8 @@ impl Adapter {
             | Effect::HostInfo(_)
             | Effect::History(_)
             | Effect::Session(_)
-            | Effect::Projection(_) => Err("Unexpected coordinator response".into()),
+            | Effect::Projection(_)
+            | Effect::Repository(_) => Err("Unexpected coordinator response".into()),
         }
     }
 
@@ -150,12 +153,23 @@ impl Adapter {
             chain: resource.chain.clone(),
             mode: resource.mode,
         };
-        vec![
+        let mut events = vec![
             Event::Subscriptions(subscriptions::Event::Connect(context.clone())),
             Event::Projections(projections::Event::Connect(context.clone())),
             Event::Resources(resources::Event::Connect(resource)),
             Event::Configuration(configuration::Event::Connect(configuration)),
-        ]
+        ];
+        if self.repository_enabled
+            && let Some(binding) = &view.workspace.repository_binding
+        {
+            events.push(Event::Repository(app_core::repository::Event::Connect(
+                app_core::repository::RepositoryContext {
+                    connection: context.clone(),
+                    repository_id: binding.repository_id.clone(),
+                },
+            )));
+        }
+        events
     }
 }
 

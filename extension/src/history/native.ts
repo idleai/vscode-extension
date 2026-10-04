@@ -29,8 +29,8 @@ export class NativeHistoryProvider implements HistoryProvider {
     return this.request({ binding: this.binding.repository, query }, signal);
   }
 
-  async projection(projection: unknown, signal: AbortSignal): Promise<unknown> {
-    return this.request({ binding: this.binding.repository, projection }, signal);
+  async projection(projection: unknown, signal: AbortSignal, inputs?: unknown[]): Promise<unknown> {
+    return this.request({ binding: this.binding.repository, projection, inputs }, signal);
   }
 
   async activity(request: ActivityRequest, signal: AbortSignal): Promise<ActivityPreview> {

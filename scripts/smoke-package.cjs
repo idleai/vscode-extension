@@ -28,7 +28,7 @@ async function main() {
     assert.ok(files.includes(`extension/${captureBinary}`));
     const historyBinary = `bin/${process.platform}-${process.arch}/idle-history-service${process.platform === 'win32' ? '.exe' : ''}`;
     assert.ok(files.includes(`extension/${historyBinary}`));
-    for (const name of ['idle-history-collector', 'codex-session-exporter', 'editchain-peer', 'idle-coordination']) {
+    for (const name of ['idle-history-collector', 'codex-session-exporter', 'editchain-peer', 'idle-coordination', 'idle-repository']) {
       assert.ok(files.includes(`extension/bin/${process.platform}-${process.arch}/${name}${process.platform === 'win32' ? '.exe' : ''}`));
     }
     assert.ok(!files.some(file => file.includes('/node_modules/') || file.includes('/out/host/') || file.endsWith('.map')));

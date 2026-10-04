@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 
 // Two independent editor documents against the packaged native authority.
-export async function checkConfiguration(browser, origin) {
-  let sidebar = await open(browser, origin, 'sidebar');
-  let detail = await open(browser, origin, 'detail');
+export async function checkConfiguration(browser, origin, errors, savePage) {
+  let sidebar = await open(browser, origin, 'sidebar', errors);
+  let detail = await open(browser, origin, 'detail', errors);
   let passed = false;
   try {
     const first = '{"integration":{"unknown":[1,"first"]}}';
@@ -22,7 +22,7 @@ export async function checkConfiguration(browser, origin) {
     await detail.waitForFunction(() => document.body.textContent.includes('This document changed since you started editing'));
     await waitStored(detail);
     await detail.close();
-    detail = await open(browser, origin, 'detail');
+    detail = await open(browser, origin, 'detail', errors);
     await detail.waitForFunction(() => document.querySelector('textarea').value.includes('detail draft'));
     assert.equal(await detail.evaluate(() => document.body.textContent.includes('This document changed since you started editing')), true);
     await click(detail, 'Use draft with current revision');
@@ -46,7 +46,7 @@ export async function checkConfiguration(browser, origin) {
     const original = await sidebar.evaluate(() => window.assemblyFixture.requests.findLast(request => request.method === 'app.coordination' && JSON.parse(request.params.command).kind === 'mutate').params.command);
     await waitStored(sidebar);
     await sidebar.close();
-    sidebar = await open(browser, origin, 'sidebar');
+    sidebar = await open(browser, origin, 'sidebar', errors);
     await sidebar.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent === 'Recover save' && !button.disabled));
     await click(sidebar, 'Recover save');
     await saved(sidebar, 4);
@@ -54,14 +54,17 @@ export async function checkConfiguration(browser, origin) {
     assert.equal(retry, original, 'recovery reuses the exact request ID, deadline, revision and contents');
     await click(sidebar, 'Refresh document');
     await saved(sidebar, 4);
+    if (process.env.IDLE_ASSEMBLY_OUTPUT) await savePage(sidebar, 'settings', process.env.IDLE_ASSEMBLY_OUTPUT);
     passed = true;
   } finally {
     if (passed) { await sidebar.close(); await detail.close(); }
   }
 }
 
-async function open(browser, origin, kind) {
+async function open(browser, origin, kind, errors) {
   const page = await browser.newPage();
+  page.on('pageerror', error => errors.push(String(error)));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto(`${origin}/?kind=${kind}`);
   await page.waitForSelector('select[id$=-workspace] option[value^="local-workspace:"]');
   const workspace = await page.$eval('select[id$=-workspace] option[value^="local-workspace:"]', option => option.value);

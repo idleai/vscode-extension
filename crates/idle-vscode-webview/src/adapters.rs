@@ -99,6 +99,14 @@ impl Runtime {
                     .iter()
                     .any(|method| method.as_str() == Some("app.coordination"))
             });
+        self.coordination.repository_enabled = value
+            .get("capabilities")
+            .and_then(Value::as_array)
+            .is_some_and(|methods| {
+                methods
+                    .iter()
+                    .any(|method| method.as_str() == Some("app.repository"))
+            });
         let mut calls = self.dispatch(Event::Start)?;
         calls.extend(self.dispatch(Event::Workspace(app_core::workspace::Event::Load))?);
         Ok(calls)
@@ -136,6 +144,7 @@ impl Runtime {
         }
         let mut calls = self.dispatch(Event::History(app_core::history::Event::Refresh))?;
         calls.extend(self.dispatch(Event::Projections(app_core::projections::Event::Refresh))?);
+        calls.extend(self.dispatch(Event::Repository(app_core::repository::Event::Changed))?);
         Ok(calls)
     }
 
@@ -201,6 +210,7 @@ impl Runtime {
             Effect::Projection(request) => resolve(&self.core, request, value, failure),
             Effect::Resource(request) => resolve(&self.core, request, value, failure),
             Effect::Configuration(request) => resolve(&self.core, request, value, failure),
+            Effect::Repository(request) => resolve(&self.core, request, value, failure),
             Effect::Render(_) | Effect::HostInfo(_) => Ok(Vec::new()),
         }?;
         effects.extend(self.tick());
@@ -257,6 +267,7 @@ impl Runtime {
                 Effect::Projection(request) => ("app.projection", json!(request.operation)),
                 Effect::Resource(request) => ("app.resource", json!(request.operation)),
                 Effect::Configuration(request) => ("app.configuration", json!(request.operation)),
+                Effect::Repository(request) => ("app.repository", json!(request.operation)),
                 Effect::Render(_) | Effect::HostInfo(_) => continue,
             };
             self.next = self
@@ -308,7 +319,11 @@ fn unavailable(effect: &Effect, message: &str) -> Value {
         Effect::Session(_) | Effect::Resource(_) => {
             json!({ "code": "Unavailable", "message": message, "retry": "Never" })
         }
-        Effect::History(_) | Effect::Projection(_) | Effect::HostInfo(_) | Effect::Render(_) => {
+        Effect::History(_)
+        | Effect::Projection(_)
+        | Effect::Repository(_)
+        | Effect::HostInfo(_)
+        | Effect::Render(_) => {
             json!({ "message": message })
         }
     };

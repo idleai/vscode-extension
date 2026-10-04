@@ -117,3 +117,15 @@ This check uses its own workspace, settings and extension directory.
 - [Author and exposure decorations](docs/author-activity-decorations.md)
 - [Shared collection and import tools](https://github.com/idleai/host-tools)
 - [Standalone history sharing](docs/sharing.md)
+
+Standalone repository surfaces now show Git checkout/worktree details, bounded
+Git authors and GitHub contributors/collaborators, issues/PRs, failed HEAD checks,
+explicit triage/input requests, and local/imported recorded sessions. GitHub
+source pages open through the host; exact response records open in Activity.
+GitHub access uses VS Code authentication and the packaged `idle-repository`
+reader. The repository access button explicitly requests repository scope.
+Public/offline/partial reads and retry deadlines remain visible. Session selection
+is retained separately for sidebar and detail under the exact repository binding.
+No runtime is required to browse captured sessions; execution remains unavailable
+until a runtime is connected. See the shared
+[repository adapter contract](../host-tools/docs/repository.md).

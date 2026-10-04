@@ -143,7 +143,7 @@ export class HistoryHost implements vscode.Disposable {
   }
 
   /** Derived views preserve the selected workspace and chain through native reads. */
-  async projection(params: unknown, signal?: AbortSignal): Promise<unknown> {
+  async projection(params: unknown, signal?: AbortSignal, inputs?: unknown[]): Promise<unknown> {
     if (!record(params) || !record(params.operation) || !record(params.operation.context)) throw new HostError("invalid_request", "Expected a bound projection query.");
     const connection = this.connection(parseBinding(params.binding));
     const context = params.operation.context;
@@ -156,7 +156,7 @@ export class HistoryHost implements vscode.Disposable {
     this.assertCurrent(connection, signal);
     const linked = linkCancellation(connection.abort.signal, signal);
     try {
-      const result = await connection.provider.projection(params.operation, linked.signal);
+      const result = await connection.provider.projection(params.operation, linked.signal, inputs);
       this.assertCurrent(connection, signal);
       return result;
     } finally { linked.dispose(); }

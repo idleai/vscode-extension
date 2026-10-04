@@ -44,6 +44,8 @@ pub fn App() -> Element {
     );
     #[cfg(target_arch = "wasm32")]
     let save_connection = connection.clone();
+    #[cfg(target_arch = "wasm32")]
+    let link_connection = connection.clone();
     #[cfg(not(target_arch = "wasm32"))]
     let save_runtime = runtime.clone();
     let onaction = EventHandler::new(move |event| {
@@ -79,9 +81,25 @@ pub fn App() -> Element {
     let onexecute = EventHandler::new(move |_mutation| {
         error.set(Some("No runtime is connected for resource actions.".into()));
     });
+    let open = EventHandler::new(move |url: String| {
+        #[cfg(target_arch = "wasm32")]
+        if let Some(connection) = &link_connection {
+            connection.open_url(url);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _url = url;
+            error.set(Some(
+                "External links require an installed host adapter.".into(),
+            ));
+        }
+    });
+    let onopen = capabilities
+        .supports(web_ui::host::HostCapability::OpenExternal)
+        .then_some(open);
     let destination = crate::destinations::destination(&view, onaction, onsave, onexecute);
     rsx! { WorkspaceSurface {
-        destination, now_ms, view, capabilities, surface: surface(), error: error(), onaction,
+        destination, now_ms, view, capabilities, surface: surface(), error: error(), onaction, onopen,
     } }
 }
 

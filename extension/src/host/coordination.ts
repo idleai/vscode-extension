@@ -96,6 +96,9 @@ export class CoordinationHost {
     throw new HostError('invalid_request', 'Invalid configuration state operation.');
   }
 
+  /** Host-local identity used to scope non-runtime repository preferences. */
+  async contributor(): Promise<string> { return `local-contributor:${await this.identity}`; }
+
   private async validateMutation(value: unknown, binding: RepositoryBinding): Promise<{ contributor: string; id: string }> {
     const subject = await this.identity;
     const contributor = `local-contributor:${subject}`;

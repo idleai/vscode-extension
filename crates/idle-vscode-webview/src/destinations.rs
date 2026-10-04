@@ -10,18 +10,6 @@ pub(crate) fn destination(
     onexecute: EventHandler<app_core::resources::ResourceMutation>,
 ) -> Option<Element> {
     match view.workspace.section {
-        NavigationSection::Members => Some(rsx! {
-            section { class: "idle-stack", aria_label: "Workspace users",
-                h2 { "Users" }
-                for user in &view.workspace.members {
-                    article { key: "{user.member.contributor_id}",
-                        h3 { "{user.member.display_name}" }
-                        p { "{user.member.role:?} · {user.presence:?}" }
-                    }
-                }
-                if view.workspace.members.is_empty() { p { "No users are available." } }
-            }
-        }),
         NavigationSection::ComputeHosts | NavigationSection::ModelProviders => {
             Some(rsx! { web_ui::resources::ResourceDirectory {
                 view: view.resources.clone(), hosts: view.workspace.section == NavigationSection::ComputeHosts,
@@ -38,6 +26,7 @@ pub(crate) fn destination(
             onaction: move |event| onaction.call(app_core::Event::Configuration(event)), onsave,
         } }),
         NavigationSection::Workspace
+        | NavigationSection::Members
         | NavigationSection::Sessions
         | NavigationSection::Projections
         | NavigationSection::Activity => None,

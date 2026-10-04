@@ -8,6 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import puppeteer from "puppeteer-core";
 import { checkConfiguration } from "./assembly-configuration.mjs";
+import { checkRepository, repositoryInputs } from "./assembly-repository.mjs";
 
 // Isolated browser and synthetic chain. This never attaches to the user's editor.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -28,6 +29,10 @@ try {
   const otherWorkspace = join(temporary, "other-workspace");
   execFileSync("cargo", ["run", "--quiet", "--locked", "-p", "idle-vscode-native", "--example", "history-fixture", "--", workspace], { cwd: root, stdio: "inherit" });
   execFileSync("cargo", ["run", "--quiet", "--locked", "-p", "idle-vscode-native", "--example", "history-fixture", "--", otherWorkspace], { cwd: root, stdio: "inherit" });
+  execFileSync('git', ['init', '-b', 'main', workspace], { stdio: 'ignore' });
+  await writeFile(join(workspace, 'README.txt'), 'Isolated repository fixture.\n');
+  execFileSync('git', ['-C', workspace, 'add', 'README.txt']);
+  execFileSync('git', ['-C', workspace, '-c', 'user.name=Repository Fixture', '-c', 'user.email=fixture@example.test', '-c', 'commit.gpgSign=false', 'commit', '-m', 'fixture'], { stdio: 'ignore' });
   const records = JSON.parse(await readFile(join(workspace, "history.json"), "utf8"));
   const uri = f.api.Uri.parse(pathToFileURL(workspace).toString());
   f.context.globalStorageUri = f.api.Uri.parse(pathToFileURL(join(temporary, "private")).toString());
@@ -37,6 +42,12 @@ try {
   for (const resource of [uri, otherUri]) f.configuration.set(resource.toString(), { chainDirectory: "chain", "tracking.enabled": false, "live.enabled": false });
   extension = loadWithVSCode(join(extensionRoot, "out/extension.js"), f.api);
   const host = extension.activate(f.context);
+  let projectionFixture = false;
+  const snapshot = host.repository.snapshot.bind(host.repository);
+  host.repository.snapshot = async (...args) => {
+    const result = await snapshot(...args);
+    return projectionFixture ? { ...result, projections: repositoryInputs(records.github_source) } : result;
+  };
   const { webviewHtml } = loadWithVSCode("../../out/host/webviews", f.api);
   const { WebviewBridge } = require("../out/host/messageBridge");
   const expectedFailures = [];
@@ -93,7 +104,6 @@ try {
     await page.waitForSelector('select[id$=-workspace] option[value^="local-workspace:"]');
     const workspaceId = await page.$eval('select[id$=-workspace] option[value^="local-workspace:"]', option => option.value);
     await page.select("select[id$=-workspace]", workspaceId);
-    await page.waitForSelector('[role="treeitem"]');
     if (kind === "sidebar") await checkNavigation(page);
     await showActivity(page);
     const recordId = records.requests[0].record.operation;
@@ -122,10 +132,12 @@ try {
     await checkReadyReplies(page, workspaceId);
     await page.close();
   }
-  await checkConfiguration(browser, `http://127.0.0.1:${server.address().port}`);
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  await checkRepository(browser, origin, records, f, () => { projectionFixture = true; }, errors, savePage);
+  await checkConfiguration(browser, origin, errors, savePage);
   assert.deepEqual(errors, [], "the packaged views have no browser or CSP errors");
   assert.deepEqual(expectedFailures, [], "host operations succeed");
-  console.log("PASS: packaged sidebar/detail, exact native history, configuration saves, conflicts, reopened drafts and original-request recovery.");
+  console.log("PASS: packaged sidebar/detail, Git repository/authors, recorded sessions and reopened selection, projection URLs/exact Originals, native history, configuration conflicts/drafts and original-request recovery.");
 } catch (error) {
   for (const [index, page] of (await browser?.pages() ?? []).entries()) {
     try { await savePage(page, `failure-${index}`, process.env.IDLE_ASSEMBLY_OUTPUT ?? join(root, 'outputs', 'assembly')); } catch {}
@@ -235,7 +247,7 @@ async function checkNavigation(page) {
   assert.equal(await page.$eval('.idle-navigation-heading', element => getComputedStyle(element).display), 'flex');
   await page.evaluate(() => document.querySelector('[data-section="Projections"] button').click());
   await page.waitForFunction(() => document.querySelectorAll('.idle-projection-panel').length === 4);
-  await page.waitForFunction(() => document.body.textContent.includes('Controller projection adapter is unavailable'));
+  await page.waitForFunction(() => document.body.textContent.includes('no supported github.com remote'));
   for (const title of ['Settings', 'Agent Rules']) {
     await page.evaluate(title => [...document.querySelectorAll('button')].find(button => button.textContent.trim() === title).click(), title);
     await page.waitForFunction(title => [...document.querySelectorAll('h2')].some(heading => heading.textContent === title), {}, title);

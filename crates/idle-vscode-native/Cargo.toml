@@ -11,6 +11,7 @@ description = "VS Code-specific native observation and bridge adapters"
 idle-editor-capture = { path = "../idle-editor-capture", version = "0.1.0" }
 app-core = { path = "../../../app-core/crates/app-core", version = "0.1.0" }
 idle-protocol = { path = "../../../host-tools/crates/idle-protocol", version = "0.1.0" }
+idle-repository = { path = "../../../host-tools/crates/idle-repository", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "=1.0.151"
 editchain-engine = { path = "../../../editchain/crates/editchain-engine" }

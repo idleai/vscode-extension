@@ -22,6 +22,7 @@ pub(crate) struct Connection {
     listener: RefCell<Option<MessageSubscription>>,
     generation: Cell<u64>,
     ready_pending: Cell<bool>,
+    next_external: Cell<u64>,
     timers: RefCell<BTreeMap<String, Timeout>>,
 }
 
@@ -39,6 +40,7 @@ impl Connection {
             listener: RefCell::new(None),
             generation: Cell::new(0),
             ready_pending: Cell::new(false),
+            next_external: Cell::new(0),
             timers: RefCell::new(BTreeMap::new()),
         });
         let weak = Rc::downgrade(&connection);
@@ -71,6 +73,28 @@ impl Connection {
         self.publish(calls);
     }
 
+    pub(crate) fn open_url(self: &Rc<Self>, url: String) {
+        if !self
+            .runtime
+            .borrow()
+            .capabilities()
+            .supports(web_ui::host::HostCapability::OpenExternal)
+        {
+            self.report("External links are unavailable on this connection.".into());
+            return;
+        }
+        let Some(next) = self.next_external.get().checked_add(1) else {
+            self.report("External-link request identities exhausted.".into());
+            return;
+        };
+        self.next_external.set(next);
+        self.send(Call {
+            id: format!("external:{}:{next}", self.generation.get()),
+            method: "external.open",
+            params: json!({"url":url}),
+        });
+    }
+
     fn handshake(self: &Rc<Self>) {
         // Clear private state and actions immediately, before waiting for the host.
         self.runtime.borrow_mut().invalidate();
@@ -90,6 +114,14 @@ impl Connection {
     fn receive(self: &Rc<Self>, message: HostMessage) {
         if let HostMessage::Response { id, .. } = &message {
             let _timer = self.timers.borrow_mut().remove(id);
+        }
+        if let HostMessage::Response { id, result } = &message
+            && id.starts_with(&format!("external:{}:", self.generation.get()))
+        {
+            if let Err(error) = result {
+                self.report(error.to_string());
+            }
+            return;
         }
         let calls = match message {
             HostMessage::Event { event, .. } if event == "host.configurationChanged" => {
