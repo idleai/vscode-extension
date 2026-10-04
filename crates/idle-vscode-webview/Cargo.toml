@@ -20,7 +20,7 @@ serde = { version = "1", features = ["derive"] }
 crux_core = { version = "=0.20.0", default-features = false }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-dioxus-web = { version = "=0.7.7", default-features = false }
+dioxus-web = { version = "=0.7.10", default-features = false }
 js-sys = "=0.3.104"
 wasm-bindgen = "=0.2.127"
 wasm-bindgen-futures = "=0.4.77"
