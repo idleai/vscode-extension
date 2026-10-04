@@ -1,21 +1,26 @@
 version: 2
 registries:
+  # Dependabot requires a secret reference; its value is the public marker "anonymous".
   idle-app-core:
     type: cargo-registry
     registry: idle-app-core
     url: https://raw.githubusercontent.com/idleai/app-core/cargo-index/
+    token: ${{secrets.PUBLIC_CARGO_REGISTRY_TOKEN}}
   idle-editchain:
     type: cargo-registry
     registry: idle-editchain
     url: https://raw.githubusercontent.com/idleai/editchain/cargo-index/
+    token: ${{secrets.PUBLIC_CARGO_REGISTRY_TOKEN}}
   idle-host-tools:
     type: cargo-registry
     registry: idle-host-tools
     url: https://raw.githubusercontent.com/idleai/host-tools/cargo-index/
+    token: ${{secrets.PUBLIC_CARGO_REGISTRY_TOKEN}}
   idle-web-ui:
     type: cargo-registry
     registry: idle-web-ui
     url: https://raw.githubusercontent.com/idleai/web-ui/cargo-index/
+    token: ${{secrets.PUBLIC_CARGO_REGISTRY_TOKEN}}
 updates:
   - package-ecosystem: cargo
     registries: "*"

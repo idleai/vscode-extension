@@ -139,6 +139,11 @@ archive checksums and compatible Cargo lockfile updates, into one dependency PR.
 and explicitly starts the regular CI checks for the generated PR.
 
 
+Dependabot requires a secret reference for custom Cargo registries, including
+public ones. Set the repository's Dependabot secret `PUBLIC_CARGO_REGISTRY_TOKEN`
+to the literal value `anonymous`. This is a public marker, not an access token;
+the GitHub indexes remain anonymously readable.
+
 ## Coordinated development
 
 For ordinary local Rust work, add a temporary Cargo patch for the relevant
