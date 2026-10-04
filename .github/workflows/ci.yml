@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: idleai/web-ui
-          ref: 7512aa6617588ef675d10d4acda8c4a49a81c0b4
+          ref: 1ecd159ed721d242705fd9a8f9b897563761c295
           path: web-ui
           persist-credentials: false
       - uses: actions/checkout@v4
