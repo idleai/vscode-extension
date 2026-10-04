@@ -48,7 +48,8 @@ export class HostServices implements vscode.Disposable {
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.configuration = new HostConfiguration(context.extensionUri.fsPath);
-    this.credentials = new HostCredentials(context.secrets, () => vscode.workspace.isTrusted);
+    this.credentials = new HostCredentials(context.secrets, () => vscode.workspace.isTrusted,
+      message => this.diagnostics.append(message));
     this.native = new NativeServices(this.configuration);
     this.capture = new CaptureHost(context, this.configuration, this.diagnostics);
     this.collection = new CollectionHost(context, this.configuration, this.diagnostics);

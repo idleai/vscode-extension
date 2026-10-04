@@ -11,6 +11,7 @@ use web_ui::host::{HostCapabilities, HostCapability, HostKind};
 use crate::bridge::BridgeError;
 
 mod drafts;
+mod reconnect;
 
 /// One platform call. Its identity is valid only in this document.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -31,6 +32,7 @@ pub struct Runtime {
     capabilities: HostCapabilities,
     coordination: crate::coordination::Adapter,
     drafts: drafts::State,
+    reconnect: Option<app_core::workspace::RepositoryChainBinding>,
 }
 
 impl std::fmt::Debug for Runtime {
@@ -51,6 +53,7 @@ impl Default for Runtime {
             capabilities: HostCapabilities::new(HostKind::VsCode),
             coordination: crate::coordination::Adapter::default(),
             drafts: drafts::State::default(),
+            reconnect: None,
         }
     }
 }
@@ -76,6 +79,7 @@ impl Runtime {
 
     /// Retire all scoped state immediately while a new handshake is pending.
     pub fn invalidate(&mut self) {
+        self.remember_workspace();
         self.pending.clear();
         self.core = Core::new();
         self.capabilities = HostCapabilities::new(HostKind::VsCode);
@@ -164,6 +168,8 @@ impl Runtime {
         let Some(mut effect) = self.pending.remove(id) else {
             return Ok(Vec::new());
         };
+        let workspace_directory = matches!(&effect, Effect::Workspace(request)
+            if request.operation == app_core::workspace::WorkspaceOperation::List);
         let mut failure = unavailable(
             &effect,
             result
@@ -213,6 +219,9 @@ impl Runtime {
             Effect::Repository(request) => resolve(&self.core, request, value, failure),
             Effect::Render(_) | Effect::HostInfo(_) => Ok(Vec::new()),
         }?;
+        if workspace_directory {
+            effects.extend(self.restore_workspace());
+        }
         effects.extend(self.tick());
         if refresh_workspace {
             effects.extend(self.core.process_event(Event::Workspace(

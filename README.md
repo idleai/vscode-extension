@@ -57,6 +57,13 @@ destination workspace host. Installed packages need no sibling source checkouts.
 Open **Idle** from the Activity Bar or **Idle: Open Workspace** from the command palette. Native services require
 Workspace Trust. Editor capture continues while views are closed; use
 **Idle: Pause Editor Capture** or `idle.tracking.enabled` to control it.
+Repository access reuses an existing authorized VS Code GitHub session. If more
+permissions are needed, **Connect GitHub repository access** uses VS Code's
+GitHub Authentication provider. Remote SSH windows offer **Use device code**
+when supported, avoiding the browser redirect back to VS Code. Selecting it
+saves VS Code's **GitHub Authentication: Prefer Device Code Flow** preference.
+Each open view reloads its selected folder after approval. Failed or cancelled
+sign-in can be retried; the Idle output records the result without credentials.
 Codex import and chain-change monitoring also run with views closed. Use
 **Idle: Pause Agent History Import** or `idle.live.enabled` to pause collection.
 

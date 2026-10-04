@@ -164,7 +164,7 @@ impl Connection {
     fn send(self: &Rc<Self>, call: Call) {
         let weak = Rc::downgrade(self);
         let bridge = self.bridge.clone();
-        match Timeout::new(self, &call.id) {
+        match Timeout::new(self, &call) {
             Ok(timer) => {
                 let _old = self.timers.borrow_mut().insert(call.id.clone(), timer);
             }
@@ -213,17 +213,27 @@ struct Timeout {
 }
 
 impl Timeout {
-    fn new(connection: &Rc<Connection>, id: &str) -> Result<Self, String> {
+    fn new(connection: &Rc<Connection>, call: &Call) -> Result<Self, String> {
         let window = web_sys::window().ok_or("Browser window is unavailable")?;
         let weak = Rc::downgrade(connection);
-        let id = id.to_owned();
+        let signing_in = call.method == "app.repository"
+            && call
+                .params
+                .pointer("/operation/action")
+                .and_then(serde_json::Value::as_str)
+                == Some("SignIn");
+        let id = call.id.clone();
         let callback = Closure::<dyn FnMut()>::wrap(Box::new(move || {
             if let Some(connection) = weak.upgrade() {
                 connection.receive(HostMessage::Response {
                     id: id.clone(),
                     result: Err(BridgeError {
                         code: "host_timeout".to_owned(),
-                        message: "The host did not respond. Retry the operation.".to_owned(),
+                        message: if signing_in {
+                            "GitHub sign-in has not finished. Finish or cancel sign-in in VS Code, then retry."
+                        } else {
+                            "The host did not respond. Retry the operation."
+                        }.to_owned(),
                         details: None,
                     }),
                 });
@@ -232,7 +242,7 @@ impl Timeout {
         let handle = window
             .set_timeout_with_callback_and_timeout_and_arguments_0(
                 callback.as_ref().unchecked_ref(),
-                60_000,
+                if signing_in { 600_000 } else { 60_000 },
             )
             .map_err(|_error| "Unable to start the host timeout".to_owned())?;
         Ok(Self {
