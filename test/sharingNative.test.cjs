@@ -17,7 +17,10 @@ test('native coordinator processes deliver captured history and content while wo
     const invitation = await host.hostHistory(await guest.joinRequest(), true);
     await guest.joinHistory(invitation, true);
     await until(async () => live(host) === 1 && live(guest) === 1
-      && (await diffs(a)).length >= 2 && (await diffs(b)).length >= 2, 'both native engines must reconcile captured history');
+      && (await diffs(a)).length >= 2 && (await diffs(b)).length >= 2, 'both native engines must reconcile captured history')
+      .catch(error => {
+        throw new Error(`${error.message}; host=${JSON.stringify(host.status())}; guest=${JSON.stringify(guest.status())}`, { cause: error });
+      });
     assert.ok((await diffs(b)).some(row => row.after === 'after A\n'));
     assert.ok((await diffs(a)).some(row => row.after === 'after B\n'));
     assert.deepEqual(blobs(a.chain), blobs(b.chain));

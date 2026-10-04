@@ -15,14 +15,20 @@
       "repository": "idleai/host-tools",
       "tag": "idle-coordination-v0.1.0",
       "sha256": {
-        "linux-x64": "6e180352d949404fb12bc668867c014ed7b827bd4ec9e9b707450e30adba2ab2"
+        "linux-x64": "fba5224c908b5efa5fbd1bcfe05bdb05f9f6c8085dac21e2db452cbde9cf4c08",
+        "darwin-x64": "8988fa991f38623d4628c7ea83c4fda6cde935bdfa8a464391d46b63aa60cd53",
+        "darwin-arm64": "0ce9e387ce92006e177185b6988eee617a19482294fd19e11d7c362ddbf63e36",
+        "win32-x64": "5f7c0717bf7de1862fde6d81e6049254e7dce983f0f5d0f7fbdaf795cbc62321"
       }
     },
     "codex-exporter": {
       "repository": "idleai/codex-evo",
-      "tag": "codex-session-exporter-v0.1.0",
+      "tag": "codex-session-exporter-v0.1.1",
       "sha256": {
-        "linux-x64": "d6fcb6d5541d4a6358cf9435c91d78975da05b61c1bf23706f17f3900f256515"
+        "linux-x64": "14d163b2927fed97d37572006edce5a0528bb6e59ce04927340fb99ed5623917",
+        "darwin-x64": "a466430ab6424c820611ae2b6eec529d36c14ffc3d2ba4d07e53f2b0a8d8cbad",
+        "darwin-arm64": "5624b6cd511b58d5a1b7a20889bdece609427328fbe9dc5066f403a480911ef9",
+        "win32-x64": "657d87bfeec51c35058cee53f989c128f0262b74cb2ed4053b732b58dfe08338"
       }
     }
   }
