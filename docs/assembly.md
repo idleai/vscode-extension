@@ -33,6 +33,11 @@ runtime identities. No bearer token enters the webview or coordinator configurat
 The metadata store has one process owner; another process using the same store
 is reported as unavailable.
 
+Metadata and sharing use the same `CoordinationProcess` owner for startup,
+readiness, replacement and awaited shutdown. Their installations remain scoped
+to their existing storage directories and contributor/account identities;
+sharing supplies its own credential callback and explicit stop/suspend command.
+
 The host accepts bounded snapshot, peer activity and catch-up reads and
 configuration writes bound to its persisted local contributor. Other mutations
 are unavailable through this view adapter.
@@ -130,7 +135,7 @@ The CSP permits graph coordinates while restricting scripts and style elements
 to packaged assets.
 
 The VSIX includes `idle-editor-service`, `idle-history-service`,
-`idle-history-collector`, `codex-session-exporter`, `editchain-peer`,
+`idle-history-collector`, `codex-session-exporter`,
 `idle-coordination` and `idle-repository` for the build host's OS/architecture. Installed copies resolve
 configured absolute executables or packaged tools; sibling source checkouts are
 build inputs only. Build a platform-specific VSIX for each destination host.

@@ -5,7 +5,7 @@ for (const [command, args] of [
   ["cargo", ["build", "--manifest-path", "../host-tools/Cargo.toml", "--locked", "-p", "idle-editor-capture", "-p", "idle-history-native", "--bins"]],
   ["cargo", ["build", "--manifest-path", "../editchain/Cargo.toml", "--locked", "-p", "editchain", "-p", "editchain-sync", "--bins"]],
   ["cargo", ["build", "--manifest-path", "../host-tools/Cargo.toml", "--locked", "-p", "idle-coordination", "--bin", "idle-coordination", "--example", "loopback-coordinator"]],
-  ["cargo", ["test", "--manifest-path", "../host-tools/Cargo.toml", "--locked", "-p", "idle-coordination", "-p", "idle-peer-state"]],
+  ["cargo", ["test", "--manifest-path", "../host-tools/Cargo.toml", "--locked", "-p", "idle-coordination"]],
   [process.execPath, ["scripts/build-coordination.mjs"]],
 ]) {
   const result = spawnSync(command, args, { stdio: "inherit", shell: process.platform === "win32" && command === "npm" });

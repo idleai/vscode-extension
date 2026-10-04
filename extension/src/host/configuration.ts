@@ -7,7 +7,6 @@ export interface FolderConfiguration {
   readonly folder: vscode.WorkspaceFolder;
   readonly cwd: string;
   readonly chainDirectory: string;
-  readonly peerPath: string;
   readonly capturePath: string;
 }
 
@@ -50,14 +49,8 @@ export class HostConfiguration {
     return {
       folder, cwd: folder.uri.fsPath,
       chainDirectory: path.resolve(folder.uri.fsPath, chain),
-      peerPath: config.get<string>("native.peerPath", ""),
       capturePath: config.get<string>("native.capturePath", ""),
     };
-  }
-
-  peerBinary(config: FolderConfiguration): string {
-    this.assertTrusted();
-    return resolveNativePath(config.peerPath, this.extensionPath, "editchain-peer");
   }
 
   snapshot(): unknown {

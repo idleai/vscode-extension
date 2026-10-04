@@ -16,7 +16,6 @@ export function activate(context: vscode.ExtensionContext): HostServices {
     host.presence.disconnect();
     host.history.disconnect();
     host.assembly.reset();
-    host.native.reset();
     provider.broadcast("host.configurationChanged", host.configuration.snapshot());
   };
   context.subscriptions.push(
@@ -39,7 +38,6 @@ export function activate(context: vscode.ExtensionContext): HostServices {
     register("idle.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "@ext:idleai.idle")),
     register("idle.restartNative", async () => {
       host.configuration.assertTrusted();
-      host.native.reset();
       host.coordination.reset();
       provider.broadcast("host.configurationChanged", host.configuration.snapshot());
       await Promise.all([host.history.restart(), host.capture.restart(), host.collection.restart(), host.sharing.reset(true)]);

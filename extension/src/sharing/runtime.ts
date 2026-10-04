@@ -1,7 +1,6 @@
-import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { CoordinationClient, CredentialPurpose } from '../host/coordinationClient';
-import { resolveNativePath } from '../host/configuration';
+import { CredentialPurpose } from '../host/coordinationClient';
+import { CoordinationProcess } from '../host/coordinationProcess';
 import { HostError } from '../host/protocol';
 import type { NativeProcessOptions } from '../host/nativeProcess';
 import type { ScopeChoice, SharingScope } from './scope';
@@ -22,8 +21,7 @@ export interface SharingOptions {
 
 /** VS Code presents approvals; the native coordinator owns every sharing transition. */
 export class NativeSharing {
-  private client: CoordinationClient;
-  private opening?: Promise<void>;
+  private readonly owner: CoordinationProcess;
   private closing?: Promise<void>;
   private stopping?: Promise<void>;
   private closed = false;
@@ -34,7 +32,8 @@ export class NativeSharing {
 
   constructor(private readonly options: SharingOptions, private readonly extensionPath: string,
     private readonly processOptions: NativeProcessOptions = {}) {
-    this.client = new CoordinationClient(this.processOptions, purpose => options.credential(purpose));
+    this.owner = new CoordinationProcess(extensionPath, async () => this.installation(),
+      processOptions, purpose => options.credential(purpose));
   }
 
   status(): SharingStatus { return this.value; }
@@ -61,12 +60,7 @@ export class NativeSharing {
 
   private async restartIfNeeded(): Promise<void> {
     if (this.closed) throw new HostError('cancelled', 'Sharing was stopped.');
-    if (this.opening && !this.client.isRunning()) {
-      await this.opening.catch(() => {});
-      await this.client.shutdown();
-      this.client = new CoordinationClient(this.processOptions, purpose => this.options.credential(purpose));
-      this.opening = undefined;
-    }
+    await this.owner.acquire(true);
   }
 
   private async change<T>(kind: string, data?: unknown): Promise<T> {
@@ -81,26 +75,22 @@ export class NativeSharing {
 
   private async call<T>(kind: string, data?: unknown): Promise<T> {
     if (this.closed) throw new HostError('cancelled', 'Sharing was stopped.');
-    await (this.opening ??= this.open());
-    const raw = await this.client.request(JSON.stringify({ kind, data }), this.lifetime.signal, 60_000);
+    const client = await this.owner.acquire();
+    if (!this.closed) this.schedule();
+    const raw = await client.request(JSON.stringify({ kind, data }), this.lifetime.signal, 60_000);
     return JSON.parse(raw).result.Ok as T;
   }
 
-  private async open(): Promise<void> {
+  private installation() {
     const options = this.options;
-    await mkdir(options.stateDirectory, { recursive: true, mode: 0o700 });
-    const file = path.join(options.stateDirectory, 'host.json');
-    await writeFile(file, JSON.stringify({
+    return { directory: options.stateDirectory, cwd: options.cwd, configuration: {
       state_directory: path.join(options.stateDirectory, 'state'), chain_directory: options.chain,
       device_directory: options.deviceDirectory,
       workspace: { id: options.key, name: options.name, chain: options.key,
         mode: { kind: 'standalone', repository: { id: options.key, name: options.name, remote: null } } },
       contributor: { contributor_id: options.account, authenticated_as: { issuer: 'vscode-github', subject: options.account } },
       runtime: null, host_credentials: true, credential_variable: null, discovery_repository: null, resume_sharing: false,
-    }), { mode: 0o600 });
-    this.client.start(resolveNativePath('', this.extensionPath, 'idle-coordination'), { args: ['--config', file], cwd: options.cwd });
-    await this.client.request('{"kind":"versions"}', undefined, 60_000);
-    if (!this.closed) this.schedule();
+    } };
   }
 
   private async refresh(): Promise<void> {
@@ -138,20 +128,7 @@ export class NativeSharing {
     if (this.closing) return this.closing;
     this.closed = true; this.lifetime.abort(); clearTimeout(this.timer);
     this.value = { ...this.value, enabled: false, hosting: false, peers: [] };
-    this.closing = (async () => {
-      try {
-        if (kind === 'stop') {
-          await this.opening?.catch(() => {});
-          if (!this.client.isRunning()) {
-            await this.client.shutdown();
-            this.client = new CoordinationClient(this.processOptions, purpose => this.options.credential(purpose));
-            this.opening = this.open();
-          }
-          await this.opening;
-        } else await this.opening;
-        if (this.client.isRunning()) await this.client.request(JSON.stringify({ kind }), undefined, 60_000);
-      } finally { await this.client.shutdown(); }
-    })();
+    this.closing = this.owner.shutdown(kind);
     return this.closing;
   }
 }

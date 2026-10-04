@@ -6,5 +6,10 @@
 !out/extension.js
 !out/extension.js.LEGAL.txt
 !dist/**
-!bin/**
+!bin/**/idle-editor-service*
+!bin/**/idle-history-service*
+!bin/**/idle-history-collector*
+!bin/**/codex-session-exporter*
+!bin/**/idle-coordination*
+!bin/**/idle-repository*
 dist/peer-state/**

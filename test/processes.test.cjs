@@ -7,7 +7,6 @@ const { once, getEventListeners } = require('node:events');
 const path = require('node:path');
 const os = require('node:os');
 const { StdioClient } = require('../out/host/processes');
-const { NativeWorker } = require('../out/host/nativeWorker');
 const { frame, fakeChild } = require('./fixtures/process-fake.cjs');
 
 const fixture = path.join(__dirname, 'fixtures', 'process-child.cjs');
@@ -227,25 +226,4 @@ test('invalid requests are rejected without corrupting the process and disposal 
   assert.equal(child.writes.length, 0);
   client.dispose();
   assert.throws(() => client.start('/native'), /disposed/);
-});
-
-test('peer worker uses its own serialized control envelopes and preserves unknown results', { timeout: 5000 }, async t => {
-  const worker = new NativeWorker(process.execPath, { args: [fixture, 'worker'], cwd: os.tmpdir() });
-  t.after(() => worker.dispose());
-  const pending = worker.request({ type: 'open', space: 'test' });
-  await assert.rejects(worker.request({ type: 'turn' }), /serialized/);
-  assert.deepEqual(await pending, { echo: { type: 'open', space: 'test' }, cwd: os.tmpdir() });
-  assert.deepEqual((await worker.request(null)).echo, null);
-});
-
-test('peer worker suppresses arbitrary error text and closes after a response deadline', async t => {
-  const child = fakeChild();
-  const worker = new NativeWorker('/native', { spawn: () => child, timeoutMs: 5 });
-  t.after(() => worker.dispose());
-  const failed = worker.request({ type: 'open' });
-  child.reply({ ok: false, error: 'secret-provider-token' });
-  await assert.rejects(failed, error => error.message === 'Native multiplayer: invalid_native_response');
-  await assert.rejects(worker.request({ type: 'turn' }), /timed out/);
-  await assert.rejects(worker.request({ type: 'turn' }), /closed/);
-  assert.deepEqual(child.signals, ['SIGTERM']);
 });

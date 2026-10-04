@@ -947,9 +947,7 @@ dependencies = [
 name = "history-geometry"
 version = "0.1.0"
 dependencies = [
- "editchain-core",
  "editchain-index",
- "idle-history",
  "serde",
 ]
 
