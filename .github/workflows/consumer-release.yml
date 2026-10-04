@@ -1,0 +1,45 @@
+name: Consumer release
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing draft release tag
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the compatibility package
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python3 scripts/package-consumer.py --tag "$RELEASE_TAG"
+      - name: Publish the compatibility package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          (cd releases && sha256sum --check ./*.sha256)
+          gh release upload "$RELEASE_TAG" releases/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false

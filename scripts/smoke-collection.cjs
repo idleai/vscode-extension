@@ -27,7 +27,7 @@ async function smokeCollection(directory) {
     const chain = path.join(root, 'chain');
     await fs.mkdir(sessions);
     const source = path.join(sessions, 'rollout-2026-09-21T12-00-00-22222222-2222-7222-8222-222222222222.jsonl');
-    const fixture = await fs.readFile(path.join(__dirname, '../../host-tools/crates/idle-history-import/tests/fixtures/codex/rollout-contract.jsonl'), 'utf8');
+    const fixture = await fs.readFile(require('./native-artifacts.cjs').artifact('host-tools', 'fixtures', 'rollout-contract.jsonl'), 'utf8');
     const lines = fixture.trimEnd().split('\n');
     const metadata = JSON.parse(lines[0]);
     metadata.payload.cwd = root;

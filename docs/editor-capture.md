@@ -116,7 +116,7 @@ The f39 capture behavior remains unchanged. Host-tools now owns the capture crat
 and executable; this extension owns manifest settings, activation/shutdown hooks
 and the packaging script. Its webview uses the
 published `app-core` interface; the f25 projection API is not a prerequisite.
-Use the sibling revisions pinned in `.github/workflows/ci.yml` for the same build
+Use `Cargo.lock` and `native-dependencies.json` for the same build
 as CI. Production projection connections remain with f43.
 
 ## Verification
