@@ -1,3 +1,4 @@
+import artifacts from './native-artifacts.cjs';
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
@@ -28,8 +29,8 @@ try {
   const assets = join(extensionRoot, "dist");
   const workspace = join(temporary, "workspace");
   const otherWorkspace = join(temporary, "other-workspace");
-  execFileSync("cargo", ["run", "--manifest-path", "../host-tools/Cargo.toml", "--quiet", "--locked", "-p", "idle-history-native", "--example", "history-fixture", "--", workspace], { cwd: root, stdio: "inherit" });
-  execFileSync("cargo", ["run", "--manifest-path", "../host-tools/Cargo.toml", "--quiet", "--locked", "-p", "idle-history-native", "--example", "history-fixture", "--", otherWorkspace], { cwd: root, stdio: "inherit" });
+  execFileSync(artifacts.binary("host-tools", "history-fixture"), [workspace], { cwd: root, stdio: "inherit" });
+  execFileSync(artifacts.binary("host-tools", "history-fixture"), [otherWorkspace], { cwd: root, stdio: "inherit" });
   execFileSync('git', ['init', '-b', 'main', workspace], { stdio: 'ignore' });
   await writeFile(join(workspace, 'README.txt'), 'Isolated repository fixture.\n');
   execFileSync('git', ['-C', workspace, 'add', 'README.txt']);

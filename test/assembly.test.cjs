@@ -13,7 +13,11 @@ test('local discovery installs explicit independent folder bindings without proc
   const released = [];
   const queries = [];
   const history = { connect(binding) { bindings.push(binding); return { dispose() { released.push(binding); } }; },
-    query(params, signal) { queries.push({ params, signal }); return { Ok: 'Opened' }; } };
+    query(params, signal) {
+      assert(bindings.some(binding => binding.repository.chain === params.binding.chain && !released.includes(binding)), 'history reads require an active binding');
+      queries.push({ params, signal });
+      return { Ok: 'Opened' };
+    } };
   const host = new AssemblyHost(new HostConfiguration('/extension'), history, effects, error => assert.fail(String(error)));
   const context = { session: 'view', signal: new AbortController().signal };
   try {
@@ -35,6 +39,7 @@ test('local discovery installs explicit independent folder bindings without proc
     await assert.rejects(effects.execute('app.workspace', { operation: { Snapshot: { workspace_id: workspace.id, mode: 'Managed' } } }, context), { code: 'unavailable' });
     host.reset();
     assert.equal(released.length, 2);
+    assert.deepEqual(await effects.execute('app.history', params, context), { Ok: 'Opened' }, 'an in-flight view can read after an account reset before discovery replies');
     const next = await effects.execute('app.workspace', { operation: 'List' }, context);
     assert.deepEqual(next, result, 'local aliases are stable across view and process lifetimes');
     f.api.workspace.isTrusted = false;

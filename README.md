@@ -15,22 +15,15 @@ see the [assembly notes](docs/assembly.md).
 
 ## Setup
 
-Use Node.js 22.12+ and rustup. [rust-toolchain.toml](rust-toolchain.toml) selects
-Rust 1.97.0 and the required components and WASM target. Keep these sibling
-checkouts under one parent directory:
+Use Node.js 22.12+, Python 3.12+ and rustup. [rust-toolchain.toml](rust-toolchain.toml)
+selects Rust 1.97.0 and the required components and WASM target. Cargo downloads
+versioned app-core, web-ui, host-tools and engine crates using `Cargo.lock` and
+[the configured Cargo indexes](.cargo/config.toml). Normal CI checks out this
+repository only.
 
-```text
-repos/
-  vscode-extension/
-  app-core/
-  web-ui/
-  editchain/
-  host-tools/           # shared contracts and native services
-  codex/                # tools/codex-session-exporter
-```
-
-Cargo uses local path dependencies. The [CI workflow](.github/workflows/ci.yml)
-records compatible sibling revisions.
+`native-dependencies.json` records the engine, host-tools and exporter release
+tags and SHA-256 checksums. Build scripts download the matching platform bundles
+to `.artifacts/`, then copy production binaries into the extension package.
 
 Install the build tools and dependencies from this repository's root:
 
@@ -41,9 +34,9 @@ npm ci
 npm run build
 ```
 
-The full test suite also uses the older peer compatibility fixture; install it
-with `npm --prefix ../host-tools/packages/history-runtime ci` before `npm test`.
-It is absent from the shipped extension.
+The full test suite installs the older peer compatibility fixture from the
+host-tools release and runs its packaged coordinator tests. `npm test` prepares
+these tools automatically. They are absent from the shipped extension.
 
 ## Run and package
 
@@ -140,4 +133,19 @@ Public/offline/partial reads and retry deadlines remain visible. Session selecti
 is retained separately for sidebar and detail under the exact repository binding.
 No runtime is required to browse captured sessions; execution remains unavailable
 until a runtime is connected. See the shared
-[repository adapter contract](../host-tools/docs/repository.md).
+[repository adapter contract](https://github.com/idleai/host-tools/blob/main/docs/repository.md).
+A weekly workflow groups compatible native/consumer release updates, including
+archive checksums and compatible Cargo lockfile updates, into one dependency PR. It selects only complete releases
+and explicitly starts the regular CI checks for the generated PR.
+
+
+## Coordinated development
+
+For ordinary local Rust work, add a temporary Cargo patch for the relevant
+registry and pass it with `cargo --config /absolute/path/local.toml ...`.
+Keep these overrides out of committed manifests and lockfiles. Full checks with
+an unpublished producer can use `memos/scripts/check-integration.py` with
+explicit `--producer` and `--consumer` checkout paths. It temporarily patches
+Cargo, builds candidate native bundles when needed, runs the consumer's normal
+check script and restores its dependency files. The manual **Unpublished package
+integration** workflow in memos runs the same check for selected branches.

@@ -11,9 +11,9 @@ description = "Idle VS Code webview entrypoint"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-idle-protocol = { path = "../../../host-tools/crates/idle-protocol" }
-app-core = { path = "../../../app-core/crates/app-core", version = "0.1.0" }
-web-ui = { path = "../../../web-ui/crates/web-ui", version = "0.1.0" }
+idle-protocol = { registry = "idle-host-tools", version = "0.1.0" }
+app-core = { registry = "idle-app-core", version = "0.1.0" }
+web-ui = { registry = "idle-web-ui", version = "0.1.0" }
 dioxus = { version = "=0.7.7", default-features = false, features = ["macro", "html", "hooks", "signals"] }
 serde_json = "=1.0.151"
 serde = { version = "1", features = ["derive"] }
@@ -27,8 +27,8 @@ wasm-bindgen-futures = "=0.4.77"
 web-sys = { version = "=0.3.104", features = ["Window", "Document", "Element", "EventTarget", "MessageEvent", "console"] }
 
 [dev-dependencies]
-app-core = { path = "../../../app-core/crates/app-core", version = "0.1.0", features = ["session-fixtures"] }
-editchain-core = { path = "../../../editchain/crates/editchain-core" }
+app-core = { registry = "idle-app-core", version = "0.1.0", features = ["session-fixtures", "peer-fixtures"] }
+editchain-core = { registry = "idle-editchain", version = "0.1.0" }
 
 [lints]
 workspace = true

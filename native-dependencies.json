@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "dependencies": {
+    "engine": {
+      "repository": "idleai/editchain",
+      "tag": "editchain-v0.1.0",
+      "sha256": {
+        "linux-x64": "9e15622fde35cf039ec61100ef249f18ccc711e8be8d95d7d9f96dcb630c2067",
+        "darwin-x64": "297d9311e21d6eebb39cee040f399f2a9fc461fd8a2971d7cafd04b972bb0015",
+        "darwin-arm64": "06e9858f1681a74a9689854a8de744440eab21dcc02d60d6509d827053305d0f",
+        "win32-x64": "69d1c7398d3857675351e594e34999afe675d99eb522b3926a42fdf72780f161"
+      }
+    },
+    "host-tools": {
+      "repository": "idleai/host-tools",
+      "tag": "idle-coordination-v0.1.0",
+      "sha256": {
+        "linux-x64": "6e180352d949404fb12bc668867c014ed7b827bd4ec9e9b707450e30adba2ab2"
+      }
+    },
+    "codex-exporter": {
+      "repository": "idleai/codex-evo",
+      "tag": "codex-session-exporter-v0.1.0",
+      "sha256": {
+        "linux-x64": "d6fcb6d5541d4a6358cf9435c91d78975da05b61c1bf23706f17f3900f256515"
+      }
+    }
+  }
+}

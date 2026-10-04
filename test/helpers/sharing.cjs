@@ -10,13 +10,13 @@ const { fixture: vscodeFixture, loadWithVSCode } = require('./vscode.cjs');
 const { NativeSharing } = loadWithVSCode('../../out/sharing/runtime', vscodeFixture().api);
 
 const root = path.resolve(__dirname, '../..');
-const suffix = process.platform === 'win32' ? '.exe' : '';
+const { binary } = require('../../scripts/native-artifacts.cjs');
 const binaries = {
-  peer: path.join(root, '../editchain/target/debug/editchain-peer' + suffix),
-  service: path.join(root, '../host-tools/target/debug/idle-editor-service' + suffix),
-  engine: path.join(root, '../editchain/target/debug/editchain' + suffix),
-  coordinator: path.join(root, '../host-tools/target/debug/idle-coordination' + suffix),
-  loopback: path.join(root, '../host-tools/target/debug/examples/loopback-coordinator' + suffix),
+  peer: binary('engine', 'editchain-peer'),
+  service: binary('host-tools', 'idle-editor-service'),
+  engine: binary('engine', 'editchain'),
+  coordinator: binary('host-tools', 'idle-coordination'),
+  loopback: binary('host-tools', 'loopback-coordinator'),
 };
 
 const children = new WeakMap();

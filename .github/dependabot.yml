@@ -1,0 +1,36 @@
+version: 2
+registries:
+  idle-app-core:
+    type: cargo-registry
+    registry: idle-app-core
+    url: https://raw.githubusercontent.com/idleai/app-core/cargo-index/
+  idle-editchain:
+    type: cargo-registry
+    registry: idle-editchain
+    url: https://raw.githubusercontent.com/idleai/editchain/cargo-index/
+  idle-host-tools:
+    type: cargo-registry
+    registry: idle-host-tools
+    url: https://raw.githubusercontent.com/idleai/host-tools/cargo-index/
+  idle-web-ui:
+    type: cargo-registry
+    registry: idle-web-ui
+    url: https://raw.githubusercontent.com/idleai/web-ui/cargo-index/
+updates:
+  - package-ecosystem: cargo
+    registries: "*"
+    directory: /
+    schedule:
+      interval: daily
+    groups:
+      idle-packages:
+        patterns: ["editchain*", "idle-*", "history-geometry", "app-core", "web-ui"]
+    commit-message:
+      prefix: "build(deps)"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

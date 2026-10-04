@@ -29,7 +29,10 @@ export class AssemblyHost implements vscode.Disposable {
     private readonly repository?: RepositoryHost) {
     this.installed = [
       effects.register("app.workspace", params => this.workspace(params)),
-      effects.register("app.history", (params, context) => history.query(params, context.signal)),
+      effects.register("app.history", (params, context) => {
+        this.list();
+        return history.query(params, context.signal);
+      }),
       effects.register("app.projection", (params, context) => this.projection(params, context)),
     ];
     if (repository) this.installed.push(effects.register("app.repository", (params, context) => {

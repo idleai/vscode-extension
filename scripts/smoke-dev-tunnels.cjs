@@ -6,7 +6,7 @@ const path = require('node:path');
 const binary = path.resolve('bin', `${process.platform}-${process.arch}`,
   `idle-coordination${process.platform === 'win32' ? '.exe' : ''}`);
 const result = spawnSync(process.platform === 'win32' ? 'python' : 'python3',
-  [path.resolve('../host-tools/scripts/smoke-tunnels.py'), '--binary', binary, ...process.argv.slice(2)],
+  [require('./native-artifacts.cjs').artifact('host-tools', 'scripts', 'smoke-tunnels.py'), '--binary', binary, ...process.argv.slice(2)],
   { stdio: 'inherit' });
 if (result.error) throw new Error('Cannot start the native relay probe.');
 process.exitCode = result.status ?? 1;
