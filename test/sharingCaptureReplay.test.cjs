@@ -3,88 +3,10 @@
 // Peer receipts must not erase the recorder's authored baseline after a process restart.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { randomUUID, randomBytes } = require('node:crypto');
+const { randomUUID } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { Duplex, PassThrough } = require('node:stream');
-const { MultiplayerManager } = require('./helpers/sharing.cjs');
-const { NativeWorker } = require('@idle/history-runtime/native');
-const { fixture, binaries, until, blobs, diffs, rows, query } = require('./helpers/sharing.cjs');
-
-// Fault-inject only the byte transport. Managers, TLS, native workers and the
-// durable stores are the production implementations.
-function relay() {
-  const hosts = new Map();
-  const streams = new Set();
-  const provider = {
-    host(incoming, failed) {
-      let lease;
-      const owned = new Set();
-      const suspend = async () => {
-        for (const stream of owned) stream.destroy();
-        if (hosts.get(lease?.tunnelId)?.incoming === incoming) hosts.delete(lease.tunnelId);
-      };
-      return {
-        async start(previous) {
-          lease = previous ?? { marker: 'idle-relay-' + randomBytes(12).toString('hex'), tunnelId: randomUUID(), clusterId: 'use' };
-          hosts.set(lease.tunnelId, { incoming, owned, failed });
-        },
-        lease: () => lease,
-        async descriptor() {
-          const expiresAt = Date.now() + 60_000;
-          const connectToken = ['e30', Buffer.from(JSON.stringify({ exp: Math.ceil(expiresAt / 1000) + 3600 })).toString('base64url'), 'signature'].join('.');
-          return { endpoint: { tunnelId: lease.tunnelId, clusterId: lease.clusterId, hostId: 'host', hostPublicKeys: ['YWJj'], clientRelayUri: 'wss://use.rel.tunnels.api.visualstudio.com/test' }, connectToken, expiresAt };
-        },
-        suspend,
-        stop: suspend,
-      };
-    },
-    client() {
-      let stream;
-      return {
-        async connect(invitation) {
-          const host = hosts.get(invitation.endpoint.tunnelId);
-          if (!host) throw new Error('fixture host offline');
-          const left = new PassThrough({ highWaterMark: 1024 });
-          const right = new PassThrough({ highWaterMark: 1024 });
-          const remote = Duplex.from({ readable: left, writable: right });
-          stream = Duplex.from({ readable: right, writable: left });
-          for (const item of [remote, stream]) {
-            item.on('error', () => {});
-            streams.add(item);
-            host.owned.add(item);
-            item.once('close', () => { streams.delete(item); host.owned.delete(item); });
-          }
-          host.incoming(remote);
-          return stream;
-        },
-        async stop() { stream?.destroy(); },
-      };
-    },
-    async remove(lease) { hosts.delete(lease.tunnelId); },
-  };
-  return { provider, drop() { for (const stream of streams) stream.destroy(); } };
-}
-
-function environment() {
-  const files = fixture();
-  const wire = relay();
-  const spaces = new Map();
-  const managers = new Set();
-  const create = local => {
-    const manager = new MultiplayerManager({ binary: binaries.peer, chain: local.chain, deviceDirectory: local.device,
-      space: spaces.get(local.root), relay: wire.provider, githubToken: async () => { throw new Error('no real service'); },
-      journal: { remember: async () => {}, forget: async () => {} }, changed: () => {},
-      saveSpace: async space => { spaces.set(local.root, space); } });
-    managers.add(manager);
-    return manager;
-  };
-  return {
-    files, create,
-    async stopSharing() { await Promise.all([...managers].map(manager => manager.stop())); managers.clear(); },
-    async stop() { wire.drop(); await files.stop(); },
-  };
-}
+const { environment, control, until, blobs, diffs, rows, query } = require('./helpers/sharing.cjs');
 
 const live = manager => manager.status().peers.filter(peer => peer.state === 'Live').length;
 const ledger = chain => JSON.parse(fs.readFileSync(path.join(chain, 'multiplayer/scope.json'), 'utf8'));
@@ -136,9 +58,7 @@ for (const policy of ['legacy', 'cutoff']) test(`a peer-supplied copy of a withh
 
     const host = env.create(a), guest = env.create(b);
     // Exercise both the persisted legacy boundary and migration to an explicit cutoff.
-    const worker = new NativeWorker(binaries.peer);
-    try { await worker.request({ type: 'configure', chain_dir: a.chain, space: 'capture-sharing-space', backfill: false }); }
-    finally { worker.stop(); }
+    await control({ type: 'configure', chain_dir: a.chain, space: 'capture-sharing-space', backfill: false });
     const withheld = ledger(a.chain).excluded.map(keyOf);
     const invitation = await host.hostHistory(await guest.joinRequest(), policy === 'legacy' ? 'keep' : false);
     assert.ok(withheld.length > 0, 'sharing only new history must withhold the authored baseline');

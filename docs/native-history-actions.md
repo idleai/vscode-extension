@@ -166,4 +166,4 @@ CI pins compatible EditChain, app-core, web-ui and Codex source revisions in
 The bootstrap test also checks that unavailable resource requests
 finish with disabled capabilities in standalone and managed modes.
 The packaged tests exercise history restart, capture and collection alongside
-host activation and current peer-state bindings.
+host activation and native sharing commands.

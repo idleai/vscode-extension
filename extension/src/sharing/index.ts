@@ -1,18 +1,14 @@
 import * as path from "node:path";
 import { createHash } from "node:crypto";
 import * as vscode from "vscode";
-import type { MultiplayerManager, SavedSharing, SharingStatus } from "@idle/history-runtime/manager";
-import { DirectorySync, GitHubDirectory, repositoryName, type DiscoveryStatus } from "@idle/history-runtime/discovery";
-import { describeScope, type ScopeChoice } from "@idle/history-runtime/scope";
-import { ProbeError } from "@idle/history-runtime/errors";
-import { NativePeerError } from "@idle/history-runtime/native";
+import type { SavedSharing, SharingStatus, DiscoveryStatus } from "./types";
+import { TunnelJournal } from "../host/tunnelJournal";
+import { describeScope, type ScopeChoice } from "./scope";
 import { HostConfiguration } from "../host/configuration";
 import { HostCredentials, type Account } from "../host/credentials";
 import { HostDiagnostics } from "../host/diagnostics";
-import { DevTunnelsError, type DevTunnelsAdapters } from "../host/devTunnels";
 import { HostError } from "../host/protocol";
-import { relayProvider } from "./relay";
-import { createManager } from "./runtime";
+import { createManager, NativeSharing } from "./runtime";
 import { MultiplayerStatusOutput } from "./statusOutput";
 import { sharingDetails, sharingLabel } from "./statusBar";
 
@@ -20,15 +16,18 @@ interface Entry {
   folder: vscode.WorkspaceFolder;
   key: string;
   account: Account;
-  manager: MultiplayerManager;
+  manager: NativeSharing;
+  credentialsActive: boolean;
+  journal: TunnelJournal;
+  updates: Promise<void>;
   active: boolean;
-  directory?: DirectorySync;
+  directory?: boolean;
   discovery?: DiscoveryStatus;
   output?: MultiplayerStatusOutput;
 }
 interface DirectorySettings { repository: string; account: string }
 const ENABLED = "idle.sharing.enabled.";
-const SPACE = "idle.sharing.space.";
+const ACCOUNT = "idle.sharing.account.";
 const DIRECTORY = "idle.sharing.directory.";
 
 /** A saved approval belongs to one physical folder and chain, independent of view lifetimes. */
@@ -54,7 +53,6 @@ export class SharingHost implements vscode.Disposable {
     private readonly configuration: HostConfiguration,
     private readonly credentials: HostCredentials,
     private readonly diagnostics: HostDiagnostics,
-    private readonly tunnels: () => Promise<DevTunnelsAdapters>,
     private readonly factory: typeof createManager = createManager) {
     this.status.name = "Idle history sharing";
     this.status.command = "idle.sharing.status";
@@ -62,7 +60,7 @@ export class SharingHost implements vscode.Disposable {
     this.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration(event => {
         const folders = new Set((vscode.workspace.workspaceFolders ?? []).filter(folder =>
-          ["idle.chainDirectory", "idle.native.peerPath"].some(key => event.affectsConfiguration(key, folder.uri)))
+          event.affectsConfiguration("idle.chainDirectory", folder.uri))
           .map(folder => folder.uri.toString()));
         if (folders.size) {
           void this.reset(true, folders).catch(error => this.diagnostics.failure("Restarting sharing", error));
@@ -125,6 +123,7 @@ export class SharingHost implements vscode.Disposable {
       current(); if (choice) await entry.manager.revoke(choice.device.fingerprint);
     });
     command("resume", async (entry, current) => {
+      entry.directory = undefined;
       await this.restore(entry); current();
       await entry.manager.reconnect(); current();
     });
@@ -159,11 +158,6 @@ export class SharingHost implements vscode.Disposable {
       if (!folder) return;
       const entry = await this.entry(folder, generation);
       return await action(entry, () => { this.assertCurrent(generation); if (!entry.active) throw new HostError("cancelled", "Sharing was stopped."); });
-    } catch (error) {
-      if (error instanceof ProbeError || error instanceof NativePeerError || error instanceof DevTunnelsError) {
-        throw new HostError("sharing_failed", error.message);
-      }
-      throw error;
     } finally { this.busy = false; }
   }
 
@@ -180,32 +174,59 @@ export class SharingHost implements vscode.Disposable {
     if (existing) return existing;
     const account = await this.credentials.account(); this.assertCurrent(generation);
     if (!account) throw new HostError("authentication_required", "Run Idle: Sign In to GitHub first.");
-    const adapters = await this.tunnels(); this.assertCurrent(generation);
     const raced = this.entries.get(key);
     if (raced) return raced;
-    const entry: Entry = { folder, key, account, active: true, manager: this.factory({
-      binary: this.configuration.peerBinary(config), chain: config.chainDirectory,
-      deviceDirectory: path.join(this.context.globalStorageUri.fsPath, "history-sharing-device"),
-      space: this.context.workspaceState.get<string>(SPACE + key),
-      saveSpace: async space => { if (entry.active) await this.context.workspaceState.update(SPACE + key, space); },
-      saveSession: async session => {
-        if (!entry.active) return;
-        if (session) {
-          await this.credentials.store(key, "sharing", JSON.stringify({ account: account.id, session }));
-          await this.context.workspaceState.update(ENABLED + key, true);
-        } else {
-          await this.context.workspaceState.update(ENABLED + key, undefined);
-          await this.credentials.delete(key, "sharing");
-        }
-      },
-      changed: (value, durable) => { if (entry.active) this.update(entry, value, durable); },
-      relay: relayProvider(adapters),
-    }, this.context.extensionUri.fsPath) };
+    const entry = this.createEntry(folder, key, account);
     this.entries.set(key, entry);
+    try { await this.migrate(entry); this.assertCurrent(generation); }
+    catch (error) {
+      entry.active = false;
+      if (this.entries.get(key) === entry) this.entries.delete(key);
+      try { await entry.manager.suspend(); } finally { entry.credentialsActive = false; await entry.journal.release(); }
+      throw error;
+    }
     return entry;
   }
 
+  private createEntry(folder: vscode.WorkspaceFolder, key: string, account: Account): Entry {
+    const config = this.configuration.forResource(folder.uri);
+    const journal = new TunnelJournal(this.context.globalState, account.id);
+    const directory = path.join(this.context.globalStorageUri.fsPath, 'history-sharing',
+      createHash('sha256').update(account.id).digest('hex'), key);
+    const entry: Entry = { folder, key, account, active: true, credentialsActive: true, journal, updates: Promise.resolve(), manager: this.factory({
+      key, account: account.id, name: folder.name, cwd: folder.uri.fsPath, chain: config.chainDirectory,
+      stateDirectory: directory,
+      deviceDirectory: path.join(this.context.globalStorageUri.fsPath, 'history-sharing-device'),
+      credential: async purpose => {
+        this.configuration.assertTrusted();
+        if (!entry.credentialsActive) throw new HostError('cancelled', 'Sharing credentials retired.');
+        if (purpose === 'management') return this.credentials.tokenProvider(account.id)();
+        const settings = this.context.workspaceState.get<DirectorySettings>(DIRECTORY + key);
+        if (!settings) return undefined;
+        const session = await vscode.authentication.getSession('github', ['repo'], { silent: true });
+        this.configuration.assertTrusted();
+        if (!entry.credentialsActive || session?.account.id !== settings.account || settings.account !== account.id) {
+          throw new HostError('account_changed', 'Repository discovery account is unavailable.');
+        }
+        return session.accessToken;
+      },
+      saveEnabled: enabled => this.enqueueUpdate(entry, async () => {
+        if (enabled) await this.context.workspaceState.update(ACCOUNT + key, account.id);
+        if (entry.active) await this.context.workspaceState.update(ENABLED + key, enabled || undefined);
+      }),
+      changed: (value, durable) => { if (entry.active) this.update(entry, value, durable); },
+    }, this.context.extensionUri.fsPath) };
+    return entry;
+  }
+
+  private enqueueUpdate(entry: Entry, action: () => Promise<void>): Promise<void> {
+    const next = entry.updates.then(async () => { if (entry.active) await action(); });
+    entry.updates = next.catch(() => {});
+    return next;
+  }
+
   private update(entry: Entry, value: SharingStatus, durable: boolean): void {
+    entry.discovery = value.discovery;
     const enabled = [...this.entries.values()].filter(entry => entry.manager.status().enabled);
     entry.output?.update({ ...value, discovery: entry.discovery });
     this.status.text = `$(broadcast) ${enabled.length === 1 ? sharingLabel(enabled[0].manager.status()) : `Sharing (${enabled.length})`}`;
@@ -224,14 +245,29 @@ export class SharingHost implements vscode.Disposable {
     return (await vscode.window.showQuickPick(choices, { title: `Outgoing history from ${entry.folder.name}` }))?.value;
   }
 
-  private async restore(entry: Entry): Promise<void> {
-    const stored = await this.credentials.get(entry.key, "sharing");
-    if (!entry.active) return;
-    if (!stored || stored.length > 512 * 1024) throw new HostError("sharing_unavailable", "No valid saved sharing session. Host or join to enable sharing.");
+  private async migrate(entry: Entry): Promise<void> {
+    const stored = await this.credentials.get(entry.key, 'sharing');
+    if (!entry.active || !stored) return;
+    if (stored.length > 512 * 1024) throw new HostError('sharing_unavailable', 'Saved sharing session is invalid.');
     let envelope: { account: string; session: SavedSharing };
-    try { envelope = JSON.parse(stored); } catch { throw new HostError("sharing_unavailable", "Saved sharing session is invalid."); }
-    if (envelope.account !== entry.account.id) throw new HostError("account_changed", "Sign in with the account that enabled this sharing session.");
-    await entry.manager.resume(envelope.session);
+    try { envelope = JSON.parse(stored); } catch { throw new HostError('sharing_unavailable', 'Saved sharing session is invalid.'); }
+    if (!envelope || envelope.account !== entry.account.id) throw new HostError('account_changed', 'Sign in with the account that enabled this sharing session.');
+    const marker = envelope.session?.host?.marker;
+    if (marker) await entry.journal.remember(marker);
+    if (!entry.active) return;
+    await entry.manager.importSaved(envelope.session);
+    if (marker) { await entry.manager.importCleanup([marker]); await entry.journal.forget(marker); }
+    if (!entry.active) return;
+    await this.enqueueUpdate(entry, async () => {
+      await this.context.workspaceState.update(ACCOUNT + entry.key, entry.account.id);
+      if (entry.active) await this.credentials.delete(entry.key, 'sharing');
+    });
+  }
+
+  private async restore(entry: Entry): Promise<void> {
+    const owner = this.context.workspaceState.get<string>(ACCOUNT + entry.key);
+    if (owner !== entry.account.id) throw new HostError('account_changed', 'Sign in with the account that enabled this sharing session.');
+    await entry.manager.resume();
     if (entry.active) await this.startDirectory(entry);
   }
 
@@ -256,19 +292,9 @@ export class SharingHost implements vscode.Disposable {
     if (!entry.active || !entry.manager.status().enabled || entry.directory) return;
     const settings = this.context.workspaceState.get<DirectorySettings>(DIRECTORY + entry.key);
     if (!settings) return;
-    const github = new GitHubDirectory(settings.repository, async () => {
-      this.configuration.assertTrusted();
-      const session = await vscode.authentication.getSession("github", ["repo"], { silent: true });
-      this.configuration.assertTrusted();
-      if (!entry.active || session?.account.id !== settings.account) throw new HostError("account_changed", "Repository discovery account is unavailable.");
-      return session.accessToken;
-    });
-    const directory = new DirectorySync(github, { describe: () => entry.manager.describe(),
-      discover: values => entry.manager.discover(values), space: () => entry.manager.status().space }, value => {
-      if (entry.active) entry.discovery = value;
-    });
-    entry.directory = directory;
-    await directory.start();
+    if (settings.account !== entry.account.id) throw new HostError('account_changed', 'Repository discovery account is unavailable.');
+    entry.directory = true;
+    await entry.manager.configureDirectory(settings.repository);
   }
 
   private async configureDirectory(entry: Entry, current: () => void): Promise<void> {
@@ -281,13 +307,17 @@ export class SharingHost implements vscode.Disposable {
     if (choice.value) {
       const text = await vscode.window.showInputBox({ title: "Discovery repository", prompt: "owner/repository (collaborator access required)" });
       current(); if (!text) return;
-      const repository = repositoryName(text.trim());
+      const repository = text.trim();
+      if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) || repository.length > 256) {
+        throw new HostError('invalid_request', 'Use an owner/repository name.');
+      }
       const approval = await vscode.window.showWarningMessage(`Publish this space's public device identity and relay endpoint in ${repository}? Discovery requests GitHub repo access; invitations still control enrollment.`, { modal: true }, "Enable discovery");
       current(); if (approval !== "Enable discovery") return;
       const session = await vscode.authentication.getSession("github", ["repo"], { createIfNone: true }); current();
+      if (session.account.id !== entry.account.id) throw new HostError('account_changed', 'Select the account that enabled sharing.');
       settings = { repository, account: session.account.id };
     }
-    await entry.directory?.stop(); current(); entry.directory = undefined; entry.discovery = undefined;
+    if (entry.directory) await entry.manager.configureDirectory(); current(); entry.directory = undefined; entry.discovery = undefined;
     await this.context.workspaceState.update(DIRECTORY + entry.key, settings); current();
     await this.startDirectory(entry);
   }
@@ -303,7 +333,8 @@ export class SharingHost implements vscode.Disposable {
     const closing = entries.map(entry => {
       entry.active = false; this.retiring.add(entry);
       entry.output?.dispose();
-      return Promise.all([entry.manager.suspend(), entry.directory?.stop()]).then(() => { this.retiring.delete(entry); });
+      return Promise.all([entry.manager.suspend(), entry.updates]).finally(async () => { entry.credentialsActive = false; await entry.journal.release(); })
+        .then(() => { this.retiring.delete(entry); });
     });
     const settled = Promise.allSettled(closing);
     const generation = this.generation;
@@ -324,13 +355,19 @@ export class SharingHost implements vscode.Disposable {
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
       if (folder.uri.scheme !== "file") continue;
       const config = this.configuration.forResource(folder.uri);
-      keys.add(sharingKey(folder.uri, config.chainDirectory));
+      const key = sharingKey(folder.uri, config.chainDirectory);
+      keys.add(key);
+      const account = this.context.workspaceState.get<string>(ACCOUNT + key);
+      if (account && !entries.some(entry => entry.key === key)) {
+        entries.push(this.createEntry(folder, key, { id: account, label: account }));
+      }
     }
     this.entries.clear(); this.status.hide();
     const closing = entries.map(async entry => {
       entry.active = false; this.retiring.add(entry);
       entry.output?.dispose();
-      const results = await Promise.allSettled([entry.manager.stop(), entry.directory?.stop()]);
+      const results = await Promise.allSettled([entry.manager.stop(), entry.updates]);
+      entry.credentialsActive = false; await entry.journal.release();
       await this.context.workspaceState.update(ENABLED + entry.key, undefined);
       await this.credentials.delete(entry.key, "sharing");
       if (results.some(result => result.status === "rejected")) throw new HostError("sharing_cleanup", "Sharing stopped; use Idle: Clean Up Dev Tunnels to retry cleanup.");
@@ -347,6 +384,22 @@ export class SharingHost implements vscode.Disposable {
     });
     this.transition = transition.catch(() => {});
     return transition;
+  }
+
+  /** Native journals retain unsuccessful deletions; old markers move only after acknowledgement. */
+  async cleanup(): Promise<void> {
+    await this.run(async entry => {
+      const markers = entry.journal.inactiveMarkers();
+      for (const marker of markers) {
+        await entry.journal.remember(marker);
+        try {
+          await entry.manager.importCleanup([marker]);
+          await entry.journal.forget(marker);
+        } finally { await entry.journal.releaseMarker(marker); }
+      }
+      for (const current of this.entries.values()) await current.manager.cleanup();
+      await this.diagnostics.notify('info', 'Retried pending Dev Tunnel cleanup.');
+    });
   }
 
   async shutdown(): Promise<void> {

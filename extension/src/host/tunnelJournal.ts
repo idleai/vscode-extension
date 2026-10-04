@@ -56,6 +56,18 @@ export class TunnelJournal {
       .map(key => key.slice(this.prefix.length));
   }
 
+  /** Retain an untransferred marker while making a failed handoff retryable. */
+  releaseMarker(marker: string): Promise<void> {
+    return this.serial(async () => {
+      this.validate(marker);
+      const key = this.prefix + marker;
+      const current = this.state.get<Lease>(key);
+      if (current?.owner === this.owner) await this.state.update(key, { ...current, leaseUntil: 0 });
+      this.owned.delete(marker);
+      if (!this.owned.size) { clearInterval(this.timer); this.timer = undefined; }
+    });
+  }
+
   async release(): Promise<void> {
     this.closed = true;
     clearInterval(this.timer);

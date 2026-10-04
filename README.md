@@ -35,10 +35,13 @@ Install the build tools and dependencies from this repository's root:
 ```sh
 cargo install --locked wasm-bindgen-cli --version 0.2.127
 cargo install --locked cargo-deny --version 0.20.2
-npm --prefix ../host-tools/packages/history-runtime ci
 npm ci
 npm run build
 ```
+
+The full test suite also uses the older peer compatibility fixture; install it
+with `npm --prefix ../host-tools/packages/history-runtime ci` before `npm test`.
+It is absent from the shipped extension.
 
 ## Run and package
 

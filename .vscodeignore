@@ -7,3 +7,4 @@
 !out/extension.js.LEGAL.txt
 !dist/**
 !bin/**
+dist/peer-state/**

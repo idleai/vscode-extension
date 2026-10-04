@@ -1,6 +1,6 @@
-import type { SharingStatus } from '@idle/history-runtime/manager';
-import { checkPercent, describeCheck, describeDownload } from '@idle/history-runtime/progress';
-import { describeScope } from '@idle/history-runtime/scope';
+import type { SharingStatus } from './types';
+import { checkPercent, describeCheck, describeDownload } from './progress';
+import { describeScope } from './scope';
 
 /** Connection health stays visible while an authenticated peer checks history. */
 export function sharingLabel(value: SharingStatus): string {
