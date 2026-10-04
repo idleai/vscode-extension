@@ -54,7 +54,7 @@ Packaging builds the extension and includes its JS, WASM and native services.
 Native binaries match the build machine's OS and architecture; build for the
 destination workspace host. Installed packages need no sibling source checkouts.
 
-Open **Idle: Open Workspace** from the command palette. Native services require
+Open **Idle** from the Activity Bar or **Idle: Open Workspace** from the command palette. Native services require
 Workspace Trust. Editor capture continues while views are closed; use
 **Idle: Pause Editor Capture** or `idle.tracking.enabled` to control it.
 Codex import and chain-change monitoring also run with views closed. Use

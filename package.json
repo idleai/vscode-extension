@@ -274,8 +274,17 @@
         }
       }
     },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "idle",
+          "title": "Idle",
+          "icon": "resources/idle.svg"
+        }
+      ]
+    },
     "views": {
-      "explorer": [
+      "idle": [
         {
           "type": "webview",
           "id": "idle.workspace",
