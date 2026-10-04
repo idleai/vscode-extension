@@ -87,7 +87,7 @@ active repository-relative file and observed branch. The observer uses the
 [built-in Git API](https://github.com/microsoft/vscode/blob/1.85.0/extensions/git/src/api/git.d.ts)
 for the exact checkout, including repository removal and detached HEAD. It does
 not read file contents or derive identity from Git authors. The adapter publishes
-these observations under a bounded presence lease, renewing the latest observation
+these observations under a bounded peer activity lease, renewing the latest observation
 until the connection is aborted. `update` reconciles its app-core workspace view
 and coordination directory without publishing; subscription echoes therefore
 cannot trigger another publication. Keep one Rust `PeerAwareness` instance for
@@ -110,8 +110,8 @@ branch notifications. Peer summaries remain exactly the supplied records.
 
 Join choices reference an existing `Observe` session grant or `Connect` compute
 grant for the current contributor. On selection, the adapter refreshes shared
-state, calls `app_core::presence::prepare_join`, and routes that exact intent through the
-selected provider's existing authorization and transport. The helper returns
+state, calls `app_core::peer_activity::prepare_join`, and routes that exact intent
+through the selected provider's existing authorization and transport. The helper returns
 current discovery references and session runtime identity; it does not issue
 credentials or grants. The authority and runtime still authenticate, authorize
 and enforce revocation, including on established connections. A session grant

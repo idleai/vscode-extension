@@ -7,9 +7,9 @@ capture/history services, collection and peer coordination live in `host-tools`.
 The only Rust crate in this workspace is `idle-vscode-webview`, which mounts the
 shared UI and connects it to the TypeScript host.
 
-Workspace navigation, local metadata and presence, recorded Activity, automatic
-collection, standalone peer sharing, configuration saves, shared resource screens
-and native actions are connected. Git/GitHub data and recorded-session browsing
+Workspace navigation, local metadata and peer activity, recorded Activity,
+automatic collection, standalone peer sharing, configuration saves, shared
+resource screens and native actions are connected. Git/GitHub data and recorded-session browsing
 are being assembled; live session execution requires a runtime;
 see the [assembly notes](docs/assembly.md).
 
