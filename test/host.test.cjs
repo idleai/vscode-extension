@@ -149,7 +149,7 @@ test('activation and views share extension-lifetime services without acquiring c
   host.capture.shutdown = () => { captureClosed++; return shutdownCapture(); };
   assert.equal(f.calls.auth.length, authCalls);
   assert.equal(f.commands.has('idle.signIn'), true);
-  assert.equal(host.native, undefined);
+  assert.equal(typeof host.native.connection, 'function');
   assert.equal(typeof host.transport.bridgeDuplex, 'function');
   assert.equal(typeof host.presence.connect, 'function');
   assert.equal(f.commands.has('idle.presence.showPeers'), true);

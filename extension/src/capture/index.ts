@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { HostConfiguration } from '../host/configuration';
 import { HostDiagnostics } from '../host/diagnostics';
 import { StdioClient } from '../host/processes';
+import { NativeServices } from '../host/nativeHost';
 import { EditorCapture, EditorRevision } from './editorCapture';
 import { EditorOutbox } from './editorOutbox';
 import { EditorHealth } from './editorHealth';
@@ -12,7 +13,7 @@ import { unsignedIdentity, workspaceIdentity } from './humanIdentity';
 import { HistoryArchive, archiveDirectory } from './historyArchive';
 import { MAX_EDITOR_BUFFER_BYTES } from './editorLimits';
 
-const SETTINGS = ['tracking', 'chainDirectory', 'native.capturePath'];
+const SETTINGS = ['tracking', 'chainDirectory'];
 type Recorder = { folder: vscode.WorkspaceFolder; capture: EditorCapture; outbox: EditorOutbox;
   context: vscode.Disposable; clients: StdioClient[]; health: EditorHealth };
 
@@ -36,7 +37,8 @@ export class CaptureHost implements vscode.Disposable {
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly configuration: HostConfiguration,
     private readonly diagnostics: HostDiagnostics,
-    private readonly client: () => StdioClient = () => new StdioClient({ maxFrameBytes: 160 * 1024 * 1024 })) {
+    private readonly native: NativeServices,
+    private readonly client?: () => StdioClient) {
     this.status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 9);
     this.status.name = 'Idle capture';
     this.status.command = 'idle.tracking.status';
@@ -148,13 +150,15 @@ export class CaptureHost implements vscode.Disposable {
   private startRecorder(folder: vscode.WorkspaceFolder, guid: string, untitled: boolean): void {
     const config = this.configuration.forResource(folder.uri);
     const settings = vscode.workspace.getConfiguration('idle', folder.uri);
-    const clients = [this.client(), this.client()];
+    const connect = this.native.connection(config.cwd, 'capture', { workspace_path: config.cwd, chain_dir: config.chainDirectory });
+    const create = this.client ?? (() => new StdioClient({}, connect));
+    const clients = [create(), create()];
     const [client, contextClient] = clients;
     for (const client of clients) client.setLog(line => this.diagnostics.append(`[capture] ${line}`));
     const start = (client: StdioClient) => {
       this.configuration.assertTrusted();
       if (!vscode.workspace.getWorkspaceFolder(folder.uri)) throw new Error('Capture folder is no longer open');
-      client.ensureStarted(this.configuration.captureBinary(config), { cwd: config.cwd });
+      client.ensureStarted();
     };
     const namespace = createHash('sha256').update(folder.uri.toString() + '\0' + config.chainDirectory).digest('hex');
     const directory = path.join(this.context.storageUri!.fsPath, 'editor-outbox', namespace);

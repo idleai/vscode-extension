@@ -1,3 +1,4 @@
+const { NativeHost } = require('../out/host/nativeHost');
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { setTimeout: delay } = require('node:timers/promises');
@@ -175,7 +176,7 @@ test('source links use native history commands and recorded text cannot inject a
 
 test('history host cancels replaced bindings and refuses expired historical document generations', async () => {
   const effects = new HostEffects(() => true);
-  const history = new HistoryHost('/extension', effects, diagnostics);
+  const history = new HistoryHost(new NativeHost(() => '/unused/idle-host'), effects, diagnostics);
   const pending = [];
   const provider = {
     shutdown: async () => {}, activity: (request, signal) => new Promise(resolve => pending.push({ request, signal, resolve })),

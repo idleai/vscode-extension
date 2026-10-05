@@ -1,4 +1,5 @@
 import { NativeProcess, NativeProcessOptions, ProcessStartOptions } from './nativeProcess';
+import { ConnectionFactory, NativeConnection } from './nativeConnection';
 import { HostError, record } from './protocol';
 
 export type CredentialPurpose = 'management' | 'discovery';
@@ -11,7 +12,7 @@ interface Pending {
 
 /** f18 framing. Payloads cross the webview boundary as text, preserving Rust u64 values. */
 export class CoordinationClient {
-  private readonly process: NativeProcess;
+  private readonly process: NativeConnection;
   private readonly pending = new Map<string, Pending>();
   private next = 0;
   private generation = 0;
@@ -20,14 +21,14 @@ export class CoordinationClient {
   private queued = 0;
   private tail: Promise<unknown> = Promise.resolve();
 
-  constructor(options: NativeProcessOptions = {}, private readonly credential?: (purpose: CredentialPurpose) => Promise<string | undefined>) {
-    this.process = new NativeProcess({
+  constructor(options: NativeProcessOptions = {}, private readonly credential?: (purpose: CredentialPurpose) => Promise<string | undefined>, connect?: ConnectionFactory) {
+    this.process = (connect ?? (events => new NativeProcess(events, { ...options, byteOrder: 'big', maxFrameBytes: 16 * 1024 * 1024 })))({
       frame: payload => this.receive(payload),
       closed: () => { this.generation++; this.credentialRequests.clear(); for (const id of this.pending.keys()) this.finish(id, new HostError('unavailable', 'Coordination connection closed.')); },
-    }, { ...options, byteOrder: 'big', maxFrameBytes: 16 * 1024 * 1024 });
+    });
   }
 
-  start(binary: string, options: ProcessStartOptions): void { this.process.start(binary, options); }
+  start(binary = '', options?: ProcessStartOptions): void { this.process.start(binary, options); }
 
   isRunning(): boolean { return this.process.isRunning(); }
 

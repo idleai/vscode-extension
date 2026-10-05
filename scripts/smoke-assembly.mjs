@@ -65,7 +65,7 @@ try {
       const url = new URL(request.url, origin);
       if (url.pathname === "/favicon.ico") { response.writeHead(204).end(); return; }
       if (url.pathname === "/append" && request.method === "POST") {
-        await appendCapture(extensionRoot, workspace);
+        await appendCapture(host, workspace);
         response.setHeader("Content-Type", "application/json"); response.end('{"ok":true}'); return;
       }
       if (url.pathname === "/host" && request.method === "POST") {
@@ -275,15 +275,17 @@ async function checkWorkspaceSwitch(page, selected) {
   }
 }
 
-async function appendCapture(extensionRoot, workspace) {
+async function appendCapture(host, workspace) {
   const { StdioClient } = require('../out/host/processes');
-  const client = new StdioClient();
+  const client = new StdioClient({}, host.native.connection(workspace, 'capture', {
+    workspace_path: workspace, chain_dir: join(workspace, 'chain'),
+  }));
   const session = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
   const event = (sequence, event) => ({ schema: 1, session, sequence, time_ms: Date.now(),
     identity: { kind: 'unsigned', guid: '22222222-2222-4222-8222-222222222222', stream: 'a'.repeat(24) },
     units: { offsets: 'utf16_code_units', positions: 'zero_based_line_utf16_column', snapshots: 'utf8_bytes' }, event });
   try {
-    client.start(join(extensionRoot, 'bin', `${process.platform}-${process.arch}`, `idle-editor-service${process.platform === 'win32' ? '.exe' : ''}`), { cwd: workspace });
+    client.start();
     const result = await client.request({ RecordEditorEvents: { workspace_path: workspace, chain_dir: 'chain', events: [
       event(1, { type: 'tracking_started', dwell_ms: 500, vscode_version: '1.85.0', activity_schema: 3 }),
       event(2, { type: 'document_snapshot', document: { id: 'browser-capture', uri: pathToFileURL(join(workspace, 'new.ts')).toString(), path: 'new.ts', version: 1 }, text: 'captured after the view opened' }),

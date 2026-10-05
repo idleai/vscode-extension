@@ -26,9 +26,22 @@ function createSharing(local, overrides = {}, production = false) {
     chain: local.chain, deviceDirectory: local.device, stateDirectory: path.join(local.root, '.sharing'),
     credential: async () => { throw new Error('The loopback fixture must not request cloud credentials.'); },
     changed() {}, async saveEnabled() {}, ...overrides,
-  }, root, { spawn: (_binary, args, options) => {
-    const child = spawn(production ? binaries.coordinator : binaries.loopback, args, options);
-    children.set(manager, child); return child;
+  }, { connection(workspace, kind, binding) {
+    if (kind !== 'coordination') throw new Error('The sharing fixture only installs coordinators.');
+    return events => {
+      // Keep the existing loopback coordinator suite on its standalone test adapter.
+      const file = path.join(local.root, '.sharing', 'host.json');
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(binding), { mode: 0o600 });
+      const native = new NativeProcess(events, { byteOrder: 'big', maxFrameBytes: 16 * 1024 * 1024,
+        spawn: (binary, args, options) => {
+          const child = spawn(binary, args, options); children.set(manager, child); return child;
+        } });
+      const start = native.start.bind(native);
+      native.start = () => start(production ? binaries.coordinator : binaries.loopback,
+        { args: ['--config', file], cwd: workspace });
+      return native;
+    };
   } });
   return manager;
 }

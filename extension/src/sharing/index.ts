@@ -9,6 +9,7 @@ import { HostCredentials, type Account } from "../host/credentials";
 import { HostDiagnostics } from "../host/diagnostics";
 import { HostError } from "../host/protocol";
 import { createManager, NativeSharing } from "./runtime";
+import { NativeServices } from "../host/nativeHost";
 import { MultiplayerStatusOutput } from "./statusOutput";
 import { sharingDetails, sharingLabel } from "./statusBar";
 
@@ -53,6 +54,7 @@ export class SharingHost implements vscode.Disposable {
     private readonly configuration: HostConfiguration,
     private readonly credentials: HostCredentials,
     private readonly diagnostics: HostDiagnostics,
+    private readonly native: NativeServices,
     private readonly factory: typeof createManager = createManager) {
     this.status.name = "Idle history sharing";
     this.status.command = "idle.sharing.status";
@@ -215,7 +217,7 @@ export class SharingHost implements vscode.Disposable {
         if (entry.active) await this.context.workspaceState.update(ENABLED + key, enabled || undefined);
       }),
       changed: (value, durable) => { if (entry.active) this.update(entry, value, durable); },
-    }, this.context.extensionUri.fsPath) };
+    }, this.native) };
     return entry;
   }
 

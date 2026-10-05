@@ -6,6 +6,7 @@ import { RepositoryBinding } from '../history';
 import { FolderConfiguration, HostConfiguration } from './configuration';
 import { CoordinationClient } from './coordinationClient';
 import { CoordinationProcess } from './coordinationProcess';
+import { NativeServices } from './nativeHost';
 import { ConfigurationJournal } from './configurationJournal';
 import { HostCallContext } from './effects';
 import { HostError, record } from './protocol';
@@ -19,7 +20,8 @@ export class CoordinationHost {
   private readonly identity: Promise<string>;
   private readonly journal: ConfigurationJournal;
 
-  constructor(private readonly context: vscode.ExtensionContext, private readonly configuration: HostConfiguration) {
+  constructor(private readonly context: vscode.ExtensionContext, private readonly configuration: HostConfiguration,
+    private readonly native: NativeServices) {
     this.journal = new ConfigurationJournal(path.join(context.globalStorageUri.fsPath, 'configuration'));
     const saved = context.globalState.get<string>('coordination.localContributor');
     const id = saved ?? randomUUID();
@@ -48,12 +50,15 @@ export class CoordinationHost {
     }
     let owner = this.clients.get(binding.workspace_id);
     if (!owner) {
-      owner = new CoordinationProcess(this.context.extensionUri.fsPath,
-        () => this.installation(config, binding, generation), {}, undefined,
+      owner = new CoordinationProcess(this.native,
+        () => this.installation(config, binding, generation), undefined,
         () => this.assertCurrent(generation));
       this.clients.set(binding.workspace_id, owner);
     }
-    const client = await owner.acquire(true);
+    const client = await owner.acquire(true).catch(error => {
+      this.assertCurrent(generation, signal);
+      throw error;
+    });
     this.assertCurrent(generation, signal);
     if (command.kind === 'presence') await this.publishPresence(client, config, binding, signal);
     // A watch owns no cursor in JavaScript. Rust supplies the original exact cursor.
@@ -132,7 +137,7 @@ export class CoordinationHost {
     this.assertCurrent(generation);
     const key = createHash('sha256').update(binding.workspace_id).digest('hex');
     const directory = path.join(this.context.globalStorageUri.fsPath, 'coordination', key);
-    return { directory, cwd: config.cwd, configuration: {
+    return { cwd: config.cwd, configuration: {
       state_directory: path.join(directory, 'state'), chain_directory: config.chainDirectory,
       device_directory: path.join(directory, 'device'),
       workspace: { id: binding.workspace_id, name: config.folder.name, chain: binding.chain,

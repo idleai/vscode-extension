@@ -35,6 +35,14 @@ Object.assign(f.api.window, {
 });
 const extension = loadWithVSCode('../../out/extension', f.api);
 const { StdioClient } = require('../out/host/processes');
+const { NativeHost } = require('../out/host/nativeHost');
+const originalConnection = NativeHost.prototype.connection;
+let installations = [];
+NativeHost.prototype.connection = function(workspace, kind, binding) {
+  installations.push({ workspace, kind, binding });
+  return originalConnection.call(this, workspace, kind, binding);
+};
+test.after(() => { NativeHost.prototype.connection = originalConnection; });
 const original = Object.fromEntries(['ensureStarted', 'request', 'requestJson', 'shutdown'].map(key => [key, StdioClient.prototype[key]]));
 let delivered = [], launches = [], offline = false;
 StdioClient.prototype.ensureStarted = function(binary, options) { launches.push({ binary, options }); };
@@ -52,7 +60,7 @@ test.after(() => Object.assign(StdioClient.prototype, original));
 
 async function setup({ trusted = true, folders = 1, enabled = true, archive = false, remote = false } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'idle-capture-host-'));
-  delivered = []; launches = []; offline = false;
+  delivered = []; launches = []; installations = []; offline = false;
   f.context.subscriptions = [];
   f.context.storageUri = uri(`file://${root}/storage`);
   f.context.globalStorageUri = uri(`file://${root}/global`);
@@ -61,7 +69,7 @@ async function setup({ trusted = true, folders = 1, enabled = true, archive = fa
   f.api.workspace.workspaceFolders = Array.from({ length: folders }, (_, index) => ({ name: `repo-${index}`, index,
     uri: uri(`${remote ? 'vscode-remote://ssh-remote+host' : 'file://'}${root}/repo-${index}`) }));
   f.configuration.clear();
-  f.configuration.set(undefined, { 'tracking.enabled': enabled, 'native.capturePath': process.execPath,
+  f.configuration.set(undefined, { 'tracking.enabled': enabled, 'native.hostPath': process.execPath,
     'tracking.jsonl.enabled': archive, 'tracking.jsonl.directory': path.join(root, 'archive') });
   let reads = 0;
   const docs = f.api.workspace.workspaceFolders.map(folder => ({ uri: uri(`${folder.uri.toString()}/a.ts`), version: 1,
@@ -116,7 +124,8 @@ test('activation captures unsaved input before views open and after all views cl
     assert.equal(afterReopen.session, changed.session, 'the capture session survives view replacement');
     assert.equal(afterReopen.event.after, 'capture continues after reopening');
     reopened.dispose();
-    assert.ok(launches.every(call => call.options.cwd === f.api.workspace.workspaceFolders[0].uri.fsPath));
+    assert.ok(installations.filter(value => value.kind === 'capture').every(value =>
+      value.workspace === f.api.workspace.workspaceFolders[0].uri.fsPath && value.binding.workspace_path === value.workspace));
     await s.host.capture.shutdown();
     const [name] = await fs.readdir(path.join(s.root, 'archive'));
     const archive = (await fs.readFile(path.join(s.root, 'archive', name), 'utf8')).trim().split('\n').map(JSON.parse);

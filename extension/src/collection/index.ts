@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { homedir } from 'node:os';
-import { HostConfiguration, resolveNativePath } from '../host/configuration';
+import { HostConfiguration } from '../host/configuration';
 import { HostDiagnostics } from '../host/diagnostics';
 import { StdioClient } from '../host/processes';
+import { NativeServices } from '../host/nativeHost';
 import { record } from '../host/protocol';
 import { CollectorLoop, Update } from './loop';
 
@@ -20,12 +21,12 @@ export class CollectionHost implements vscode.Disposable {
   readonly onDidChange = this.changed.event;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly configuration: HostConfiguration,
-    private readonly diagnostics: HostDiagnostics) {
+    private readonly diagnostics: HostDiagnostics, private readonly native: NativeServices) {
     this.installed.push(
       vscode.workspace.onDidChangeWorkspaceFolders(() => { void this.restart(); }),
       vscode.workspace.onDidGrantWorkspaceTrust(() => { void this.restart(); }),
       vscode.workspace.onDidChangeConfiguration(event => {
-        if (['live', 'chainDirectory', 'native.collectorPath'].some(key => event.affectsConfiguration(`idle.${key}`))) void this.restart();
+        if (['live', 'chainDirectory'].some(key => event.affectsConfiguration(`idle.${key}`))) void this.restart();
       }),
       vscode.commands.registerCommand('idle.history.startImport', () => this.setEnabled(true)),
       vscode.commands.registerCommand('idle.history.pauseImport', () => this.setEnabled(false)),
@@ -57,22 +58,22 @@ export class CollectionHost implements vscode.Disposable {
     const config = this.configuration.forResource(folder.uri);
     const settings = vscode.workspace.getConfiguration('idle', folder.uri);
     const extension = this.context.extensionUri.fsPath;
-    const binary = resolveNativePath(settings.get('native.collectorPath', ''), extension, 'idle-history-collector');
     const sessions = path.resolve(config.cwd, settings.get<string>('live.sessionsPath', '') ||
       path.join(process.env.CODEX_HOME || path.join(homedir(), '.codex'), 'sessions'));
     const helper = settings.get<string>('live.codexHelperPath', '') ||
       path.join(extension, 'bin', `${process.platform}-${process.arch}`, `codex-session-exporter${process.platform === 'win32' ? '.exe' : ''}`);
     if (!path.isAbsolute(helper)) throw new Error('Configure an absolute Codex exporter path on the workspace host.');
     const importing = settings.get<boolean>('live.enabled', true);
-    const client = new StdioClient();
+    const client = new StdioClient({}, this.native.connection(config.cwd, 'collection', {
+      workspace: config.cwd, chain: config.chainDirectory, sessions, helper,
+    }));
     client.setLog(line => this.diagnostics.append(`[collector ${folder.name}] ${line}`));
     const current = () => !this.closed && generation === this.generation && vscode.workspace.isTrusted &&
       !!vscode.workspace.getWorkspaceFolder(folder.uri);
     const request = async (body: unknown, signal: AbortSignal): Promise<Update> => {
       if (!current()) throw new Error('History collection binding was retired.');
       const restarted = !client.isRunning();
-      client.ensureStarted(binary, { cwd: config.cwd,
-        args: [JSON.stringify({ workspace: config.cwd, chain: config.chainDirectory, sessions, helper })] });
+      client.ensureStarted();
       let result: unknown;
       try { result = await client.request(body, { signal, timeoutMs: 60000 }); }
       catch (error) { client.stop(); throw error; }

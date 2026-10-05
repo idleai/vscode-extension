@@ -9,18 +9,25 @@ For setup, builds and packaging, see the [root README](../README.md).
 `host.configuration.forResource(uri)`; capture, collection, coordination and
 native-history modules own their typed service clients. Every
 native operation resolves an explicit open workspace folder. Relative chain
-directories use that folder, and processes inherit its directory. Multi-root
+directories use that folder, and service bindings carry absolute paths. Multi-root
 windows never silently choose their first folder. Unsupported virtual filesystems
 and untrusted workspaces cannot launch native adapters or access credentials.
 
 The manifest declares `extensionKind: ["workspace"]`, so native adapters run with
 the files in remote SSH, containers and Codespaces. See VS Code's
 [workspace extension host documentation](https://code.visualstudio.com/api/advanced-topics/extension-host).
-The package contains `idle-history-service`, `idle-editor-service`,
-`idle-history-collector`, `codex-session-exporter`, `idle-coordination` and
-`idle-repository` for its host platform. Capture and collection have corresponding
-explicit path settings. Sharing uses the coordinator's embedded peer engine.
+The package contains `idle-host` and `codex-session-exporter` for its host
+platform. `host.native` owns one supervised process; feature modules open
+independent channels through `NativeHost.connection`. `idle.native.hostPath`
+selects an explicit host executable. Sharing uses the coordinator's embedded peer engine.
 Workspace build directories and the UI machine's PATH are not searched.
+
+The private pipe uses little-endian length framing and a versioned channel
+header around unchanged service JSON. Startup validates all advertised service
+versions. Channel shutdown waits for native worker teardown, and process
+replacement waits for OS-confirmed exit. A crash rejects every pending channel;
+later requests reopen their own bindings. See the
+[native host protocol](https://github.com/idleai/host-tools/blob/main/docs/native-host.md).
 
 `host.effects.register(method, handler, requiresTrust)` installs an explicit
 webview effect. Uninstalled actions fail as unavailable. The built-in methods
@@ -40,14 +47,14 @@ asset-only resource roots and a restrictive
 [webview content security policy](https://code.visualstudio.com/api/extension-guides/webview#content-security-policy).
 
 `host.credentials` adapts VS Code GitHub sessions and namespaced SecretStorage.
-The packaged `idle-coordination` process owns sharing, Microsoft relay adapters,
+The coordinator inside `idle-host` owns sharing, Microsoft relay adapters,
 reconnect policy, device approvals, discovery and cleanup. VS Code sends approved
 commands over a private framed pipe and answers on-demand credential requests.
 Each callback rechecks Workspace Trust and the selected account. Repository
 discovery uses its separately approved GitHub session. Tokens never enter native
 configuration, process arguments, status events or webview messages.
 
-Sharing uses one native owner per physical folder, chain and account. Its private
+Sharing uses one coordinator channel per physical folder, chain and account. Its private
 state lock prevents two windows from owning the same saved session. Metadata and
 configuration reads use the same Rust service library through a separate local
 authority binding. Their webview allowlist excludes sharing and credential
@@ -62,8 +69,9 @@ processes and production capture with a loopback relay fixture.
 
 Commands: **Open Workspace**, **Open Detail View**, **Show Output**, **Open Extension
 Settings**, **Restart Native Adapters**, **Sign In to GitHub**, **Show File Peers**, and **Clean Up Dev
-Tunnels** (all prefixed `Idle:`). Restart closes adapters; their next operation
-starts them again. Cleanup selects inactive resources for the current account.
+Tunnels** (all prefixed `Idle:`). Restart flushes admitted capture, suspends sharing
+and replaces the shared host before reopening services. Cleanup selects inactive
+resources for the current account.
 
 ## File peers and invitations
 

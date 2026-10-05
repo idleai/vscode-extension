@@ -1,4 +1,5 @@
 import { NativeProcess, NativeProcessOptions, ProcessStartOptions } from './nativeProcess';
+import { ConnectionFactory, NativeConnection } from './nativeConnection';
 
 export type { NativeProcessOptions, ProcessSpawner, ProcessStartOptions } from './nativeProcess';
 
@@ -16,18 +17,18 @@ interface PendingRequest {
 
 /** Native history RPC: a framed JSON {id, body} envelope on the file-owning host. */
 export class StdioClient {
-  private readonly process: NativeProcess;
+  private readonly process: NativeConnection;
   private readonly pending = new Map<number, PendingRequest>();
   private nextId = 1;
   private handler?: (message: unknown) => void;
   private log?: (line: string) => void;
 
-  constructor(options: NativeProcessOptions = {}) {
-    this.process = new NativeProcess({
+  constructor(options: NativeProcessOptions = {}, connect?: ConnectionFactory) {
+    this.process = (connect ?? (events => new NativeProcess(events, options)))({
       frame: payload => this.receive(payload),
       closed: error => this.rejectPending(error),
       log: line => this.logLine(line),
-    }, options);
+    });
   }
 
   /** Opt-in raw service diagnostics; do not forward stderr to untrusted views. */
@@ -37,13 +38,13 @@ export class StdioClient {
 
   isRunning(): boolean { return this.process.isRunning(); }
 
-  start(binaryPath: string, options?: ProcessStartOptions): void {
+  start(binaryPath = '', options?: ProcessStartOptions): void {
     if (this.isRunning()) return;
     this.nextId = 1;
     this.process.start(binaryPath, options);
   }
 
-  ensureStarted(binaryPath: string, options?: ProcessStartOptions): void { this.start(binaryPath, options); }
+  ensureStarted(binaryPath = '', options?: ProcessStartOptions): void { this.start(binaryPath, options); }
 
   request(body: unknown, options?: RequestOptions): Promise<unknown> {
     let serialized: string | undefined;

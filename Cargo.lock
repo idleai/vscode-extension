@@ -16,9 +16,9 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "app-core"
-version = "0.1.0"
+version = "0.1.1"
 source = "sparse+https://raw.githubusercontent.com/idleai/app-core/cargo-index/"
-checksum = "3f2a4b2d10c267a8a086efa5d6bad066ce0951323d30b958082acf34b99daae2"
+checksum = "9144e651bec89d824781ae6177d55e326a82045a92c062a5d327006330ae8236"
 dependencies = [
  "bincode",
  "crux_core",
@@ -612,9 +612,9 @@ dependencies = [
 
 [[package]]
 name = "editchain-core"
-version = "0.1.0"
+version = "0.1.2"
 source = "sparse+https://raw.githubusercontent.com/idleai/editchain/cargo-index/"
-checksum = "f88906421e831e7e9ed9e2b5333eaa45d9e635b7561bc8b4c6623d2757da80de"
+checksum = "f77f736e72e0735ae20f67ead1c298d73128d58397d34dc38ce141cafbcc10db"
 dependencies = [
  "blake3",
  "serde",
@@ -622,9 +622,9 @@ dependencies = [
 
 [[package]]
 name = "editchain-engine"
-version = "0.1.0"
+version = "0.1.2"
 source = "sparse+https://raw.githubusercontent.com/idleai/editchain/cargo-index/"
-checksum = "3242d389d675f31c9547201c4ab54b1a1a37e3c79280cf7981e8953cee3a121d"
+checksum = "9fe3fcf2118d14fa2b5a7f8958e4197d4ed1f4e7f48f5bf08076144db61abcdd"
 dependencies = [
  "blake3",
  "editchain-core",
@@ -635,9 +635,9 @@ dependencies = [
 
 [[package]]
 name = "editchain-index"
-version = "0.1.0"
+version = "0.1.2"
 source = "sparse+https://raw.githubusercontent.com/idleai/editchain/cargo-index/"
-checksum = "bc210984cc02a00d3454d2a3b8d274eb7677dc4419d449119f5ed3bfb152e6a2"
+checksum = "896d6e5b70224f09c248e479db8244723dfa80da9238a02f41b4e92b848f3047"
 dependencies = [
  "editchain-core",
  "editchain-index-pages",
@@ -647,9 +647,9 @@ dependencies = [
 
 [[package]]
 name = "editchain-index-pages"
-version = "0.1.0"
+version = "0.1.2"
 source = "sparse+https://raw.githubusercontent.com/idleai/editchain/cargo-index/"
-checksum = "07bb76044a275ca1fd3ddd0d90eea954d2dd4f35bca8c81c5079aac1c9c50968"
+checksum = "0db84086456c34d20d5178a2c7a972d2eded9d1db31830af5bbd3837681e566f"
 dependencies = [
  "blake3",
  "ciborium",
@@ -658,9 +658,9 @@ dependencies = [
 
 [[package]]
 name = "editchain-store"
-version = "0.1.0"
+version = "0.1.2"
 source = "sparse+https://raw.githubusercontent.com/idleai/editchain/cargo-index/"
-checksum = "da77b2042b5c9189fbb326f6a948ac2a5101dc849c36b457fb07871b06ccf0b4"
+checksum = "71d0991a27874ace283feb76438703dfef5e93bcff3e167553d9f177a58a50b2"
 dependencies = [
  "blake3",
  "crc",
@@ -1001,9 +1001,9 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "idle-history"
-version = "0.1.0"
+version = "0.1.2"
 source = "sparse+https://raw.githubusercontent.com/idleai/host-tools/cargo-index/"
-checksum = "382a2d1f1487ccc0549a5fe12ada95b6bf03eaef8f55753e20adb4d71926d01a"
+checksum = "034029125d16039776ff2e9a529be3d6f9b07a36d76549d42b4cafac60566594"
 dependencies = [
  "editchain-core",
  "facet",
@@ -1014,9 +1014,9 @@ dependencies = [
 
 [[package]]
 name = "idle-history-native"
-version = "0.1.0"
+version = "0.1.2"
 source = "sparse+https://raw.githubusercontent.com/idleai/host-tools/cargo-index/"
-checksum = "40fcac443d4ba72221cfbdb9b1d19f5375880ee07c1da0699670c52d34c6e838"
+checksum = "ed59702ae59cc32fce1dc130dbb6bccd54abb3c22e60d83dc923752c8f1fb0c2"
 dependencies = [
  "editchain-core",
  "editchain-engine",
@@ -1027,9 +1027,9 @@ dependencies = [
 
 [[package]]
 name = "idle-protocol"
-version = "0.1.0"
+version = "0.1.2"
 source = "sparse+https://raw.githubusercontent.com/idleai/host-tools/cargo-index/"
-checksum = "65e0c885cb1a934187fc52ed861d94b8ae8283efd2ca665a12bcd377d42eab20"
+checksum = "6201d16c8b3aae834c1c7a89d15eb124cf5f8435b0f827d39e113711d4017704"
 dependencies = [
  "facet",
  "serde",

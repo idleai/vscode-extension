@@ -12,6 +12,7 @@ import {
 } from "./contracts";
 import { BYTE_SCHEME, TEXT_SCHEME, HEX_SCHEME, DocumentAddress, HexDocuments, TextDocuments, HistoryDocuments, documentUri, needsHex } from "./documents";
 import { NativeHistoryProvider } from "./native";
+import { NativeServices } from "../host/nativeHost";
 import { openWorkingFile } from "./workingFile";
 import { linkCancellation } from "./cancellation";
 import { ActivityPreview, ActivityRequest, parsePreview } from "../authorActivity/contracts";
@@ -38,7 +39,7 @@ export class HistoryHost implements vscode.Disposable {
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
 
-  constructor(private readonly extensionPath: string, effects: HostEffects, private readonly diagnostics: HostDiagnostics) {
+  constructor(private readonly native: NativeServices, effects: HostEffects, private readonly diagnostics: HostDiagnostics) {
     this.installed.push(
       this.documents,
       vscode.workspace.registerFileSystemProvider(BYTE_SCHEME, this.documents, { isReadonly: true, isCaseSensitive: true }),
@@ -73,7 +74,7 @@ export class HistoryHost implements vscode.Disposable {
     const old = this.connections.get(key);
     if (old) this.remove(key, old);
     const owner = Symbol();
-    const connection = { id: randomUUID(), owner, binding: installed, provider: provider ?? new NativeHistoryProvider(this.extensionPath, installed), abort: new AbortController() };
+    const connection = { id: randomUUID(), owner, binding: installed, provider: provider ?? new NativeHistoryProvider(this.native, installed), abort: new AbortController() };
     this.connections.set(key, connection);
     this.changed.fire();
     return new vscode.Disposable(() => {

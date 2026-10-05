@@ -7,6 +7,7 @@ import { SharingHost } from "../sharing";
 import { HistoryHost } from "../history";
 import { ActivityDecorations } from "../authorActivity";
 import { HostConfiguration } from "./configuration";
+import { NativeHost } from "./nativeHost";
 import { CoordinationHost } from "./coordination";
 import { RepositoryHost } from "./repository";
 import { AssemblyHost } from "./assembly";
@@ -19,6 +20,7 @@ import { bridgeDuplex, consumeTransport, writeTransport } from "./transport";
 /** Extension-lifetime platform services consumed by capture, history and Rust effects. */
 export class HostServices implements vscode.Disposable {
   readonly configuration: HostConfiguration;
+  readonly native: NativeHost;
   readonly credentials: HostCredentials;
   readonly diagnostics = new HostDiagnostics();
   readonly effects = new HostEffects(() => vscode.workspace.isTrusted);
@@ -40,14 +42,15 @@ export class HostServices implements vscode.Disposable {
 
   constructor(context: vscode.ExtensionContext) {
     this.configuration = new HostConfiguration(context.extensionUri.fsPath);
+    this.native = new NativeHost(() => this.configuration.nativeBinary());
     this.credentials = new HostCredentials(context.secrets, () => vscode.workspace.isTrusted,
       message => this.diagnostics.append(message));
-    this.capture = new CaptureHost(context, this.configuration, this.diagnostics);
-    this.collection = new CollectionHost(context, this.configuration, this.diagnostics);
-    this.sharing = new SharingHost(context, this.configuration, this.credentials, this.diagnostics);
-    this.history = new HistoryHost(context.extensionUri.fsPath, this.effects, this.diagnostics);
-    this.coordination = new CoordinationHost(context, this.configuration);
-    this.repository = new RepositoryHost(context, this.configuration, this.credentials, () => this.coordination.contributor());
+    this.capture = new CaptureHost(context, this.configuration, this.diagnostics, this.native);
+    this.collection = new CollectionHost(context, this.configuration, this.diagnostics, this.native);
+    this.sharing = new SharingHost(context, this.configuration, this.credentials, this.diagnostics, this.native);
+    this.history = new HistoryHost(this.native, this.effects, this.diagnostics);
+    this.coordination = new CoordinationHost(context, this.configuration, this.native);
+    this.repository = new RepositoryHost(context, this.configuration, this.credentials, () => this.coordination.contributor(), this.native);
     this.assembly = new AssemblyHost(this.configuration, this.history, this.effects, (folder, error) => {
       this.diagnostics.failure("Workspace " + folder, error);
       void this.diagnostics.notify("warning", "Idle cannot open " + folder + ": " + publicError(error).message);
@@ -110,7 +113,10 @@ export class HostServices implements vscode.Disposable {
         throw new HostError("shutdown_failed", "Some host services did not close successfully.");
       }
     }
-    finally { this.credentials.dispose(); }
+    finally {
+      try { await this.native.shutdown(); }
+      finally { this.credentials.dispose(); }
+    }
   }
 
   dispose(): void {

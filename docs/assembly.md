@@ -23,9 +23,9 @@ Each native folder has an explicit workspace/repository/chain binding. The host
 resolves `idle.chainDirectory` against that folder. Stable local aliases contain
 no storage paths and never select another folder as a fallback.
 
-The packaged f18 `idle-coordination` process supplies workspace membership,
+The f18 coordinator inside `idle-host` supplies workspace membership,
 resource directories, conditional settings/rules writes and audience-scoped recovery cursors.
-The host creates a private startup configuration under extension global storage.
+The host installs its binding over the private pipe and retains state under extension global storage.
 A persisted random contributor identity identifies the local VS Code profile;
 its authority is the trusted local process connection. It is displayed as
 **You (local)** and is independent of GitHub sign-in, peer device enrollment and
@@ -33,8 +33,8 @@ runtime identities. No bearer token enters the webview or coordinator configurat
 The metadata store has one process owner; another process using the same store
 is reported as unavailable.
 
-Metadata and sharing use the same `CoordinationProcess` owner for startup,
-readiness, replacement and awaited shutdown. Their installations remain scoped
+Metadata and sharing use `CoordinationProcess` to own their separate channels
+in the shared native host, with startup checks and awaited shutdown. Their installations remain scoped
 to their existing storage directories and contributor/account identities;
 sharing supplies its own credential callback and explicit stop/suspend command.
 
@@ -43,7 +43,7 @@ configuration writes bound to its persisted local contributor. Other mutations
 are unavailable through this view adapter.
 It publishes expiring local peer activity itself, including an active file only when
 it is within the selected folder. Account, folder or configuration changes retire
-the corresponding processes and pending reads. Native restart reopens the saved
+the corresponding channels and pending reads. Native restart reopens the saved
 metadata. A closed view does not delete it.
 
 Coordinator payloads cross the JavaScript bridge as exact JSON text. Rust converts
@@ -55,7 +55,7 @@ and replacement reads. Interrupted transport uses app-core's retry state.
 
 ## History and projections
 
-`app.history` uses the packaged `idle-history-service` and app-core's engine
+`app.history` uses the history service inside `idle-host` and app-core's engine
 adapter. Native record, Original, file and diff actions retain exact record
 identities. Every read rechecks its installed binding, cancellation and Workspace
 Trust. A missing chain is unavailable. Refreshes preserve current selection and
@@ -63,7 +63,7 @@ disclosure when those records still exist.
 
 `app.projection` reads the same bound chain through app-core's projection engine
 adapter. Recorded Activity has source references, bounded reads and explicit gaps.
-The packaged `idle-repository` supplies Tasks from open GitHub issues/PRs,
+The repository service inside `idle-host` supplies Tasks from open GitHub issues/PRs,
 Errors from failed HEAD checks/runs, and Triage/human input from explicit labels
 or requested reviewers. Exact stored response hashes are checked before rows are
 admitted. Missing or changed sources, including missing or corrupt Original
@@ -134,21 +134,14 @@ configuration, resource and repository styles with the application WASM. VS Code
 The CSP permits graph coordinates while restricting scripts and style elements
 to packaged assets.
 
-The VSIX includes `idle-editor-service`, `idle-history-service`,
-`idle-history-collector`, `codex-session-exporter`,
-`idle-coordination` and `idle-repository` for the build host's OS/architecture. Installed copies resolve
-configured absolute executables or packaged tools; sibling source checkouts are
-build inputs only. Build a platform-specific VSIX for each destination host.
+The VSIX includes `idle-host` and `codex-session-exporter` for the build host's
+OS/architecture. Installed copies resolve the configured absolute host or its
+packaged binary. Build a platform-specific VSIX for each destination host.
 
-[CI](../.github/workflows/ci.yml) pins the paired source revisions:
-
-| Repository | Revision |
-| --- | --- |
-| app-core | `81fa331076848ada3d14cad63223b84e9dcfe4a7` |
-| web-ui | `7512aa6617588ef675d10d4acda8c4a49a81c0b4` |
-| host-tools | `cb2ab122a0af387f5e454312f754f79a9ee6b115` |
-| EditChain | `45b94c95a2cb185a59e58cf0763f589c666ab1e6` |
-| Codex exporter | `903d7f1c62c621cf1f925362ac88893ec1f36b07` |
+[CI](../.github/workflows/ci.yml) uses published Cargo packages from `Cargo.lock`
+and native bundles pinned by tag and checksum in `native-dependencies.json`.
+The explicit unpublished-package integration job tests paired producer and
+consumer changes before the next native release is available.
 
 Run `./scripts/check.sh` for the canonical Rust checks, host tests, packaging and
 native VSIX checks. Then run `test:webview` and `test:assembly` with `CHROME_BIN`
