@@ -138,10 +138,9 @@ The VSIX includes `idle-host` and `codex-session-exporter` for the build host's
 OS/architecture. Installed copies resolve the configured absolute host or its
 packaged binary. Build a platform-specific VSIX for each destination host.
 
-[CI](../.github/workflows/ci.yml) uses published Cargo packages from `Cargo.lock`
-and native bundles pinned by tag and checksum in `native-dependencies.json`.
-The explicit unpublished-package integration job tests paired producer and
-consumer changes before the next native release is available.
+[CI](../.github/workflows/ci.yml) selects the latest compatible Cargo packages
+and native bundles once per run. See [packaging and releases](packaging.md) for
+dependency selection and checking unpublished producer/consumer changes.
 
 Run `./scripts/check.sh` for the canonical Rust checks, host tests, packaging and
 native VSIX checks. Then run `test:webview` and `test:assembly` with `CHROME_BIN`
