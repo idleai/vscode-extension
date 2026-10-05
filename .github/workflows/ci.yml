@@ -127,3 +127,30 @@ jobs:
         env:
           VSCODE_BIN: ${{ runner.temp }}/idle-vscode/VSCode-linux-x64/bin/code
         run: npm run test:vscode
+
+  windows_dependencies:
+    name: Restore shared dependencies on Windows
+    needs: dependencies
+    runs-on: windows-2022
+    defaults:
+      run:
+        working-directory: vscode-extension
+    env:
+      IDLE_RELEASE_INPUTS: ${{ github.workspace }}/vscode-extension/target/released-dependencies.json
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: vscode-extension
+          ref: ${{ inputs.revision || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.dependencies.outputs.artifact_id }}
+          path: vscode-extension/target
+      - name: Restore the Linux dependency record
+        run: python scripts/release_dependencies.py restore
+      - name: Check dependency selection and reuse
+        run: python -m unittest discover -s scripts -p test_release_dependencies.py

@@ -186,5 +186,16 @@ class ReleasePreparationTests(unittest.TestCase):
                 AUTOMATION.pending({"name": "fixture", "version": "0.1.0"}, self.source)
 
 
+class ReleaseConfigurationTests(unittest.TestCase):
+    def test_tag_only_packages_do_not_require_a_github_release(self):
+        with tempfile.TemporaryDirectory() as temporary, contextlib.chdir(temporary):
+            Path("release-plz.toml").write_text(
+                '[[package]]\nname = "disabled"\nrelease = false\n'
+                '[[package]]\nname = "bundled"\ngit_release_enable = false\n', encoding="utf-8")
+            packages = [{"name": name} for name in ("published", "disabled", "bundled")]
+            with patch.object(AUTOMATION, "command", return_value=json.dumps({"packages": packages})):
+                self.assertEqual(AUTOMATION.packages(), [{"name": "published"}])
+
+
 if __name__ == "__main__":
     unittest.main()
