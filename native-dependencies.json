@@ -3,22 +3,22 @@
   "dependencies": {
     "engine": {
       "repository": "idleai/editchain",
-      "tag": "editchain-v0.1.0",
+      "tag": "editchain-v0.1.2",
       "sha256": {
-        "linux-x64": "9e15622fde35cf039ec61100ef249f18ccc711e8be8d95d7d9f96dcb630c2067",
-        "darwin-x64": "297d9311e21d6eebb39cee040f399f2a9fc461fd8a2971d7cafd04b972bb0015",
-        "darwin-arm64": "06e9858f1681a74a9689854a8de744440eab21dcc02d60d6509d827053305d0f",
-        "win32-x64": "69d1c7398d3857675351e594e34999afe675d99eb522b3926a42fdf72780f161"
+        "linux-x64": "24416c4aac8e1835d0ab211bd260b7a1d5750a97184b06e8db4bace45c7f97d9",
+        "darwin-x64": "dd4b0e377950896e0bdb2792948e7cfba8a6e1b8e149ab7beff1ef222057682d",
+        "darwin-arm64": "55685c5d84e258646de1345296e4900f922c609b1eddc30f2952402522db6f4f",
+        "win32-x64": "f0045b48cae4720d5bea3d90b9fc5b5b6c94951a7081efde1eb7b017b6555e83"
       }
     },
     "host-tools": {
       "repository": "idleai/host-tools",
-      "tag": "idle-coordination-v0.1.0",
+      "tag": "idle-coordination-v0.1.2",
       "sha256": {
-        "linux-x64": "fba5224c908b5efa5fbd1bcfe05bdb05f9f6c8085dac21e2db452cbde9cf4c08",
-        "darwin-x64": "8988fa991f38623d4628c7ea83c4fda6cde935bdfa8a464391d46b63aa60cd53",
-        "darwin-arm64": "0ce9e387ce92006e177185b6988eee617a19482294fd19e11d7c362ddbf63e36",
-        "win32-x64": "5f7c0717bf7de1862fde6d81e6049254e7dce983f0f5d0f7fbdaf795cbc62321"
+        "linux-x64": "200d743dcd2d3b335f36f7c6475a3845974c86c3ed027e1c0ace8f340a975680",
+        "darwin-x64": "5e2b42784e8be9287fef0d46882c60553f5f518edcd33ffc2ebfabe9139006d7",
+        "darwin-arm64": "2910bbd511dd2a368a2320e6d4cf45125a21cd233e465c94da4afbad874e005f",
+        "win32-x64": "6ef0c88a76e4e8ea12336cb22511c3780e1304741bb8228f12e76ce82f54a10e"
       }
     },
     "codex-exporter": {
