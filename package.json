@@ -321,17 +321,19 @@
   "scripts": {
     "vscode:prepublish": "npm run build",
     "compile": "tsc -p .",
-    "test": "node scripts/prepare-host-tests.mjs && npm run compile && node --test test/*.test.cjs",
+    "test": "python3 scripts/release_dependencies.py run -- npm run test:resolved",
+    "test:resolved": "node scripts/prepare-host-tests.mjs && npm run compile && node --test test/*.test.cjs",
     "test:tunnels:live": "npm run compile && node scripts/smoke-dev-tunnels.cjs",
     "test:webview": "node scripts/smoke-webview.mjs idle.vsix",
     "test:assembly": "node scripts/smoke-assembly.mjs idle.vsix",
     "build:host": "node scripts/build-host.mjs",
-    "build:wasm": "node scripts/build-wasm.mjs",
-    "build": "npm run compile && npm run build:host && npm run build:wasm && npm run build:native",
+    "build:wasm": "python3 scripts/release_dependencies.py run -- node scripts/build-wasm.mjs",
+    "build": "python3 scripts/release_dependencies.py run -- npm run build:resolved",
+    "build:resolved": "npm run compile && npm run build:host && npm run build:wasm && npm run build:native",
     "check": "bash scripts/check.sh",
     "package": "vsce package --no-dependencies --out idle.vsix",
     "test:vscode": "node scripts/smoke-vscode.cjs idle.vsix",
-    "build:native": "node scripts/build-native.mjs"
+    "build:native": "python3 scripts/release_dependencies.py run -- node scripts/build-native.mjs"
   },
   "devDependencies": {
     "@types/node": "22.19.17",

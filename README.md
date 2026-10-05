@@ -16,14 +16,15 @@ see the [assembly notes](docs/assembly.md).
 ## Setup
 
 Use Node.js 22.12+, Python 3.12+ and rustup. [rust-toolchain.toml](rust-toolchain.toml)
-selects Rust 1.97.0 and the required components and WASM target. Cargo downloads
-versioned app-core, web-ui, host-tools and engine crates using `Cargo.lock` and
+selects Rust 1.97.0 and the required components and WASM target. Builds resolve
+the latest compatible app-core, web-ui, host-tools and engine crates through
 [the configured Cargo indexes](.cargo/config.toml). Normal CI checks out this
 repository only.
 
-`native-dependencies.json` records the engine, host-tools and exporter release
-tags and SHA-256 checksums. Build scripts download the matching platform bundles
-to `.artifacts/`, then copy production binaries into the extension package.
+`native-dependencies.json` declares compatible engine, host-tools and exporter
+version ranges. Builds select their latest complete releases and verify SHA-256
+checksums before downloading platform bundles into `.artifacts/`. Production
+binaries and the resolved dependency record are included in the extension package.
 
 Install the build tools and dependencies from this repository's root:
 
@@ -140,15 +141,39 @@ is retained separately for sidebar and detail under the exact repository binding
 No runtime is required to browse captured sessions; execution remains unavailable
 until a runtime is connected. See the shared
 [repository adapter contract](https://github.com/idleai/host-tools/blob/main/docs/repository.md).
-The **Update released artifacts** workflow checks for compatible internal
-packages and complete native/consumer archives every 15 minutes, or on manual
-request. It groups lockfile versions and archive checksums in one generated PR
-and starts the full CI workflow. Successful CI for the current bot commit allows
-a fast-forward into `main`, preserving the exact tested commit. If `main` has
-advanced, the updater refreshes the PR and CI runs again. Failed or incompatible
-updates stay open for review. Ordinary feature PRs and third-party Dependabot PRs
-retain their normal review process. CI files contain no sibling checkout commits
-to advance after each producer change.
+Every PR and main CI run resolves the latest compatible internal Cargo packages
+and complete native/consumer releases before checking the code. Native and
+consumer manifests declare Cargo-style version ranges, such as `^0.1.2`, instead
+of fixed release tags and archive checksums. The resolver verifies published
+checksums and records the selected versions in ignored
+`target/released-dependencies.json`. All jobs in that CI run use this selection;
+release verification, publication and native platform builds reuse it as well.
+
+A new build of the same source commit can select newer dependencies. CI retains
+its dependency record as an artifact, and releases include that record alongside
+their packages. Release preparation incorporates the selected Cargo dependencies
+in the version commit, so dependency changes can produce new binaries without a
+separate dependency PR. Existing published package versions remain immutable.
+
+The **Check latest released dependencies** workflow compares releases every 15
+minutes, or on manual request, and starts ordinary main CI when its inputs have
+changed. It creates no branch or PR. PR builds resolve immediately and do not
+wait for that schedule. Failed selections remain visible in CI; rerun CI to retry
+the same selection, or publish a fix to trigger a new check. Dependabot version
+updates remain paused and do not participate in this internal dependency flow.
+
+Keep consumer version requirements accurate when code starts using a new API.
+A requirement of `^0.1.2` accepts `0.1.3`; adopting `0.2.0` requires an explicit
+requirement change. Canonical `scripts/lint.sh` and `scripts/check.sh` also resolve
+latest dependencies. For an individual local command, use:
+
+```sh
+python3 scripts/release_dependencies.py run -- cargo build --workspace --locked
+```
+
+Resolution uses the authenticated GitHub CLI (`gh`) to discover published assets.
+Within one build, `--locked` keeps later commands on the selection that was just
+resolved; it does not prevent the next build from selecting newer releases.
 
 
 Dependabot requires a secret reference for custom Cargo registries, including

@@ -5,6 +5,10 @@ on:
       tag:
         type: string
         required: true
+      dependencies_artifact:
+        type: string
+        required: false
+        default: ''
   workflow_dispatch:
     inputs:
       tag:
@@ -17,6 +21,8 @@ permissions:
 
 jobs:
   package:
+    env:
+      IDLE_RELEASE_INPUTS: ${{ github.workspace }}/target/released-dependencies.json
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -29,6 +35,19 @@ jobs:
         with:
           toolchain: 1.97.0
       - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v8
+        if: ${{ inputs.dependencies_artifact != '' }}
+        with:
+          artifact-ids: ${{ inputs.dependencies_artifact }}
+          path: target
+      - name: Download recorded release dependencies for a manual retry
+        if: ${{ !inputs.dependencies_artifact }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: gh release download "$RELEASE_TAG" --pattern released-dependencies.json --dir target --clobber
+      - name: Restore the tested dependency selection
+        run: python3 scripts/release_dependencies.py restore
       - name: Build the compatibility package
         env:
           RELEASE_TAG: ${{ inputs.tag }}
