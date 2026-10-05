@@ -134,9 +134,15 @@ is retained separately for sidebar and detail under the exact repository binding
 No runtime is required to browse captured sessions; execution remains unavailable
 until a runtime is connected. See the shared
 [repository adapter contract](https://github.com/idleai/host-tools/blob/main/docs/repository.md).
-A weekly workflow groups compatible native/consumer release updates, including
-archive checksums and compatible Cargo lockfile updates, into one dependency PR. It selects only complete releases
-and explicitly starts the regular CI checks for the generated PR.
+The **Update released artifacts** workflow checks for compatible internal
+packages and complete native/consumer archives every 15 minutes, or on manual
+request. It groups lockfile versions and archive checksums in one generated PR
+and starts the full CI workflow. Successful CI for the current bot commit allows
+a fast-forward into `main`, preserving the exact tested commit. If `main` has
+advanced, the updater refreshes the PR and CI runs again. Failed or incompatible
+updates stay open for review. Ordinary feature PRs and third-party Dependabot PRs
+retain their normal review process. CI files contain no sibling checkout commits
+to advance after each producer change.
 
 
 Dependabot requires a secret reference for custom Cargo registries, including
@@ -154,3 +160,20 @@ explicit `--producer` and `--consumer` checkout paths. It temporarily patches
 Cargo, builds candidate native bundles when needed, runs the consumer's normal
 check script and restores its dependency files. The manual **Unpublished package
 integration** workflow in memos runs the same check for selected branches.
+
+## Automatic package releases
+
+A successful `main` CI run starts the Release workflow. Release-plz calculates
+versions and changelogs, and automation commits that metadata to `main`. The
+entire CI workflow checks the version commit before any package is published.
+Package archives, indexes and native bundles then publish from that exact commit;
+there is no separate release PR. Concurrent changes to `main` are never overwritten.
+
+Declare breaking changes in the feature PR, including the required minimum
+versions in consumers. Release-plz uses commit messages and Rust API checks to
+calculate the next version. To recover a failed publication, use **Re-run failed
+jobs** on that Release run, retaining its verified commit even if `main` has
+advanced. Dispatch **Release** on `main` to prepare current changes or resume a
+current version commit. Existing versions and public archives remain immutable;
+retries can complete unfinished drafts. A documentation-only change that does not alter packaged
+contents does not create another package version.
