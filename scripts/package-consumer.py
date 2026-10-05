@@ -9,6 +9,8 @@ import shutil
 import subprocess
 import tomllib
 
+import release_dependencies
+
 root = Path(__file__).resolve().parent.parent
 manifest = tomllib.loads((root / "crates/idle-vscode-webview/Cargo.toml").read_text())
 package = manifest["package"]
@@ -18,6 +20,7 @@ parser.add_argument("--allow-dirty", action="store_true")
 args = parser.parse_args()
 if args.tag != f"{package['name']}-v{package['version']}":
     raise ValueError("release tag must match the consumer package version")
+release_dependencies.ensure(root)
 subprocess.run(["cargo", "package", "--locked", "--all-features", "--registry", "idle-app-core",
                 *(["--allow-dirty"] if args.allow_dirty else []), "-p", package["name"]],
                cwd=root, check=True)
