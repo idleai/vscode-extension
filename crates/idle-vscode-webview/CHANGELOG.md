@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/idleai/vscode-extension/compare/idle-vscode-webview-v0.1.1...idle-vscode-webview-v0.1.2) - 2026-10-05
+
+### Other
+
+- *(f43-d9)* resolve latest compatible releases at build start ([#22](https://github.com/idleai/vscode-extension/pull/22))
+
 ## [0.1.1](https://github.com/idleai/vscode-extension/compare/idle-vscode-webview-v0.1.0...idle-vscode-webview-v0.1.1) - 2026-10-05
 
 ### Other
