@@ -24,11 +24,9 @@ async function main() {
     assert.ok(files.includes('extension/dist/pkg/idle_vscode_webview_bg.wasm'));
     assert.ok(!files.some(file => file.includes('/dist/peer-state/')), 'sharing runs in the native service');
     assert.ok(!files.some(file => file.includes('editchain-peer') || file.includes('editchain-vscode-service') || file.includes('editchain_history_renderer') || file.includes('editchain_client_state')));
-    const captureBinary = `bin/${process.platform}-${process.arch}/idle-editor-service${process.platform === 'win32' ? '.exe' : ''}`;
-    assert.ok(files.includes(`extension/${captureBinary}`));
-    const historyBinary = `bin/${process.platform}-${process.arch}/idle-history-service${process.platform === 'win32' ? '.exe' : ''}`;
-    assert.ok(files.includes(`extension/${historyBinary}`));
-    for (const name of ['idle-history-collector', 'codex-session-exporter', 'idle-coordination', 'idle-repository']) {
+    const hostBinary = `bin/${process.platform}-${process.arch}/idle-host${process.platform === 'win32' ? '.exe' : ''}`;
+    assert.equal(files.filter(file => file.startsWith('extension/bin/')).length, 2, 'the VSIX ships one native host and the exporter helper');
+    for (const name of ['idle-host', 'codex-session-exporter']) {
       assert.ok(files.includes(`extension/bin/${process.platform}-${process.arch}/${name}${process.platform === 'win32' ? '.exe' : ''}`));
     }
     assert.ok(!files.some(file => file.includes('/node_modules/') || file.includes('/out/host/') || file.endsWith('.map')));
@@ -47,7 +45,7 @@ async function main() {
     extension = createRequire(entry)(entry);
     const host = extension.activate(f.context);
     assert.equal(f.calls.auth.length, 0);
-    assert.equal(host.native, undefined);
+    assert.equal(typeof host.native.connection, 'function');
     assert.equal(typeof host.transport.bridgeDuplex, 'function');
     assert.equal(typeof host.presence.connect, 'function');
     assert.equal(f.commands.has('idle.presence.showPeers'), true);
@@ -60,12 +58,12 @@ async function main() {
     const sharing = await f.commands.get('idle.sharing.status')();
     assert.equal(sharing.length, 1); assert.equal(sharing[0].enabled, false);
     await f.commands.get('idle.sharing.stop')();
-    await smokeHistory(host, f, path.join(temporary, 'extension', historyBinary), path.join(temporary, 'extension'));
+    await smokeHistory(host, f, path.join(temporary, 'extension', hostBinary), path.join(temporary, 'extension'));
     await extension.deactivate();
     assert.deepEqual(external, []);
     Module._load = original;
-    await smokeCapture(path.join(temporary, 'extension', captureBinary));
-    await smokeCollection(path.dirname(path.join(temporary, 'extension', captureBinary)));
+    await smokeCapture(path.join(temporary, 'extension', hostBinary));
+    await smokeCollection(path.dirname(path.join(temporary, 'extension', hostBinary)));
     console.log('PASS: isolated VSIX activation, native sharing commands and private coordinator IPC, with no external runtime packages.');
   } finally {
     await extension?.deactivate();

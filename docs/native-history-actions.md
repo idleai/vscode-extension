@@ -19,8 +19,8 @@ Selection/coordination code installs one binding with
   migration archive. A directory containing only original segments supports raw
   records; content needs its own retained blobs.
 
-The default provider lazily starts the packaged `idle-history-service`, passing
-these locations once as process arguments. Requests carry logical bindings and
+The default provider lazily opens a history channel in `idle-host`, passing
+these locations once over its private pipe. Requests carry logical bindings and
 record references, never storage paths. An injected `HistoryProvider` may reuse
 the owning engine connection; it must enforce the same contract and cancellation.
 Bindings are independent of views. Their disposables release their own registration,

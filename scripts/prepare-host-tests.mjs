@@ -29,4 +29,4 @@ mkdirSync(fixtures, { recursive: true });
 writeFileSync(path.join(fixtures, 'peer-view.json'), execFileSync('cargo', [
   'run', '--locked', '--quiet', '-p', 'idle-vscode-webview', '--example', 'export-assets', '--', 'peer-view',
 ], { cwd: artifacts.root }));
-await import('./build-coordination.mjs');
+await import('./build-native.mjs');

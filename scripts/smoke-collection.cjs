@@ -1,18 +1,21 @@
 const assert = require('node:assert/strict');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { StdioClient } = require('../out/host/processes');
+const { NativeHost } = require('../out/host/nativeHost');
 
 /** Exercise the packaged collector and exporter against isolated source files. */
 async function smokeCollection(directory) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'idle-native-collection-'));
   const clients = [];
   const binary = name => path.join(directory, `${name}${process.platform === 'win32' ? '.exe' : ''}`);
+  let processes = 0;
+  const native = new NativeHost(() => binary('idle-host'), { spawn: (...args) => { processes++; return spawn(...args); } });
   function start(name, binding) {
-    const client = new StdioClient();
-    client.ensureStarted(binary(name), { cwd: root, args: [JSON.stringify(binding)] });
+    const client = new StdioClient({}, native.connection(root, name, binding));
+    client.ensureStarted();
     clients.push(client);
     return client;
   }
@@ -34,7 +37,7 @@ async function smokeCollection(directory) {
     lines[0] = JSON.stringify(metadata);
     await fs.writeFile(source, lines.join('\n') + '\n');
     const binding = { workspace: root, chain, sessions, helper: binary('codex-session-exporter') };
-    let collector = start('idle-history-collector', binding);
+    let collector = start('collection', binding);
     const scan = async () => {
       let total = 0;
       let changed = false;
@@ -48,7 +51,7 @@ async function smokeCollection(directory) {
     };
     assert.ok((await scan()).written > 0, 'the packaged exporter supplies durable history');
     const repository = { workspace_id: 'collection', repository_id: 'repository', chain: 'history' };
-    const history = start('idle-history-service', { repository, chain_directory: chain, retained_directory: null });
+    const history = start('history', { repository, chain_directory: chain, retained_directory: null });
     const read = async () => {
       const observations = [];
       let after = null;
@@ -75,7 +78,7 @@ async function smokeCollection(directory) {
     assert.ok((await originals(initial)).has(lines[2] + '\n'), 'Original drill-down retains exact source JSON, including its line ending');
     assert.deepEqual(await scan(), { written: 0, changed: false }, 'unchanged source is idempotent');
     await collector.shutdown();
-    collector = start('idle-history-collector', binding);
+    collector = start('collection', binding);
     assert.equal((await scan()).written, 0, 'restart uses durable source cursors');
     assert.deepEqual(await read(), initial, 'restart preserves every stored reference');
     const appended = JSON.stringify({ timestamp: '2026-09-21T12:00:07.000Z', type: 'response_item', payload: {
@@ -94,9 +97,11 @@ async function smokeCollection(directory) {
     const retained = await originals(await read());
     assert.ok(retained.has(appended + '\n') && retained.has(rewritten + '\n'),
       `rewrites retain both original inputs (old=${retained.has(appended + '\n')}, new=${retained.has(rewritten + '\n')}, originals=${retained.size})`);
-    console.log('PASS: packaged collection/exporter import, unchanged replay, restart, append, rewrite generations and exact Original bytes.');
+    assert.equal(processes, 1, 'collection and history keep one host process across channel restart');
+    console.log('PASS: packaged collection/exporter import, unchanged replay, channel restart, append, rewrite generations and exact Original bytes in one host.');
   } finally {
     await Promise.all(clients.map(client => client.shutdown()));
+    await native.shutdown();
     await fs.rm(root, { recursive: true, force: true });
   }
 }

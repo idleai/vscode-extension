@@ -2,7 +2,7 @@ import path from 'node:path';
 import { CredentialPurpose } from '../host/coordinationClient';
 import { CoordinationProcess } from '../host/coordinationProcess';
 import { HostError } from '../host/protocol';
-import type { NativeProcessOptions } from '../host/nativeProcess';
+import type { NativeServices } from '../host/nativeHost';
 import type { ScopeChoice, SharingScope } from './scope';
 import type { Device, Invitation, JoinRequest, SavedSharing, SharingStatus } from './types';
 
@@ -30,10 +30,8 @@ export class NativeSharing {
   private polling = false;
   private value: SharingStatus = { enabled: false, hosting: false, peers: [] };
 
-  constructor(private readonly options: SharingOptions, private readonly extensionPath: string,
-    private readonly processOptions: NativeProcessOptions = {}) {
-    this.owner = new CoordinationProcess(extensionPath, async () => this.installation(),
-      processOptions, purpose => options.credential(purpose));
+  constructor(private readonly options: SharingOptions, private readonly native: NativeServices) {
+    this.owner = new CoordinationProcess(native, async () => this.installation(), purpose => options.credential(purpose));
   }
 
   status(): SharingStatus { return this.value; }
@@ -83,7 +81,7 @@ export class NativeSharing {
 
   private installation() {
     const options = this.options;
-    return { directory: options.stateDirectory, cwd: options.cwd, configuration: {
+    return { cwd: options.cwd, configuration: {
       state_directory: path.join(options.stateDirectory, 'state'), chain_directory: options.chain,
       device_directory: options.deviceDirectory,
       workspace: { id: options.key, name: options.name, chain: options.key,
@@ -120,7 +118,7 @@ export class NativeSharing {
   suspend(): Promise<void> { return this.close('suspend'); }
   stop(): Promise<void> {
     return this.stopping ??= this.closing
-      ? this.closing.catch(() => {}).then(() => new NativeSharing(this.options, this.extensionPath, this.processOptions).stop())
+      ? this.closing.catch(() => {}).then(() => new NativeSharing(this.options, this.native).stop())
       : this.close('stop');
   }
 
@@ -137,4 +135,4 @@ function nativeScope(scope: ScopeChoice): string { return scope === 'keep' ? 'ke
 function displayState(state: string): string {
   return ({ Reconciling: 'Catching up', MissingContent: 'Waiting for content', Waiting: 'Waiting to reconnect', Expired: 'Invitation expired' } as Record<string, string>)[state] ?? state;
 }
-export function createManager(options: SharingOptions, extensionPath: string): NativeSharing { return new NativeSharing(options, extensionPath); }
+export function createManager(options: SharingOptions, native: NativeServices): NativeSharing { return new NativeSharing(options, native); }

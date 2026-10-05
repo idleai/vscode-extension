@@ -1,25 +1,20 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import { CoordinationClient, CredentialPurpose } from './coordinationClient';
-import { resolveNativePath } from './configuration';
-import { NativeProcessOptions } from './nativeProcess';
-import { HostError } from './protocol';
+import { NativeServices } from './nativeHost';
+import { HostError, record } from './protocol';
 
 interface Installation {
-  directory: string;
   cwd: string;
   configuration: unknown;
 }
 
-/** Owns one coordinator installation, including startup, replacement and retirement. */
+/** Owns one coordinator channel, including startup, replacement and retirement. */
 export class CoordinationProcess {
   private client?: CoordinationClient;
   private opening?: Promise<CoordinationClient>;
   private closing?: Promise<void>;
 
-  constructor(private readonly extensionPath: string,
+  constructor(private readonly native: NativeServices,
     private readonly prepare: () => Promise<Installation>,
-    private readonly processOptions: NativeProcessOptions = {},
     private readonly credential?: (purpose: CredentialPurpose) => Promise<string | undefined>,
     private readonly validate: () => void = () => {}) {}
 
@@ -40,17 +35,18 @@ export class CoordinationProcess {
   private async open(): Promise<CoordinationClient> {
     this.validate();
     const installation = await this.prepare();
-    await mkdir(installation.directory, { recursive: true, mode: 0o700 });
-    const file = path.join(installation.directory, 'host.json');
-    await writeFile(file, JSON.stringify(installation.configuration), { mode: 0o600 });
     this.validate();
-    const client = new CoordinationClient(this.processOptions, this.credential);
+    const client = new CoordinationClient({}, this.credential,
+      this.native.connection(installation.cwd, 'coordination', installation.configuration));
     this.client = client;
     try {
-      client.start(resolveNativePath('', this.extensionPath, 'idle-coordination'), {
-        args: ['--config', file], cwd: installation.cwd,
-      });
-      await client.request('{"kind":"versions"}', undefined, 60_000);
+      client.start();
+      const response: unknown = JSON.parse(await client.request('{"kind":"versions"}', undefined, 60_000));
+      const versions = record(response) && record(response.result) ? response.result.Ok : undefined;
+      if (!record(versions) || ['service', 'repository_api', 'invitation', 'saved_sharing'].some(key => versions[key] !== 1)) {
+        throw new HostError('incompatible_host', 'The native coordinator uses an incompatible protocol.');
+      }
+      this.validate();
       return client;
     } catch (error) { await client.shutdown(); throw error; }
   }
@@ -58,6 +54,7 @@ export class CoordinationProcess {
   shutdown(command?: 'stop' | 'suspend'): Promise<void> {
     return this.closing ??= (async () => {
       try {
+        if (!command) await this.client?.shutdown();
         const client = command === 'stop' ? await this.recover(this.opening)
           : await this.opening?.catch(error => { if (command) throw error; return undefined; });
         if (command && client?.isRunning()) await client.request(JSON.stringify({ kind: command }), undefined, 60_000);

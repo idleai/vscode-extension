@@ -3,7 +3,8 @@ import { isDeepStrictEqual } from 'node:util';
 import * as vscode from 'vscode';
 import { RepositoryBinding } from '../history';
 import { bindingKey } from '../history/contracts';
-import { FolderConfiguration, HostConfiguration, resolveNativePath } from './configuration';
+import { FolderConfiguration, HostConfiguration } from './configuration';
+import { NativeServices } from './nativeHost';
 import { HostCredentials } from './credentials';
 import { HostCallContext } from './effects';
 import { StdioClient } from './processes';
@@ -38,7 +39,8 @@ export class RepositoryHost {
   private preferences: Promise<void> = Promise.resolve();
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly configuration: HostConfiguration,
-    private readonly credentials: HostCredentials, private readonly contributor: () => Promise<string>) {}
+    private readonly credentials: HostCredentials, private readonly contributor: () => Promise<string>,
+    private readonly native: NativeServices) {}
 
   async read(config: FolderConfiguration, binding: RepositoryBinding, params: unknown, call: HostCallContext): Promise<unknown> {
     this.configuration.assertTrusted();
@@ -94,10 +96,10 @@ export class RepositoryHost {
       connection = undefined;
     }
     if (!connection) {
-      const client = new StdioClient();
-      client.start(resolveNativePath('', this.context.extensionUri.fsPath, 'idle-repository'), {
-        cwd: config.cwd, args: [JSON.stringify({ scope: binding, root: config.cwd, chain_directory: config.chainDirectory })],
-      });
+      const client = new StdioClient({}, this.native.connection(config.cwd, 'repository', {
+        scope: binding, root: config.cwd, chain_directory: config.chainDirectory,
+      }));
+      client.start();
       connection = { key, binding, client, generation, audience };
       this.connections.set(key, connection);
     }

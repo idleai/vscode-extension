@@ -2,9 +2,9 @@
 
 `extension/src/capture` observes VS Code on the file-owning host.
 `idle-editor-capture` in host-tools owns the editor wire contract, validation,
-conversion and durable writer. The extension packages its executable. The
-`idle-editor-service` executable serves capture RPC independently of the
-history service, peer process and webviews.
+conversion and durable writer. The extension opens bound capture and context
+channels in its shared `idle-host` process. Capture workers run independently
+of history, coordination and webviews.
 
 Capture starts for each enabled, trusted workspace folder during activation.
 Resource-scoped `idle.tracking.*` settings and the folder's explicit

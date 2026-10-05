@@ -1,17 +1,26 @@
 import { isDeepStrictEqual } from "node:util";
 import { StdioClient } from "../host/processes";
 import { HostError, record } from "../host/protocol";
-import { resolveNativePath } from "../host/configuration";
+import { NativeServices } from "../host/nativeHost";
 import * as vscode from "vscode";
 import { HistoryBinding, HistoryFailure, HistoryPreview, HistoryProvider, HistoryRequest, parseRecord } from "./contracts";
 import { ActivityPreview, ActivityRequest, parsePreview } from "../authorActivity/contracts";
 
-/** Lazy packaged engine process; every request uses the installed storage binding. */
+/** Lazy history channel; every request uses the installed storage binding. */
 export class NativeHistoryProvider implements HistoryProvider {
-  private client = new StdioClient();
+  private client: StdioClient;
   private closed = false;
 
-  constructor(private readonly extensionPath: string, private readonly binding: HistoryBinding) {}
+  constructor(private readonly native: NativeServices, private readonly binding: HistoryBinding) {
+    this.client = this.connect();
+  }
+
+  private connect(): StdioClient {
+    return new StdioClient({}, this.native.connection(this.binding.root.fsPath, 'history', {
+      repository: this.binding.repository, chain_directory: this.binding.chainDirectory,
+      retained_directory: this.binding.retainedDirectory ?? null,
+    }));
+  }
 
   async resolve(request: HistoryRequest, signal: AbortSignal): Promise<HistoryPreview> {
     const response = await this.request(request, signal);
@@ -44,20 +53,14 @@ export class NativeHistoryProvider implements HistoryProvider {
   private async request(request: unknown, signal: AbortSignal): Promise<unknown> {
     if (this.closed || signal.aborted) throw new HostError("cancelled", "The history connection was closed.");
     if (!vscode.workspace.isTrusted) throw new HostError("workspace_untrusted", "Trust this workspace before reading history.");
-    const configured = vscode.workspace.getConfiguration("idle", this.binding.root).get<string>("native.historyPath", "");
-    const binary = resolveNativePath(configured, this.extensionPath, "idle-history-service");
-    this.client.ensureStarted(binary, { cwd: this.binding.root.fsPath, args: [JSON.stringify({
-      repository: this.binding.repository,
-      chain_directory: this.binding.chainDirectory,
-      retained_directory: this.binding.retainedDirectory ?? null,
-    })] });
+    this.client.ensureStarted();
     return this.client.request(request, { signal });
   }
 
   async restart(): Promise<void> {
     if (this.closed) throw new HostError("cancelled", "The history connection was closed.");
     await this.client.shutdown();
-    if (!this.closed) this.client = new StdioClient();
+    if (!this.closed) this.client = this.connect();
   }
 
   async shutdown(): Promise<void> { this.closed = true; await this.client.shutdown(); }

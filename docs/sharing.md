@@ -1,7 +1,7 @@
 # Standalone history sharing
 
-The extension host presents approvals and owns the lifetime of the packaged
-`idle-coordination` process. The shared Rust service owns invitations, outgoing
+The extension host presents approvals and owns a coordination channel in the
+packaged `idle-host` process. The shared Rust service owns invitations, outgoing
 consent, replication, reconnect, discovery and Microsoft Dev Tunnels. Sharing
 continues with every view closed.
 

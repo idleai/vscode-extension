@@ -142,6 +142,11 @@ export class NativeProcess {
   /** Await OS-confirmed termination during deactivation, with a bounded wait. */
   shutdown(): Promise<void> {
     this.dispose();
+    return this.waitForExit();
+  }
+
+  /** Wait for every owned child before a shared host starts its replacement. */
+  waitForExit(): Promise<void> {
     if (!this.children.size) return Promise.resolve();
     return new Promise((resolve, reject) => {
       const waiter: ShutdownWaiter = {

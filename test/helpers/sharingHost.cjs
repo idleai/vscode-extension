@@ -74,7 +74,7 @@ function setup(prepare = () => {}, customize = () => {}) {
   const key = index => sharingKey(f.api.workspace.workspaceFolders[index].uri,
     configuration.forResource(f.api.workspace.workspaceFolders[index].uri).chainDirectory);
   prepare({ f, credentials, key, secrets });
-  const host = new SharingHost(f.context, configuration, credentials, diagnostics, factory);
+  const host = new SharingHost(f.context, configuration, credentials, diagnostics, { connection() { throw new Error("The sharing host fixture supplies its own manager."); } }, factory);
   return { f, host, managers, errors, notices, log, secrets, credentials, key,
     choose: index => { selected = index; }, accounts: () => accountCalls, tunnels: () => 0,
     run: name => f.commands.get('idle.sharing.' + name)() };

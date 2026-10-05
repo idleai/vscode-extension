@@ -7,7 +7,6 @@ export interface FolderConfiguration {
   readonly folder: vscode.WorkspaceFolder;
   readonly cwd: string;
   readonly chainDirectory: string;
-  readonly capturePath: string;
 }
 
 /** Explicit folder resolution; never guess the first root in a multi-root window. */
@@ -44,12 +43,11 @@ export class HostConfiguration {
     const config = vscode.workspace.getConfiguration("idle", folder.uri);
     const chain = config.get<string>("chainDirectory", ".editchain");
     if (!chain || chain.includes("\0")) throw new HostError("invalid_configuration", "Configure a nonempty chain directory.");
-    // Each folder owns its own process and chain binding. Resource paths never
+    // Each folder owns its service channels and chain binding. Resource paths never
     // resolve against the UI machine or another folder's working directory.
     return {
       folder, cwd: folder.uri.fsPath,
       chainDirectory: path.resolve(folder.uri.fsPath, chain),
-      capturePath: config.get<string>("native.capturePath", ""),
     };
   }
 
@@ -61,8 +59,8 @@ export class HostConfiguration {
     };
   }
 
-  captureBinary(config: FolderConfiguration): string {
+  nativeBinary(): string {
     this.assertTrusted();
-    return resolveNativePath(config.capturePath, this.extensionPath, "idle-editor-service");
+    return resolveNativePath(vscode.workspace.getConfiguration('idle').get('native.hostPath', ''), this.extensionPath, 'idle-host');
   }
 }

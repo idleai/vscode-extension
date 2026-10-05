@@ -1,3 +1,4 @@
+const { NativeHost } = require('../out/host/nativeHost');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
@@ -26,7 +27,7 @@ function setup(t, bytes = 'recorded\r\n') {
   f.api.workspace.workspaceFolders = ['/one', '/two'].map(name => ({ name, uri: uri(`file://${name}`) }));
   f.api.env.remoteName = undefined;
   const effects = new HostEffects(() => f.api.workspace.isTrusted);
-  const host = new HistoryHost('/extension', effects, { command: (_, action) => action(), failure() {} });
+  const host = new HistoryHost(new NativeHost(() => '/unused/idle-host'), effects, { command: (_, action) => action(), failure() {} });
   const requests = [];
   const provider = {
     closed: 0,

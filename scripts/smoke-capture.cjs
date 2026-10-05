@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { StdioClient } = require('../out/host/processes');
+const { NativeHost } = require('../out/host/nativeHost');
 const { EditorOutbox } = require('../out/capture/editorOutbox');
 const { HistoryArchive } = require('../out/capture/historyArchive');
 
@@ -12,13 +13,15 @@ async function smokeCapture(binary) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'idle-native-capture-'));
   const journal = path.join(directory, 'outbox');
   const archive = new HistoryArchive({ directory: path.join(directory, 'archive'), log() {}, report(message) { throw new Error(message); } });
-  let client = new StdioClient({ maxFrameBytes: 160 * 1024 * 1024 });
+  const native = new NativeHost(() => binary);
+  const connect = native.connection(directory, 'capture', { workspace_path: directory, chain_dir: path.join(directory, '.editchain') });
+  let client = new StdioClient({}, connect);
   let outbox;
   try {
     execFileSync('git', ['init', '--quiet', directory]);
     execFileSync('git', ['-C', directory, '-c', 'user.name=Capture Test', '-c', 'user.email=capture@example.invalid',
       '-c', 'commit.gpgSign=false', 'commit', '--quiet', '--allow-empty', '-m', 'Capture fixture']);
-    client.ensureStarted(binary, { cwd: directory });
+    client.ensureStarted();
     const context = await client.request({ GetEditorContext: { workspace_path: directory, chain_dir: '.editchain' } }, { timeoutMs: 30000 });
     assert.ok(context.Ok.repositories.some(repository => repository.head?.length === 40 && repository.root === directory));
     const session = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
@@ -53,10 +56,10 @@ async function smokeCapture(binary) {
     assert.equal(await outbox.flush(), false);
     assert.ok((await fs.readdir(journal)).some(name => name.endsWith('.json')));
     await outbox.stop(); await client.shutdown();
-    client = new StdioClient({ maxFrameBytes: 160 * 1024 * 1024 });
+    client = new StdioClient({}, connect);
     const responses = [];
     outbox = new EditorOutbox(journal, directory, '.editchain', async parts => {
-      client.ensureStarted(binary, { cwd: directory });
+      client.ensureStarted();
       const response = await client.requestJson(parts, { timeoutMs: 30000 });
       responses.push(response); return response;
     }, () => {}, () => {}, () => {}, (workspace, value, raw) => archive.append(workspace, value, raw));
@@ -73,12 +76,13 @@ async function smokeCapture(binary) {
     console.log('PASS: native schema-three capture, Git context, unsaved Unicode, 10,001 replacements, raw archive and ordered recovery after a lost acknowledgement.');
   } finally {
     await outbox?.stop(); await client.shutdown(); await archive.stop();
+    await native.shutdown();
     await fs.rm(directory, { recursive: true, force: true });
   }
 }
 
 module.exports = { smokeCapture };
 if (require.main === module) {
-  const binary = process.argv[2] ?? require('./native-artifacts.cjs').binary('host-tools', 'idle-editor-service');
+  const binary = process.argv[2] ?? require('./native-artifacts.cjs').binary('host-tools', 'idle-host');
   smokeCapture(binary).catch(error => { console.error(error); process.exitCode = 1; });
 }

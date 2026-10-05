@@ -49,6 +49,12 @@ code --install-extension idle.vsix
 ```
 
 Packaging builds the extension and includes its JS, WASM and native services.
+The VSIX contains two native executables: `idle-host` and
+`codex-session-exporter`. One `idle-host` process serves all workspace capture,
+history, collection, repository and coordination channels. The exporter runs
+only when collection needs it. Configure `idle.native.hostPath` to use a custom
+host, then run **Idle: Restart Native Adapters**. The old capture, history and
+collector executable settings are deprecated.
 Native binaries match the build machine's OS and architecture; build for the
 destination workspace host. Installed packages need no sibling source checkouts.
 
@@ -127,8 +133,8 @@ Standalone repository surfaces now show Git checkout/worktree details, bounded
 Git authors and GitHub contributors/collaborators, issues/PRs, failed HEAD checks,
 explicit triage/input requests, and local/imported recorded sessions. GitHub
 source pages open through the host; exact response records open in Activity.
-GitHub access uses VS Code authentication and the packaged `idle-repository`
-reader. The repository access button explicitly requests repository scope.
+GitHub access uses VS Code authentication and the repository service inside
+`idle-host`. The repository access button explicitly requests repository scope.
 Public/offline/partial reads and retry deadlines remain visible. Session selection
 is retained separately for sidebar and detail under the exact repository binding.
 No runtime is required to browse captured sessions; execution remains unavailable
