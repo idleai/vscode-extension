@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.97"
 license = "MIT"
 publish = false
-description = "Idle VS Code webview entrypoint"
+description = "Idle VS Code Rust application, native tree models and custom webviews"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

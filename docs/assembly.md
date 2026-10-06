@@ -1,17 +1,60 @@
 # Extension assembly (f43)
 
-The sidebar mounts f34's shared `WorkspaceNavigation` through
-`web_ui::assembly::WorkspaceSurface`, over a persistent `app_core::Core`.
-Workspace, Users, Sessions, Projections, Compute hosts, Model providers and compact
-Activity stay in that order, followed by Settings and Agent Rules. Selecting
-Activity opens the full history inspector; selecting Projections mounts f33's
-panels. The detail tab exposes the same complete set of destinations. Each document
-has separate selection and presentation state. Shell protocol 14 includes the
-shared repository state and exact recorded-session selections. Capture, bindings and native
-processes belong to the extension lifetime.
+The Idle container contributes six native `TreeView`s: Workspace, Users,
+Sessions, Projections, Compute hosts and Model providers. Activity is a
+`WebviewView` containing the Rust graph and a footer with standalone Settings and
+Agent Rules links. The links have no section headers or disclosure controls;
+they stay below the scrollable graph and share the Activity view's visibility.
+VS Code owns the section headers,
+dividers, resizing, ordering and collapse state, plus the native lists' rows,
+icons, tooltips, selection, keyboard navigation, menus and virtualized scrolling.
+The tree registration follows Microsoft's [Containers implementation](https://github.com/microsoft/vscode-containers/blob/main/extensions/vscode-containers/src/tree/registerTrees.ts).
+Users, Projections, Compute hosts and Model providers start collapsed; the workbench retains
+subsequent layout changes. The Activity graph fills its allocated view body.
+
+`NativeSidebar` in the Rust crate owns a headless app-core runtime and projects
+its typed view model into native tree records. The TypeScript adapter maps these
+records to `TreeItem`s and executes allowlisted host effects. It owns no duplicate
+domain model. Stable row IDs retain native selection across updates and renames;
+unchanged snapshots do not reset scrolling. Native filter actions search loaded
+names and descriptions. Data fetching and completeness remain Rust concerns;
+native row virtualization does not imply server-side pagination.
+
+All surfaces share an explicit workspace/repository/chain selection. On first use,
+the active editor's folder is selected, or the sole folder in a single-folder
+window. A multi-root window without an active folder waits for a choice. A valid
+saved choice takes priority; removed or reconfigured bindings fall back to the
+current folder. The host saves that binding in workspace storage and replays the latest choice after each
+`host.ready`, including when VS Code recreates a hidden document. Rust waits for a
+fresh directory and checks all three binding fields before adopting the selection.
+The six trees share one extension-lifetime Rust runtime; collapsing trees or
+closing Activity does not stop their updates. Activity and detail documents keep
+their own scoped reads. Capture, bindings and native processes also belong to the
+extension lifetime.
+
+Row selections open the detail editor with the same binding, destination and
+selected item keys. Rust waits for the matching domain data before applying
+session or resource selections. Recorded sessions retain their full logical IDs
+and open the matching recorded history; their rows make no execution claim.
+A later user choice retires pending navigation. Old native row actions are rejected
+after a binding change or context reset.
+The native **Open Detail View** toolbar action opens its view's destination.
+Workspace's secondary menu exposes Settings and Agent Rules. The native refresh
+action refreshes the corresponding Rust directory. Repository inspection stays
+in the detail editor.
+
+Native trees use the workbench's actual stylesheet and product icon theme.
+They need no copied row CSS or bundled icon font. The workbench injects theme
+variables into the custom Activity and detail webviews; its stylesheet cannot
+cascade across their iframes. [vscode-sidebar.css](../static/vscode-sidebar.css)
+sizes the custom Activity body and its footer links. Their icons use the packaged
+[Codicon font](https://github.com/microsoft/vscode-codicons), with its license;
+other hosts retain the shared SVG fallback.
+Shell protocol 14 includes the shared repository state and exact recorded-session
+selections.
 
 `host.ready` negotiates installed actions before the first workspace request.
-Every effect has a document-local transport identity. Context changes immediately
+Every runtime gives effects non-reused transport identities. Context changes immediately
 clear the old view and capabilities, retire pending continuations and negotiate
 again. Old and duplicate replies cannot populate the new view. Malformed results,
 failed sends and request timeouts become visible failures. Closing a document
@@ -104,7 +147,15 @@ Edits made while draft storage is loading retain their text and recover any
 original unresolved save. New saves wait until that request is resolved.
 
 The repository overview resolves the selected checkout, branch, HEAD, worktree
-status and sanitized remote. Users separates local membership and online status
+status and sanitized remote. Initial reads return local Git details, recorded
+sessions and the Activity projection before waiting for GitHub. The sidebar
+graph already reads local history independently. Rust then requests complete
+replacements, sharing remote work between repository and projection reads.
+Remote categories keep unknown totals while loading. The native host advertises `repository.local`
+before the adapter uses this optional operation; older hosts keep the existing
+read protocol. Local and complete reads retain independent cancellation and the
+same binding checks. Explicit refresh still revalidates GitHub.
+Users separates local membership and online status
 from Git authors, GitHub contributors and accessible collaborators. Recorded sessions keep
 full logical IDs, recorded labels and exact source records. Selection is retained
 per contributor, binding and surface; it survives view and host restart. Recorded
@@ -129,8 +180,11 @@ identities automatically.
 
 ## Assets and checks
 
-The build bundles theme, navigation, projection, history, details, session,
-configuration, resource and repository styles with the application WASM. VS Code CSS variables update the shared theme.
+The same Rust crate builds Node bindings under `dist/native` for the headless tree
+runtime and browser bindings under `dist/pkg` for custom content. Browser mounting
+is explicit, so loading Rust in the extension host does not access a DOM.
+The build bundles styles for the custom Activity and detail components.
+VS Code CSS variables update the shared webview theme.
 The CSP permits graph coordinates while restricting scripts and style elements
 to packaged assets.
 
@@ -161,6 +215,19 @@ exact unfinished settings draft. The normal development driver retains VS Code
 profile storage; extension-test mode would replace mementos with memory storage.
 Profile, extensions and shared storage all use temporary directories. CI runs this check
 with VS Code 1.140.0.
+
+Run `VSCODE_BIN=/absolute/path/to/code CONTAINERS_EXTENSION=/absolute/path/to/ms-azuretools.vscode-containers-version npm run test:vscode:sidebar`
+to compare the installed VSIX against Containers in a separate desktop profile.
+This uses Puppeteer only to inspect the isolated Electron test process. It checks
+seven native pane headers and their dividers, six native trees, row geometry,
+shared selection across two folders, reopened Activity, exact recorded-session
+detail routing, standalone Settings and Agent Rules links, keyboard navigation and disclosure in modern dark, modern light,
+compact and classic layouts. A 1,202-row directory checks native list
+virtualization, scrolling to the final row, filtering and clearing the filter. It also drags a native divider, checks layout persistence, and
+checks live changes to header capitalization. Full
+workbench captures, sidebar captures, measured values and a comparison page go
+to `outputs/sidebar-vscode/` (or `IDLE_SIDEBAR_OUTPUT`). Docker resources are read
+by Containers; the test does not start or stop them.
 
 ## Application ownership
 

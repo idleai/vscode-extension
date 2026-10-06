@@ -103,7 +103,7 @@ pub fn App() -> Element {
     } }
 }
 
-fn surface() -> Surface {
+pub(crate) fn surface() -> Surface {
     #[cfg(target_arch = "wasm32")]
     if web_sys::window()
         .and_then(|window| window.document())
@@ -113,6 +113,15 @@ fn surface() -> Surface {
         == Some("detail")
     {
         return Surface::Detail;
+    }
+    #[cfg(target_arch = "wasm32")]
+    if let Some(section) = web_sys::window()
+        .and_then(|window| window.document())
+        .and_then(|document| document.get_element_by_id("main"))
+        .and_then(|element| element.get_attribute("data-view-section"))
+        .and_then(|section| serde_json::from_value(serde_json::Value::String(section)).ok())
+    {
+        return Surface::SidebarPane(section);
     }
     Surface::Sidebar
 }

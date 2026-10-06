@@ -30,6 +30,10 @@ run("wasm-bindgen", [
   "--target", "web", "--no-typescript", "--out-dir", join(output, "pkg"),
   join(metadata.target_directory, "wasm32-unknown-unknown", "release", "idle_vscode_webview.wasm"),
 ]);
+run("wasm-bindgen", [
+  "--target", "nodejs", "--no-typescript", "--out-dir", join(output, "native"),
+  join(metadata.target_directory, "wasm32-unknown-unknown", "release", "idle_vscode_webview.wasm"),
+]);
 cpSync(join(root, "static"), output, { recursive: true });
 writeFileSync(join(output, "theme.css"), run("cargo", ["run", "--locked", "--quiet", "-p", "idle-vscode-webview", "--example", "export-assets", "--", "styles"], true)
-  + "\n" + readFileSync(join(root, "static/assembly.css"), "utf8"));
+  + ["assembly.css", "vscode-sidebar.css", "codicons.css"].map(file => "\n" + readFileSync(join(root, "static", file), "utf8")).join(""));

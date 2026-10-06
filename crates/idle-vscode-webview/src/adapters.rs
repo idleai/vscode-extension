@@ -11,10 +11,13 @@ use web_ui::host::{HostCapabilities, HostCapability, HostKind};
 use crate::bridge::BridgeError;
 
 mod drafts;
+mod navigation;
 mod reconnect;
+#[cfg(test)]
+mod startup_tests;
 
 /// One platform call. Its identity is valid only in this document.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Call {
     /// Monotonic transport identity, never reused across context resets.
     pub id: String,
@@ -33,6 +36,9 @@ pub struct Runtime {
     coordination: crate::coordination::Adapter,
     drafts: drafts::State,
     reconnect: Option<app_core::workspace::RepositoryChainBinding>,
+    navigation: Option<navigation::Target>,
+    projection_started: Option<app_core::subscriptions::Context>,
+    native_views: bool,
 }
 
 impl std::fmt::Debug for Runtime {
@@ -54,6 +60,9 @@ impl Default for Runtime {
             coordination: crate::coordination::Adapter::default(),
             drafts: drafts::State::default(),
             reconnect: None,
+            navigation: None,
+            projection_started: None,
+            native_views: false,
         }
     }
 }
@@ -85,6 +94,9 @@ impl Runtime {
         self.capabilities = HostCapabilities::new(HostKind::VsCode);
         self.coordination = crate::coordination::Adapter::default();
         self.drafts = drafts::State::default();
+        self.navigation = None;
+        self.projection_started = None;
+        self.native_views = false;
     }
 
     /// Start or reset after account, trust or workspace configuration changes.
@@ -95,6 +107,10 @@ impl Runtime {
         self.invalidate();
         self.capabilities = capabilities(value);
         self.configure_drafts(value);
+        self.native_views = value
+            .get("capabilities")
+            .and_then(Value::as_array)
+            .is_some_and(|methods| methods.iter().any(|method| method == "views.openDetail"));
         self.coordination.enabled = value
             .get("capabilities")
             .and_then(Value::as_array)
@@ -121,6 +137,15 @@ impl Runtime {
     /// # Errors
     /// Returns a serialization or Crux continuation failure.
     pub fn dispatch(&mut self, event: Event) -> Result<Vec<Call>, String> {
+        if matches!(
+            &event,
+            Event::Workspace(
+                app_core::workspace::Event::Navigate(_)
+                    | app_core::workspace::Event::SelectWorkspace(_)
+            )
+        ) {
+            self.navigation = None;
+        }
         if matches!(
             event,
             Event::Configuration(app_core::configuration::Event::Refresh)
@@ -188,7 +213,15 @@ impl Runtime {
         {
             *kind = json!("Transport");
         }
-        let value = result.unwrap_or_else(|_error| failure.clone());
+        let mut value = result.unwrap_or_else(|_error| failure.clone());
+        let local = matches!(&effect, Effect::Repository(_) | Effect::Projection(_))
+            .then(|| value.get("local").cloned())
+            .flatten();
+        let local_repository = local.is_some() && matches!(&effect, Effect::Repository(_));
+        let local_projection = local.is_some() && matches!(&effect, Effect::Projection(_));
+        if let Some(local) = local {
+            value = local;
+        }
         let value = match self
             .coordination
             .decode(&effect, value, id, &self.core.view())
@@ -222,6 +255,14 @@ impl Runtime {
         if workspace_directory {
             effects.extend(self.restore_workspace());
         }
+        if local_repository
+            && self.core.view().repository.load == app_core::repository::RepositoryLoadState::Ready
+        {
+            effects.extend(
+                self.core
+                    .process_event(Event::Repository(app_core::repository::Event::Changed)),
+            );
+        }
         effects.extend(self.tick());
         if refresh_workspace {
             effects.extend(self.core.process_event(Event::Workspace(
@@ -231,9 +272,19 @@ impl Runtime {
                 app_core::workspace::Event::RefreshPresence,
             )));
         }
+        if local_projection
+            && self.core.view().projections.load
+                == app_core::projections::ProjectionLoadState::Ready
+        {
+            effects.extend(
+                self.core
+                    .process_event(Event::Projections(app_core::projections::Event::Changed)),
+            );
+        }
         for event in self.coordination.connect(&self.core.view()) {
             effects.extend(self.core.process_event(event));
         }
+        effects.extend(self.apply_navigation());
         self.enqueue(effects)
     }
 
@@ -284,7 +335,7 @@ impl Runtime {
                 .checked_add(1)
                 .ok_or("Host request identities exhausted")?;
             let id = format!("app:{}", self.next);
-            let params = if let Some(params) =
+            let mut params = if let Some(params) =
                 self.coordination.route(&effect, &self.core.view(), &id)
             {
                 method = "app.coordination";
@@ -292,6 +343,35 @@ impl Runtime {
             } else {
                 json!({"operation": operation, "binding": self.core.view().workspace.repository_binding})
             };
+            let initial = match &effect {
+                Effect::Repository(request)
+                    if request.operation.action == app_core::repository::RepositoryAction::Read =>
+                {
+                    Some(self.core.view().repository.snapshot.is_none())
+                }
+                Effect::Projection(request) => {
+                    let first = self.projection_started.as_ref()
+                        != Some(&request.operation.context)
+                        && !request.operation.refresh_sources;
+                    self.projection_started = Some(request.operation.context.clone());
+                    Some(first)
+                }
+                Effect::Render(_)
+                | Effect::HostInfo(_)
+                | Effect::History(_)
+                | Effect::Workspace(_)
+                | Effect::Subscription(_)
+                | Effect::Session(_)
+                | Effect::Resource(_)
+                | Effect::Configuration(_)
+                | Effect::Repository(_) => None,
+            };
+            if let Some(initial) = initial {
+                let _previous = params
+                    .as_object_mut()
+                    .ok_or("Host request requires an object")?
+                    .insert("initial".into(), json!(initial));
+            }
             calls.push(Call {
                 id: id.clone(),
                 method,

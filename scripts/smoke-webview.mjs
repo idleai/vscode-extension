@@ -40,7 +40,7 @@ const server = createServer(async (request, response) => {
     if (!file || (!file.startsWith(assets + "/") && !["/fixture.js", "/probe.js"].includes(pathname))) {
       response.writeHead(404).end(); return;
     }
-    response.setHeader("Content-Type", file.endsWith(".wasm") ? "application/wasm" : file.endsWith(".css") ? "text/css" : "text/javascript");
+    response.setHeader("Content-Type", file.endsWith(".wasm") ? "application/wasm" : file.endsWith(".css") ? "text/css" : file.endsWith(".ttf") ? "font/ttf" : "text/javascript");
     response.end(await readFile(file));
   } catch { response.writeHead(404).end(); }
 });

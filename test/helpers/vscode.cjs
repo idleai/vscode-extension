@@ -15,7 +15,7 @@ function uri(value) {
 function fixture() {
   const commands = new Map();
   const events = Object.fromEntries(['configuration', 'folders', 'trust', 'authentication', 'activeEditor', 'visibleEditors', 'changeDocument', 'closeDocument'].map(key => [key, new Emitter()]));
-  const calls = { auth: [], output: [], notifications: [], external: [], clipboard: [], providers: [], panels: [], lenses: [], statuses: [], choices: [], fileProviders: [], contentProviders: [], editorCommands: [], decorationTypes: [] };
+  const calls = { auth: [], output: [], notifications: [], external: [], clipboard: [], providers: [], trees: [], panels: [], lenses: [], statuses: [], choices: [], fileProviders: [], contentProviders: [], editorCommands: [], decorationTypes: [] };
   const secrets = new Map();
   const state = new Map();
   const configuration = new Map();
@@ -31,6 +31,9 @@ function fixture() {
     CodeLens: class { constructor(range, command) { this.range = range; this.command = command; } },
     Range: class { constructor(...coordinates) { this.coordinates = coordinates; } },
     ThemeColor: class { constructor(id) { this.id = id; } },
+    ThemeIcon: class { constructor(id, color) { this.id = id; this.color = color; } },
+    TreeItem: class { constructor(label, collapsibleState) { this.label = label; this.collapsibleState = collapsibleState; } },
+    TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     DecorationRangeBehavior: { ClosedClosed: 1 },
     MarkdownString: class {
       value = '';
@@ -74,10 +77,16 @@ function fixture() {
       createStatusBarItem: () => { const status = { visible: false, show() { this.visible = true; }, hide() { this.visible = false; }, dispose() {} }; calls.statuses.push(status); return status; },
       onDidChangeActiveTextEditor: events.activeEditor.event,
       showQuickPick: async (choices, options) => { calls.choices.push({ choices, options }); },
+      showInputBox: async options => { calls.choices.push({ options }); },
       showInformationMessage: async message => { calls.notifications.push(message); },
       showWarningMessage: async message => { calls.notifications.push(message); },
       showErrorMessage: async message => { calls.notifications.push(message); },
       registerWebviewViewProvider: (id, provider) => { calls.providers.push({ id, provider }); return { dispose() {} }; },
+      createTreeView: (id, options) => {
+        const tree = { id, ...options, visible: true, title: id, disposed: false, dispose() { this.disposed = true; } };
+        calls.trees.push(tree);
+        return tree;
+      },
       createWebviewPanel: () => { const panel = view(); panel.reveal = () => {}; calls.panels.push(panel); return panel; },
     },
     commands: {
@@ -94,11 +103,11 @@ function fixture() {
   return { api, context, calls, commands, events, configuration, secrets };
 }
 
-function view() {
+function view(viewType = 'idle.activity') {
   const messages = new Emitter();
   const closed = new Emitter();
   return {
-    posted: [], messages,
+    posted: [], messages, viewType,
     webview: { cspSource: 'https://assets.example', asWebviewUri: value => value, onDidReceiveMessage: messages.event,
       postMessage: async function(message) { this.owner.posted.push(message); return true; } },
     onDidDispose: closed.event,

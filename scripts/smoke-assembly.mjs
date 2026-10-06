@@ -53,7 +53,7 @@ try {
   const { webviewHtml } = loadWithVSCode("../../out/host/webviews", f.api);
   // Keep transport and host errors in the same compiled bundle. Loading the
   // source bridge separately would turn packaged HostErrors into generic ones.
-  const provider = f.calls.providers.find(item => item.id === 'idle.workspace').provider;
+  const provider = f.calls.providers.find(item => item.id === 'idle.activity').provider;
   const mounted = view();
   provider.resolveWebviewView(mounted);
   const WebviewBridge = [...provider.views][0].bridge.constructor;
@@ -91,7 +91,7 @@ try {
       const file = url.pathname === "/fixture.js" ? join(root, "test/fixtures/assembly-api.js") :
         url.pathname.startsWith("/dist/") ? resolve(assets, `.${url.pathname.slice(5)}`) : undefined;
       if (!file || (!file.startsWith(assets + "/") && url.pathname !== "/fixture.js")) { response.writeHead(404).end(); return; }
-      response.setHeader("Content-Type", file.endsWith(".wasm") ? "application/wasm" : file.endsWith(".css") ? "text/css" : "text/javascript");
+      response.setHeader("Content-Type", file.endsWith(".wasm") ? "application/wasm" : file.endsWith(".css") ? "text/css" : file.endsWith(".ttf") ? "font/ttf" : "text/javascript");
       response.end(await readFile(file));
     } catch (error) { response.writeHead(500).end(String(error)); }
   });
@@ -135,6 +135,11 @@ try {
     assert.equal(await page.evaluate(() => document.body.textContent.includes('Starting Idle…')), false, 'the startup placeholder is removed after mounting');
     await page.evaluate(() => document.documentElement.style.setProperty("--vscode-editor-background", "#112233"));
     assert.equal(await page.$eval(".idle-theme", element => getComputedStyle(element).backgroundColor), "rgb(17, 34, 51)", 'the view follows host theme tokens');
+    if (kind === 'sidebar') {
+      await page.evaluate(() => document.documentElement.style.setProperty('--vscode-sideBar-background', '#223344'));
+      assert.equal(await page.$eval('.idle-theme', element => getComputedStyle(element).backgroundColor), 'rgb(34, 51, 68)', 'the sidebar uses the sidebar palette when it differs from the editor');
+      await page.evaluate(() => document.documentElement.style.removeProperty('--vscode-sideBar-background'));
+    }
     if (kind === "sidebar") await checkActivityUpdate(page);
     await checkSearch(page);
     await checkReadyReplies(page, workspaceId);
@@ -227,7 +232,7 @@ async function checkReadyReplies(page, workspaceId) {
 }
 
 async function showActivity(page) {
-  await page.evaluate(() => [...document.querySelectorAll("button")].find(button => button.textContent.trim() === "Activity").click());
+  await page.evaluate(() => [...document.querySelectorAll("button")].find(button => button.textContent.trim() === "Activity" || button.getAttribute('aria-label') === 'Open Activity').click());
   await page.waitForSelector("#idle-search");
   await page.waitForSelector('#idle-history[aria-busy="false"] [role="treeitem"]');
 }
@@ -253,6 +258,29 @@ async function checkNavigation(page) {
   assert.equal(await page.$eval('.idle-navigation-activity .idle-history-viewport', element => element.getBoundingClientRect().height), 176);
   await page.waitForFunction(() => document.querySelector('.idle-navigation')?.textContent.includes('You (local)'));
   await page.waitForFunction(() => document.querySelector('.idle-navigation')?.textContent.includes('Online'));
+  assert.equal(await page.$('[aria-label="Repository workspace"]'), null, 'repository inspection stays outside the sidebar');
+  await page.waitForFunction(() => document.querySelector('.idle-navigation-branch')?.textContent.includes('main'));
+  assert.equal(await page.$eval('.idle-navigation-row', element => element.getBoundingClientRect().height), 22, 'sidebar rows match the workbench density');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'the sidebar fits without horizontal scrolling');
+  if (process.env.IDLE_ASSEMBLY_OUTPUT) {
+    const previous = await page.evaluate(() => {
+      const before = { style: document.documentElement.style.cssText, body: document.body.className };
+      document.body.classList.add('vscode-dark');
+      for (const [name, value] of Object.entries({
+        'sideBar-background': '#181818', 'sideBar-foreground': '#cccccc',
+        'foreground': '#cccccc', 'descriptionForeground': '#999999',
+        'sideBarSectionHeader-background': '#181818', 'sideBarSectionHeader-border': '#2b2b2b',
+        'dropdown-background': '#313131', 'dropdown-foreground': '#cccccc', 'dropdown-border': '#3c3c3c',
+        'list-hoverBackground': '#2a2d2e', 'focusBorder': '#0078d4',
+      })) document.documentElement.style.setProperty(`--vscode-${name}`, value);
+      return before;
+    });
+    await savePage(page, 'workspace-sidebar', process.env.IDLE_ASSEMBLY_OUTPUT);
+    await page.evaluate(previous => {
+      document.documentElement.style.cssText = previous.style;
+      document.body.className = previous.body;
+    }, previous);
+  }
   assert.equal(await page.$eval('.idle-navigation-heading', element => getComputedStyle(element).display), 'flex');
   await page.evaluate(() => document.querySelector('[data-section="Projections"] button').click());
   await page.waitForFunction(() => document.querySelectorAll('.idle-projection-panel').length === 4);

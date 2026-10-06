@@ -61,8 +61,46 @@ impl Connection {
     }
 
     pub(crate) fn dispatch(self: &Rc<Self>, event: Event) {
+        let selection = matches!(
+            &event,
+            Event::Workspace(app_core::workspace::Event::SelectWorkspace(_))
+        );
+        let destination =
+            if let Event::Workspace(app_core::workspace::Event::Navigate(section)) = &event {
+                matches!(
+                    crate::app::surface(),
+                    web_ui::assembly::Surface::SidebarPane(_)
+                )
+                .then_some(*section)
+            } else {
+                None
+            };
         let calls = self.runtime.borrow_mut().dispatch(event);
         self.publish(calls);
+        if !self.runtime.borrow().has_native_views() {
+            return;
+        }
+        if selection
+            && let Some(binding) = self.runtime.borrow().view().workspace.repository_binding
+        {
+            self.view_call("views.selectWorkspace", json!({"binding": binding}));
+        }
+        if let Some(section) = destination {
+            self.view_call(
+                "views.openDetail",
+                self.runtime.borrow().navigation_target(section),
+            );
+        }
+    }
+
+    fn view_call(self: &Rc<Self>, method: &'static str, params: serde_json::Value) {
+        let next = self.next_external.get().wrapping_add(1);
+        self.next_external.set(next);
+        self.send(Call {
+            id: format!("external:{}:{next}", self.generation.get()),
+            method,
+            params,
+        });
     }
 
     pub(crate) fn save_configuration(
@@ -130,6 +168,12 @@ impl Connection {
             }
             HostMessage::Event { event, params } if event == "history.changed" => {
                 self.runtime.borrow_mut().history_changed(&params)
+            }
+            HostMessage::Event { event, params } if event == "host.workspaceSelected" => {
+                self.runtime.borrow_mut().synchronize_workspace(params)
+            }
+            HostMessage::Event { event, params } if event == "host.navigate" => {
+                self.runtime.borrow_mut().navigate_from_host(params)
             }
             HostMessage::Event { .. } => return,
             HostMessage::Response { id, result }

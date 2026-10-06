@@ -153,3 +153,111 @@ fn sign_in_completion_can_reconnect_again_while_the_first_snapshot_is_pending() 
         |call| call.params.pointer("/operation/Snapshot/workspace_id") == Some(&json!("two"))
     ));
 }
+
+fn binding(id: &str) -> Value {
+    json!({"workspace_id": id, "repository_id": format!("repository-{id}"), "chain": format!("chain-{id}")})
+}
+
+#[test]
+fn reopened_native_views_wait_for_the_directory_and_apply_only_the_latest_selection() {
+    let mut runtime = Runtime::default();
+    let request = runtime.ready(&json!({})).expect("handshake").remove(0);
+    assert!(
+        runtime
+            .synchronize_workspace(binding("one"))
+            .expect("first selection")
+            .is_empty()
+    );
+    assert!(
+        runtime
+            .synchronize_workspace(binding("two"))
+            .expect("latest selection")
+            .is_empty()
+    );
+    assert!(runtime.view().workspace.selected_workspace.is_none());
+    let _calls = runtime
+        .receive(
+            &request.id,
+            Ok(json!({"Ok": {"Directory": [info("one"), info("two")]}})),
+        )
+        .expect("fresh directory");
+    assert_eq!(
+        runtime.view().workspace.selected_workspace.as_deref(),
+        Some("two")
+    );
+    assert!(
+        runtime
+            .synchronize_workspace(binding("two"))
+            .expect("same selection")
+            .is_empty()
+    );
+    let calls = runtime
+        .synchronize_workspace(binding("one"))
+        .expect("changed selection");
+    assert_eq!(
+        runtime.view().workspace.selected_workspace.as_deref(),
+        Some("one")
+    );
+    assert!(calls.iter().any(
+        |call| call.params.pointer("/operation/Snapshot/workspace_id") == Some(&json!("one"))
+    ));
+}
+
+#[test]
+fn native_view_does_not_adopt_a_replaced_repository_or_chain() {
+    for (field, value) in [
+        ("chain", "replaced-chain"),
+        ("repository_id", "replaced-repository"),
+    ] {
+        let mut runtime = Runtime::default();
+        let request = runtime.ready(&json!({})).expect("handshake").remove(0);
+        let mut changed = binding("two");
+        *changed.get_mut(field).expect("binding field") = json!(value);
+        let _calls = runtime
+            .synchronize_workspace(changed)
+            .expect("queued binding");
+        let calls = runtime
+            .receive(
+                &request.id,
+                Ok(json!({"Ok": {"Directory": [info("one"), info("two")]}})),
+            )
+            .expect("fresh directory");
+        assert!(calls.is_empty());
+        assert!(runtime.view().workspace.selected_workspace.is_none());
+    }
+}
+
+#[test]
+fn detail_navigation_survives_initial_loading_and_a_later_user_choice_cancels_it() {
+    let mut runtime = Runtime::default();
+    let request = runtime.ready(&json!({})).expect("handshake").remove(0);
+    let _calls = runtime
+        .navigate_from_host(
+            json!({"binding": binding("two"), "section": "Sessions", "session": "waiting-session"}),
+        )
+        .expect("detail target");
+    let _calls = runtime
+        .receive(
+            &request.id,
+            Ok(json!({"Ok": {"Directory": [info("one"), info("two")]}})),
+        )
+        .expect("fresh directory");
+    assert_eq!(
+        runtime.view().workspace.selected_workspace.as_deref(),
+        Some("two")
+    );
+    assert_eq!(
+        runtime.view().workspace.section,
+        workspace::NavigationSection::Sessions
+    );
+    let _calls = runtime
+        .dispatch(Event::Workspace(workspace::Event::Navigate(
+            workspace::NavigationSection::Settings,
+        )))
+        .expect("user navigation");
+    assert!(runtime.navigation.is_none());
+    assert_eq!(
+        runtime.view().workspace.section,
+        workspace::NavigationSection::Settings
+    );
+}

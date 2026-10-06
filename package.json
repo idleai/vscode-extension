@@ -49,7 +49,16 @@
       },
       {
         "command": "idle.openDetail",
-        "title": "Idle: Open Detail View"
+        "title": "Idle: Open Detail View",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "idle.workspaceSettings",
+        "title": "Idle: Workspace Settings"
+      },
+      {
+        "command": "idle.agentRules",
+        "title": "Idle: Agent Rules"
       },
       {
         "command": "idle.showOutput",
@@ -177,6 +186,141 @@
         "command": "idle.sharing.stop",
         "title": "Idle: Stop History Sharing",
         "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.workspace.refresh",
+        "title": "Idle: Refresh View",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "idle.workspace.openDetail",
+        "title": "Idle: Open Detail View",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "idle.users.refresh",
+        "title": "Idle: Refresh View",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "idle.users.openDetail",
+        "title": "Idle: Open Detail View",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "idle.sessions.refresh",
+        "title": "Idle: Refresh View",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "idle.sessions.openDetail",
+        "title": "Idle: Open Detail View",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "idle.projections.refresh",
+        "title": "Idle: Refresh View",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "idle.projections.openDetail",
+        "title": "Idle: Open Detail View",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "idle.computeHosts.refresh",
+        "title": "Idle: Refresh View",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "idle.computeHosts.openDetail",
+        "title": "Idle: Open Detail View",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "idle.modelProviders.refresh",
+        "title": "Idle: Refresh View",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "idle.modelProviders.openDetail",
+        "title": "Idle: Open Detail View",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "idle.activity.refresh",
+        "title": "Idle: Refresh View",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "idle.activity.openDetail",
+        "title": "Idle: Open Detail View",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "idle.workspace.filter",
+        "title": "Idle: Filter List",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "idle.workspace.clearFilter",
+        "title": "Idle: Clear Filter",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "idle.users.filter",
+        "title": "Idle: Filter List",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "idle.users.clearFilter",
+        "title": "Idle: Clear Filter",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "idle.sessions.filter",
+        "title": "Idle: Filter List",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "idle.sessions.clearFilter",
+        "title": "Idle: Clear Filter",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "idle.projections.filter",
+        "title": "Idle: Filter List",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "idle.projections.clearFilter",
+        "title": "Idle: Clear Filter",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "idle.computeHosts.filter",
+        "title": "Idle: Filter List",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "idle.computeHosts.clearFilter",
+        "title": "Idle: Clear Filter",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "idle.modelProviders.filter",
+        "title": "Idle: Filter List",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "idle.modelProviders.clearFilter",
+        "title": "Idle: Clear Filter",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "idle.sidebar.activate",
+        "title": "Idle: Open Details",
+        "icon": "$(open-preview)"
       }
     ],
     "configuration": {
@@ -287,13 +431,190 @@
     "views": {
       "idle": [
         {
-          "type": "webview",
           "id": "idle.workspace",
-          "name": "Idle"
+          "name": "Workspace",
+          "initialSize": 10
+        },
+        {
+          "id": "idle.users",
+          "name": "Users",
+          "initialSize": 12,
+          "visibility": "collapsed"
+        },
+        {
+          "id": "idle.sessions",
+          "name": "Sessions",
+          "initialSize": 14
+        },
+        {
+          "id": "idle.projections",
+          "name": "Projections",
+          "initialSize": 18,
+          "visibility": "collapsed"
+        },
+        {
+          "id": "idle.computeHosts",
+          "name": "Compute hosts",
+          "initialSize": 12,
+          "visibility": "collapsed"
+        },
+        {
+          "id": "idle.modelProviders",
+          "name": "Model providers",
+          "initialSize": 12,
+          "visibility": "collapsed"
+        },
+        {
+          "type": "webview",
+          "id": "idle.activity",
+          "name": "Activity",
+          "initialSize": 22
         }
       ]
     },
     "menus": {
+      "view/title": [
+        {
+          "command": "idle.workspaceSettings",
+          "when": "view == idle.workspace",
+          "group": "1_settings"
+        },
+        {
+          "command": "idle.agentRules",
+          "when": "view == idle.workspace",
+          "group": "1_settings"
+        },
+        {
+          "command": "idle.workspace.refresh",
+          "when": "view == idle.workspace",
+          "group": "navigation@1"
+        },
+        {
+          "command": "idle.workspace.openDetail",
+          "when": "view == idle.workspace",
+          "group": "navigation@2"
+        },
+        {
+          "command": "idle.users.refresh",
+          "when": "view == idle.users",
+          "group": "navigation@1"
+        },
+        {
+          "command": "idle.users.openDetail",
+          "when": "view == idle.users",
+          "group": "navigation@2"
+        },
+        {
+          "command": "idle.sessions.refresh",
+          "when": "view == idle.sessions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "idle.sessions.openDetail",
+          "when": "view == idle.sessions",
+          "group": "navigation@2"
+        },
+        {
+          "command": "idle.projections.refresh",
+          "when": "view == idle.projections",
+          "group": "navigation@1"
+        },
+        {
+          "command": "idle.projections.openDetail",
+          "when": "view == idle.projections",
+          "group": "navigation@2"
+        },
+        {
+          "command": "idle.computeHosts.refresh",
+          "when": "view == idle.computeHosts",
+          "group": "navigation@1"
+        },
+        {
+          "command": "idle.computeHosts.openDetail",
+          "when": "view == idle.computeHosts",
+          "group": "navigation@2"
+        },
+        {
+          "command": "idle.modelProviders.refresh",
+          "when": "view == idle.modelProviders",
+          "group": "navigation@1"
+        },
+        {
+          "command": "idle.modelProviders.openDetail",
+          "when": "view == idle.modelProviders",
+          "group": "navigation@2"
+        },
+        {
+          "command": "idle.activity.refresh",
+          "when": "view == idle.activity",
+          "group": "navigation@1"
+        },
+        {
+          "command": "idle.activity.openDetail",
+          "when": "view == idle.activity",
+          "group": "navigation@2"
+        },
+        {
+          "command": "idle.workspace.filter",
+          "when": "view == idle.workspace && !idle.workspace.filtered",
+          "group": "navigation@0"
+        },
+        {
+          "command": "idle.workspace.clearFilter",
+          "when": "view == idle.workspace && idle.workspace.filtered",
+          "group": "navigation@0"
+        },
+        {
+          "command": "idle.users.filter",
+          "when": "view == idle.users && !idle.users.filtered",
+          "group": "navigation@0"
+        },
+        {
+          "command": "idle.users.clearFilter",
+          "when": "view == idle.users && idle.users.filtered",
+          "group": "navigation@0"
+        },
+        {
+          "command": "idle.sessions.filter",
+          "when": "view == idle.sessions && !idle.sessions.filtered",
+          "group": "navigation@0"
+        },
+        {
+          "command": "idle.sessions.clearFilter",
+          "when": "view == idle.sessions && idle.sessions.filtered",
+          "group": "navigation@0"
+        },
+        {
+          "command": "idle.projections.filter",
+          "when": "view == idle.projections && !idle.projections.filtered",
+          "group": "navigation@0"
+        },
+        {
+          "command": "idle.projections.clearFilter",
+          "when": "view == idle.projections && idle.projections.filtered",
+          "group": "navigation@0"
+        },
+        {
+          "command": "idle.computeHosts.filter",
+          "when": "view == idle.computeHosts && !idle.computeHosts.filtered",
+          "group": "navigation@0"
+        },
+        {
+          "command": "idle.computeHosts.clearFilter",
+          "when": "view == idle.computeHosts && idle.computeHosts.filtered",
+          "group": "navigation@0"
+        },
+        {
+          "command": "idle.modelProviders.filter",
+          "when": "view == idle.modelProviders && !idle.modelProviders.filtered",
+          "group": "navigation@0"
+        },
+        {
+          "command": "idle.modelProviders.clearFilter",
+          "when": "view == idle.modelProviders && idle.modelProviders.filtered",
+          "group": "navigation@0"
+        }
+      ],
       "commandPalette": [
         {
           "command": "idle.history.openRecord",
@@ -314,6 +635,121 @@
         {
           "command": "idle.history.openWorkingFile",
           "when": "false"
+        },
+        {
+          "command": "idle.workspace.refresh",
+          "when": "false"
+        },
+        {
+          "command": "idle.workspace.openDetail",
+          "when": "false"
+        },
+        {
+          "command": "idle.users.refresh",
+          "when": "false"
+        },
+        {
+          "command": "idle.users.openDetail",
+          "when": "false"
+        },
+        {
+          "command": "idle.sessions.refresh",
+          "when": "false"
+        },
+        {
+          "command": "idle.sessions.openDetail",
+          "when": "false"
+        },
+        {
+          "command": "idle.projections.refresh",
+          "when": "false"
+        },
+        {
+          "command": "idle.projections.openDetail",
+          "when": "false"
+        },
+        {
+          "command": "idle.computeHosts.refresh",
+          "when": "false"
+        },
+        {
+          "command": "idle.computeHosts.openDetail",
+          "when": "false"
+        },
+        {
+          "command": "idle.modelProviders.refresh",
+          "when": "false"
+        },
+        {
+          "command": "idle.modelProviders.openDetail",
+          "when": "false"
+        },
+        {
+          "command": "idle.activity.refresh",
+          "when": "false"
+        },
+        {
+          "command": "idle.activity.openDetail",
+          "when": "false"
+        },
+        {
+          "command": "idle.workspace.filter",
+          "when": "false"
+        },
+        {
+          "command": "idle.workspace.clearFilter",
+          "when": "false"
+        },
+        {
+          "command": "idle.users.filter",
+          "when": "false"
+        },
+        {
+          "command": "idle.users.clearFilter",
+          "when": "false"
+        },
+        {
+          "command": "idle.sessions.filter",
+          "when": "false"
+        },
+        {
+          "command": "idle.sessions.clearFilter",
+          "when": "false"
+        },
+        {
+          "command": "idle.projections.filter",
+          "when": "false"
+        },
+        {
+          "command": "idle.projections.clearFilter",
+          "when": "false"
+        },
+        {
+          "command": "idle.computeHosts.filter",
+          "when": "false"
+        },
+        {
+          "command": "idle.computeHosts.clearFilter",
+          "when": "false"
+        },
+        {
+          "command": "idle.modelProviders.filter",
+          "when": "false"
+        },
+        {
+          "command": "idle.modelProviders.clearFilter",
+          "when": "false"
+        },
+        {
+          "command": "idle.sidebar.activate",
+          "when": "false"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "idle.sidebar.activate",
+          "when": "view =~ /^idle\\./ && viewItem == idle.item",
+          "group": "navigation"
         }
       ]
     }
@@ -333,6 +769,7 @@
     "check": "bash scripts/check.sh",
     "package": "vsce package --no-dependencies --out idle.vsix",
     "test:vscode": "node scripts/smoke-vscode.cjs idle.vsix",
+    "test:vscode:sidebar": "node scripts/smoke-vscode-sidebar.cjs idle.vsix",
     "build:native": "python3 scripts/release_dependencies.py run -- node scripts/build-native.mjs"
   },
   "devDependencies": {

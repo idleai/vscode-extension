@@ -144,6 +144,12 @@ test('credentials reject a session that resolves after an account-change event',
 test('activation and views share extension-lifetime services without acquiring credentials or starting processes', async () => {
   const authCalls = f.calls.auth.length;
   const host = extension.activate(f.context);
+  assert.deepEqual(f.calls.providers.map(({ id }) => id), ['idle.activity']);
+  assert.equal(f.calls.trees.length, 6);
+  for (const { id } of [...f.calls.providers, ...f.calls.trees]) {
+    assert.equal(f.commands.has(`${id}.openDetail`), true);
+    assert.equal(f.commands.has(`${id}.refresh`), true);
+  }
   let captureClosed = 0;
   const shutdownCapture = host.capture.shutdown.bind(host.capture);
   host.capture.shutdown = () => { captureClosed++; return shutdownCapture(); };

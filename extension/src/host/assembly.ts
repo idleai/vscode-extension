@@ -19,6 +19,7 @@ interface LocalWorkspace {
 
 /** Local folder bindings. Coordination adapters can install their own effect routes. */
 export class AssemblyHost implements vscode.Disposable {
+  private generation = 0;
   private directory: LocalWorkspace[] | undefined;
   private readonly folders = new Map<string, vscode.Uri>();
   private readonly bindings: vscode.Disposable[] = [];
@@ -86,6 +87,20 @@ export class AssemblyHost implements vscode.Disposable {
     return this.bindingFor(resource);
   }
 
+  /** Check a view selection against the current folder and chain settings. */
+  validateBinding(binding: unknown): RepositoryBinding {
+    return this.selected({ binding }).binding;
+  }
+
+  /** Prefer the active editor's folder; a single-folder window is unambiguous. */
+  defaultBinding(): RepositoryBinding | undefined {
+    const active = vscode.window.activeTextEditor?.document.uri;
+    const folder = active && vscode.workspace.getWorkspaceFolder(active);
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const resource = folder?.uri ?? (folders.length === 1 ? folders[0].uri : undefined);
+    return resource ? this.ensureBindingFor(resource) : undefined;
+  }
+
   private coordinate(params: unknown, context: HostCallContext, state = false): Promise<unknown> {
     const { config, binding } = this.selected(params);
     return state ? this.coordination!.configurationState(binding, params, context)
@@ -95,14 +110,23 @@ export class AssemblyHost implements vscode.Disposable {
   private async projection(params: unknown, context: HostCallContext): Promise<unknown> {
     if (!this.repository) return this.history.projection(params, context.signal);
     const { config, binding } = this.selected(params);
+    const generation = this.generation;
     let inputs: unknown[] | undefined;
+    let local = false;
     const refresh = record(params) && record(params.operation) && params.operation.refresh_sources === true;
-    try { inputs = (await this.repository.snapshot(config, binding, context.signal, refresh ? 'refresh' : 'projection')).projections; }
+    const initial = !refresh && record(params) && params.initial === true;
+    try {
+      const snapshot = await this.repository.snapshot(config, binding, context.signal, initial ? 'local' : refresh ? 'refresh' : 'projection');
+      inputs = snapshot.projections;
+      local = snapshot.local === true;
+    }
     catch (error) {
-      if (context.signal.aborted || (error instanceof HostError && error.code === 'cancelled')) throw error;
+      if (context.signal.aborted || (error instanceof HostError && ['cancelled', 'account_changed'].includes(error.code))) throw error;
       this.report(config.folder.name, error);
     }
-    return this.history.projection(params, context.signal, inputs);
+    if (generation !== this.generation) throw new HostError('cancelled', 'The projection context changed.');
+    const result = await this.history.projection(params, context.signal, inputs);
+    return local ? { local: result } : result;
   }
 
   private selected(params: unknown): { config: FolderConfiguration; binding: RepositoryBinding } {
@@ -134,6 +158,7 @@ export class AssemblyHost implements vscode.Disposable {
   }
 
   reset(): void {
+    this.generation++;
     this.directory = undefined;
     this.folders.clear();
     this.coordination?.reset();

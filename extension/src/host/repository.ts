@@ -10,7 +10,7 @@ import { HostCallContext } from './effects';
 import { StdioClient } from './processes';
 import { HostError, record } from './protocol';
 
-interface NativeSnapshot { repository: Record<string, unknown>; projections: unknown[] }
+interface NativeSnapshot { repository: Record<string, unknown>; projections: unknown[]; local?: boolean }
 interface Connection {
   readonly key: string;
   readonly binding: RepositoryBinding;
@@ -28,7 +28,7 @@ interface PendingRead {
   settled: boolean;
 }
 
-type ReadMode = 'projection' | 'poll' | 'refresh';
+type ReadMode = 'projection' | 'poll' | 'refresh' | 'local';
 
 /** Extension-owned native repository reads. Git/GitHub interpretation lives in Rust. */
 export class RepositoryHost {
@@ -72,23 +72,26 @@ export class RepositoryHost {
       await this.credentials.repositorySession(true);
       this.assertCurrent(generation, call.signal);
     }
-    const value = await this.snapshot(config, binding, call.signal, operation.action === 'Poll' ? 'poll' : 'refresh');
+    const mode = operation.action === 'Read' && params.initial === true ? 'local'
+      : operation.action === 'Poll' ? 'poll' : 'refresh';
+    const value = await this.snapshot(config, binding, call.signal, mode);
     this.assertCurrent(generation, call.signal);
     await this.preferences;
     this.assertCurrent(generation, call.signal);
     const selected = this.context.workspaceState.get<unknown>(key);
     const selected_session = typeof selected === 'string' && /^[0-9a-f]{64}$/.test(selected) ? selected : null;
-    return { Ok: { Snapshot: { snapshot: value.repository, selected_session } } };
+    const result = { Ok: { Snapshot: { snapshot: value.repository, selected_session } } };
+    return value.local ? { local: result } : result;
   }
 
   /** Share native reads between surfaces while retaining each caller's lifetime. */
   async snapshot(config: FolderConfiguration, binding: RepositoryBinding, signal: AbortSignal, mode: ReadMode = 'projection'): Promise<NativeSnapshot> {
     this.configuration.assertTrusted();
     const generation = this.generation;
-    const session = await this.credentials.repositorySession();
+    const session = mode === 'local' ? undefined : await this.credentials.repositorySession();
     this.assertCurrent(generation, signal);
     const audience = createHash('sha256').update(JSON.stringify([session?.account.id, session?.accessToken])).digest('hex');
-    const key = bindingKey(binding);
+    const key = bindingKey(binding) + (mode === 'local' ? ':local' : '');
     let connection = this.connections.get(key);
     if (connection && connection.audience !== audience) {
       this.connections.delete(key);
@@ -104,17 +107,28 @@ export class RepositoryHost {
       this.connections.set(key, connection);
     }
     const selected = connection;
-    if (mode === 'projection' && selected.cached && selected.cached.until > Date.now()) return selected.cached.value;
+    const localSupported = mode !== 'local' || await this.native.supports?.('repository.local');
+    this.assertCurrent(generation, signal);
+    if (!localSupported) {
+      if (this.connections.get(key) === selected) {
+        this.connections.delete(key);
+        this.retire(selected.client);
+      }
+      return this.snapshot(config, binding, signal, 'projection');
+    }
+    this.assertConnection(selected);
+    if ((mode === 'projection' || mode === 'local') && selected.cached && selected.cached.until > Date.now()) return selected.cached.value;
     let pending = selected.pending;
     if (!pending) {
       const credentials = session ? { account: session.account.label, token: session.accessToken } : null;
-      const work = selected.client.request({ credentials, refresh_github: mode === 'refresh' }, { timeoutMs: 65_000 }).then(result => {
+      const request = { credentials, refresh_github: mode === 'refresh', ...(mode === 'local' ? { local_only: true } : {}) };
+      const work = selected.client.request(request, { timeoutMs: 65_000 }).then(result => {
         this.assertConnection(selected);
         if (!record(result) || !record(result.Ok) || !record(result.Ok.repository) || !Array.isArray(result.Ok.projections)
           || !isDeepStrictEqual(result.Ok.repository.scope, binding)) {
           throw new HostError('invalid_response', 'The repository reader did not return a snapshot for this binding. Refresh to retry.');
         }
-        return result.Ok as unknown as NativeSnapshot;
+        return (mode === 'local' ? { ...result.Ok, local: true } : result.Ok) as unknown as NativeSnapshot;
       });
       pending = { work, refresh: mode === 'refresh', waiters: 0, settled: false };
       selected.pending = pending;
