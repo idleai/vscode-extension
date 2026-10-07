@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 // Two independent editor documents against the packaged native authority.
@@ -64,11 +64,49 @@ export async function checkConfiguration(browser, origin, errors, savePage, work
     await saved(sidebar, fourthRevision, true);
     sidebar = await recoverDuringEditing(browser, origin, sidebar, errors, fourthRevision);
     assert.equal(await readFile(join(directory, 'settings.json'), 'utf8'), '{"pending":"recover despite newer edits"}', 'recovery saves the original request while preserving the newer editor draft');
+    await checkDeletion(sidebar, detail, directory);
     if (process.env.IDLE_ASSEMBLY_OUTPUT) await savePage(sidebar, 'settings', process.env.IDLE_ASSEMBLY_OUTPUT);
     passed = true;
   } finally {
     if (passed) { await sidebar.close(); await detail.close(); }
   }
+}
+
+async function checkDeletion(sidebar, detail, directory) {
+  console.log('Checking external configuration deletion');
+  for (const [label, filename, selector] of [
+    ['Settings', 'settings.json', '#idle-settings-json'],
+    ['Agent Rules', 'agent-rules.json', '#idle-agent-rules-json'],
+  ]) {
+    for (const page of [sidebar, detail]) {
+      await click(page, label);
+      await page.waitForSelector(selector);
+      await click(page, 'Discard changes');
+    }
+    const baseline = JSON.stringify({ deletion: label });
+    await edit(sidebar, baseline);
+    await click(sidebar, 'Save');
+    const before = await saved(sidebar);
+    await click(detail, 'Refresh document');
+    await detail.waitForFunction(value => document.querySelector('textarea').value === value, {}, baseline);
+    const draft = JSON.stringify({ deletion_draft: label });
+    await edit(detail, draft);
+    const path = join(directory, filename);
+    await rm(path);
+    await click(sidebar, 'Refresh document');
+    await sidebar.waitForFunction(() => document.querySelector('textarea').value === '{}');
+    await click(detail, 'Refresh document');
+    await detail.waitForFunction(() => document.body.textContent.includes('This document changed since you started editing'));
+    assert.equal(await detail.$eval('textarea', element => element.value), draft, 'deletion preserves an unsaved draft');
+    assert.equal(await detail.evaluate(() => [...document.querySelectorAll('button')].find(button => button.textContent === 'Save').disabled), true);
+    await assert.rejects(readFile(path), { code: 'ENOENT' }, 'refresh never recreates a deleted file');
+    await click(detail, 'Use draft with current revision');
+    await click(detail, 'Save');
+    await saved(detail, before);
+    assert.equal(await readFile(path, 'utf8'), draft, 'a reviewed draft recreates the deleted file');
+  }
+  await click(sidebar, 'Settings');
+  await sidebar.waitForSelector('#idle-settings-json');
 }
 
 async function recoverDuringEditing(browser, origin, page, errors, previousRevision) {
