@@ -52,13 +52,36 @@ test('persistent storage failures remain visible after bounded retries', async t
   assert.equal(h.requests.length, 4);
 });
 
-test('missing content and transport failures are returned without retrying', async t => {
+for (const method of ['query', 'projection']) test(`${method} reads recover the storage error format used by released hosts`, async t => {
+  const result = { Ok: { records: [request.record], bytes: 'exact query result' } };
+  const h = setup(t, (_selected, count) => count === 1 ? { Err: { message: storage.Err.message } } : result);
+  const params = { chain: binding.repository.chain, action: 'read' };
+  assert.deepEqual(await h.provider[method](params, new AbortController().signal), result);
+  assert.equal(h.requests.length, 2);
+  for (const selected of h.requests) {
+    assert.deepEqual(selected.binding, binding.repository);
+    assert.deepEqual(selected[method], params);
+  }
+});
+
+test('persistent query storage failures retain their original reply after bounded retries', async t => {
+  const failure = { Err: { message: storage.Err.message } };
+  const h = setup(t, () => failure);
+  assert.deepEqual(await h.provider.query({}, new AbortController().signal), failure);
+  assert.equal(h.requests.length, 4);
+});
+
+test('missing content, invalid queries and transport failures are returned without retrying', async t => {
   const missing = setup(t, () => ({ Err: { code: 'missing_content', message: 'Content is unavailable.', candidates: [] } }));
   await assert.rejects(missing.provider.resolve(request, new AbortController().signal), { code: 'missing_content' });
   assert.equal(missing.requests.length, 1);
   const broken = setup(t, () => { throw new Error('Native transport failed.'); });
   await assert.rejects(broken.provider.resolve(request, new AbortController().signal), /Native transport failed/);
   assert.equal(broken.requests.length, 1);
+  const failure = { Err: { message: 'The query belongs to a different repository or chain.' } };
+  const invalid = setup(t, () => failure);
+  assert.deepEqual(await invalid.provider.query({}, new AbortController().signal), failure);
+  assert.equal(invalid.requests.length, 1);
 });
 
 test('an aborted native history query reports cancellation and releases its listener', async t => {

@@ -79,8 +79,8 @@ Missing records, digest mismatches, conflicts, unrecorded fields, missing blobs,
 corrupt blobs and unresolvable addresses have separate error codes. No failure
 is converted to an empty editor document. A diff requires both complete sides;
 the stored `FileEdit` remains separately accessible through a content action.
-Native previews and activity reads retry storage failures up to three times to
-allow brief index contention to clear. Persistent failures retain their error,
+Native history reads retry storage failures up to three times to allow brief
+index contention to clear. Persistent failures retain their error,
 and cancelled requests stop before another read. The packaged service releases
 its derived index after each request.
 
