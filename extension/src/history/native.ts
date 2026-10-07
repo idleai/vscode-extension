@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { setTimeout as delay } from "node:timers/promises";
 import { StdioClient } from "../host/processes";
 import { HostError, record } from "../host/protocol";
 import { NativeServices } from "../host/nativeHost";
@@ -51,10 +52,26 @@ export class NativeHistoryProvider implements HistoryProvider {
   }
 
   private async request(request: unknown, signal: AbortSignal): Promise<unknown> {
+    try {
+      for (let attempt = 0; ; attempt++) {
+        this.assertReadable(signal);
+        this.client.ensureStarted();
+        const response = await this.client.request(request, { signal });
+        this.assertReadable(signal);
+        if (attempt >= 3 || !record(response) || !record(response.Err) || response.Err.code !== 'storage') return response;
+        // Another service channel can briefly own the derived index checkpoint.
+        // These requests only read history; persistent failures retain their reply.
+        await delay(25 * 2 ** attempt, undefined, { signal });
+      }
+    } catch (error) {
+      this.assertReadable(signal);
+      throw error;
+    }
+  }
+
+  private assertReadable(signal: AbortSignal): void {
     if (this.closed || signal.aborted) throw new HostError("cancelled", "The history connection was closed.");
     if (!vscode.workspace.isTrusted) throw new HostError("workspace_untrusted", "Trust this workspace before reading history.");
-    this.client.ensureStarted();
-    return this.client.request(request, { signal });
   }
 
   async restart(): Promise<void> {
