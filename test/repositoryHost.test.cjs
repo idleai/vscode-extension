@@ -14,6 +14,10 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 const binding = { workspace_id: 'workspace', repository_id: 'repository', chain: 'chain' };
 const operation = action => ({ operation: { context: { connection: { provider: 'idle-local', workspace: 'workspace', contributor: 'member', chain: 'chain' }, repository_id: 'repository' }, action } });
 const context = (controller = new AbortController(), viewKind = 'sidebar') => ({ signal: controller.signal, session: Math.random().toString(), viewKind });
+const sessionSnapshot = (state = 'complete', topic = 'history.sessions') => ({ repository: { scope: binding,
+  sessions: state === 'complete' ? [{ id: 'ab'.repeat(32), labels: ['Recorded session'] }] : [],
+  reports: [{ topic, state, message: 'Recorded session read', checked_at_ms: 1, retry_at_ms: null, source_url: null }],
+}, projections: [] });
 
 async function harness(t, options = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'idle-repository-host-'));
@@ -69,6 +73,77 @@ test('initial local sessions are independent of a delayed GitHub read and the fo
   assert.equal(h.channels[0].requests.at(-1).body.refresh_github, true);
   h.reply(h.channels[0], 'explicit refresh');
   await refresh;
+});
+
+for (const local of [false, true]) test(`${local ? 'local' : 'full'} repository reads recover session contention without another GitHub refresh`, { timeout: 5000 }, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = await harness(t, { features: ['repository.local'] });
+  const mode = local ? 'local' : 'refresh';
+  const first = h.host.snapshot(h.config, binding, new AbortController().signal, mode);
+  const second = h.host.snapshot(h.config, binding, new AbortController().signal, mode);
+  await tick();
+  const channel = h.channels[0];
+  assert.equal(channel.requests.length, 1);
+  channel.reply({ id: channel.requests[0].id, body: { Ok: sessionSnapshot('unavailable') } });
+  await tick();
+  t.mock.timers.tick(25);
+  await tick();
+  assert.equal(channel.requests.length, 2, 'both views share the recovery read');
+  assert.deepEqual(channel.requests[1].body, { ...channel.requests[0].body, refresh_github: false });
+  const expected = local ? { ...sessionSnapshot(), local: true } : sessionSnapshot();
+  channel.reply({ id: channel.requests[1].id, body: { Ok: sessionSnapshot() } });
+  assert.deepEqual(await Promise.all([first, second]), [expected, expected]);
+  assert.deepEqual(await h.host.snapshot(h.config, binding, new AbortController().signal, local ? 'local' : 'projection'), expected);
+  assert.equal(channel.requests.length, 2, 'only the recovered snapshot is cached');
+});
+
+test('persistent session failures retain their source report after bounded retries', { timeout: 5000 }, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = await harness(t);
+  const pending = h.host.snapshot(h.config, binding, new AbortController().signal);
+  await tick();
+  const channel = h.channels[0];
+  const unavailable = sessionSnapshot('unavailable');
+  for (let attempt = 0; attempt < 4; attempt++) {
+    assert.equal(channel.requests.length, attempt + 1);
+    channel.reply({ id: channel.requests.at(-1).id, body: { Ok: unavailable } });
+    await tick();
+    t.mock.timers.tick(1000);
+    await tick();
+  }
+  assert.deepEqual(await pending, unavailable);
+  assert.equal(channel.requests.length, 4);
+});
+
+test('empty, partial and unrelated source reports do not trigger session retries', { timeout: 5000 }, async t => {
+  for (const [state, topic] of [['complete', 'history.sessions'], ['partial', 'history.sessions'], ['unavailable', 'github.issues']]) {
+    const h = await harness(t);
+    const pending = h.host.snapshot(h.config, binding, new AbortController().signal);
+    await tick();
+    const result = sessionSnapshot(state, topic);
+    result.repository.sessions = [];
+    const channel = h.channels[0];
+    channel.reply({ id: channel.requests[0].id, body: { Ok: result } });
+    assert.deepEqual(await pending, result);
+    assert.equal(channel.requests.length, 1);
+  }
+});
+
+for (const reason of ['abort', 'reset']) test(`session recovery stops after ${reason} and does not read a retired binding`, { timeout: 5000 }, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = await harness(t);
+  const abort = new AbortController();
+  const rejected = assert.rejects(h.host.snapshot(h.config, binding, abort.signal), { code: 'cancelled' });
+  await tick();
+  const channel = h.channels[0];
+  channel.reply({ id: channel.requests[0].id, body: { Ok: sessionSnapshot('unavailable') } });
+  await tick();
+  if (reason === 'abort') abort.abort(); else h.host.reset();
+  t.mock.timers.tick(1000);
+  await rejected;
+  await tick();
+  assert.equal(channel.requests.length, 1);
+  assert.equal(channel.closed, true);
 });
 
 test('older native hosts keep the original read protocol and share concurrent startup reads', { timeout: 5000 }, async t => {

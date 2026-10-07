@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
+import { setTimeout as delay } from 'node:timers/promises';
 import * as vscode from 'vscode';
 import { RepositoryBinding } from '../history';
 import { bindingKey } from '../history/contracts';
@@ -122,14 +123,7 @@ export class RepositoryHost {
     if (!pending) {
       const credentials = session ? { account: session.account.label, token: session.accessToken } : null;
       const request = { credentials, refresh_github: mode === 'refresh', ...(mode === 'local' ? { local_only: true } : {}) };
-      const work = selected.client.request(request, { timeoutMs: 65_000 }).then(result => {
-        this.assertConnection(selected);
-        if (!record(result) || !record(result.Ok) || !record(result.Ok.repository) || !Array.isArray(result.Ok.projections)
-          || !isDeepStrictEqual(result.Ok.repository.scope, binding)) {
-          throw new HostError('invalid_response', 'The repository reader did not return a snapshot for this binding. Refresh to retry.');
-        }
-        return (mode === 'local' ? { ...result.Ok, local: true } : result.Ok) as unknown as NativeSnapshot;
-      });
+      const work = this.readSnapshot(selected, request, mode === 'local');
       pending = { work, refresh: mode === 'refresh', waiters: 0, settled: false };
       selected.pending = pending;
       const reading = pending;
@@ -150,6 +144,29 @@ export class RepositoryHost {
     // An explicit refresh arriving during an automatic read must revalidate GitHub.
     if (mode === 'refresh' && !pending.refresh) return this.snapshot(config, binding, signal, mode);
     return result;
+  }
+
+  private async readSnapshot(connection: Connection, request: Record<string, unknown>, local: boolean): Promise<NativeSnapshot> {
+    try {
+      for (let attempt = 0; ; attempt++) {
+        this.assertConnection(connection);
+        const result = await connection.client.request({ ...request, refresh_github: attempt === 0 && request.refresh_github === true }, { timeoutMs: 65_000 });
+        this.assertConnection(connection);
+        if (!record(result) || !record(result.Ok) || !record(result.Ok.repository) || !Array.isArray(result.Ok.projections)
+          || !isDeepStrictEqual(result.Ok.repository.scope, connection.binding)) {
+          throw new HostError('invalid_response', 'The repository reader did not return a snapshot for this binding. Refresh to retry.');
+        }
+        const reports = result.Ok.repository.reports;
+        const unavailable = Array.isArray(reports) && reports.some(report => record(report)
+          && report.topic === 'history.sessions' && report.state === 'unavailable');
+        if (!unavailable || attempt >= 3) return (local ? { ...result.Ok, local: true } : result.Ok) as unknown as NativeSnapshot;
+        // Retry a contended session index without revalidating GitHub again.
+        await delay(25 * 2 ** attempt);
+      }
+    } catch (error) {
+      this.assertConnection(connection);
+      throw error;
+    }
   }
 
   private wait(connection: Connection, pending: PendingRead, signal: AbortSignal): Promise<NativeSnapshot> {

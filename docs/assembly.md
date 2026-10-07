@@ -154,7 +154,10 @@ replacements, sharing remote work between repository and projection reads.
 Remote categories keep unknown totals while loading. The native host advertises `repository.local`
 before the adapter uses this optional operation; older hosts keep the existing
 read protocol. Local and complete reads retain independent cancellation and the
-same binding checks. Explicit refresh still revalidates GitHub.
+same binding checks. Explicit refresh still revalidates GitHub. Unavailable
+recorded-session reads receive up to three bounded retries for brief index
+contention, reusing the native GitHub cache. Persistent failures retain their
+source report.
 Users separates local membership and online status
 from Git authors, GitHub contributors and accessible collaborators. Recorded sessions keep
 full logical IDs, recorded labels and exact source records. Selection is retained
