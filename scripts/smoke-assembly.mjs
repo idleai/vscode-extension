@@ -147,7 +147,7 @@ try {
   }
   const origin = `http://127.0.0.1:${server.address().port}`;
   await checkRepository(browser, origin, records, f, () => { projectionFixture = true; }, errors, savePage);
-  await checkConfiguration(browser, origin, errors, savePage);
+  await checkConfiguration(browser, origin, errors, savePage, workspace);
   assert.deepEqual(expectedFailures, [], "host operations succeed");
   await checkAuthentication(browser, origin, f, host, errors, expectedFailures);
   assert.deepEqual(errors, [], "the packaged views have no browser or CSP errors");

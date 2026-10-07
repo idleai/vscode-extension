@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 // Two independent editor documents against the packaged native authority.
-export async function checkConfiguration(browser, origin, errors, savePage) {
+export async function checkConfiguration(browser, origin, errors, savePage, workspace) {
   let sidebar = await open(browser, origin, 'sidebar', errors);
   let detail = await open(browser, origin, 'detail', errors);
   let passed = false;
@@ -10,13 +12,18 @@ export async function checkConfiguration(browser, origin, errors, savePage) {
     console.log('Checking configuration draft storage');
     await edit(sidebar, first);
     await click(sidebar, 'Save');
-    await saved(sidebar, 1);
+    const firstRevision = await saved(sidebar);
+    const directory = join(workspace, '.idle', 'workspace');
+    assert.equal(await readFile(join(directory, 'settings.json'), 'utf8'), first, 'saving settings writes the checkout');
+    const manifest = JSON.parse(await readFile(join(directory, 'workspace.json'), 'utf8'));
+    assert.equal(manifest.schema_version, 1);
+    assert.ok(manifest.id, 'the checkout has a stable authored identity');
     await click(detail, 'Refresh document');
     await detail.waitForFunction(() => document.querySelector('textarea').value.includes('first'));
     await edit(detail, '{"integration":{"unknown":"detail draft"}}');
     await edit(sidebar, '{"integration":{"unknown":"sidebar update"}}');
     await click(sidebar, 'Save');
-    await saved(sidebar, 2);
+    const secondRevision = await saved(sidebar, firstRevision);
     const canSave = await detail.evaluate(() => [...document.querySelectorAll('button')].find(button => button.textContent === 'Save')?.disabled === false);
     if (canSave) await click(detail, 'Save');
     await detail.waitForFunction(() => document.body.textContent.includes('This document changed since you started editing'));
@@ -27,12 +34,13 @@ export async function checkConfiguration(browser, origin, errors, savePage) {
     assert.equal(await detail.evaluate(() => document.body.textContent.includes('This document changed since you started editing')), true);
     await click(detail, 'Use draft with current revision');
     await click(detail, 'Save');
-    await saved(detail, 3);
+    const thirdRevision = await saved(detail, secondRevision);
     await click(detail, 'Agent Rules');
     await detail.waitForSelector('#idle-agent-rules-json');
     await edit(detail, '{"instructions":"review changes"}');
     await click(detail, 'Save');
-    await saved(detail, 1);
+    await saved(detail);
+    assert.equal(await readFile(join(directory, 'agent-rules.json'), 'utf8'), '{"instructions":"review changes"}', 'saving agent rules writes the checkout');
     await click(detail, 'Settings');
     assert.equal(await detail.$eval('textarea', element => element.value), '{"integration":{"unknown":"detail draft"}}');
 
@@ -49,12 +57,13 @@ export async function checkConfiguration(browser, origin, errors, savePage) {
     sidebar = await open(browser, origin, 'sidebar', errors);
     await sidebar.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent === 'Recover save' && !button.disabled));
     await click(sidebar, 'Recover save');
-    await saved(sidebar, 4);
+    const fourthRevision = await saved(sidebar, thirdRevision);
     const retry = await sidebar.evaluate(() => window.assemblyFixture.requests.findLast(request => request.method === 'app.coordination' && JSON.parse(request.params.command).kind === 'mutate').params.command);
     assert.equal(retry, original, 'recovery reuses the exact request ID, deadline, revision and contents');
     await click(sidebar, 'Refresh document');
-    await saved(sidebar, 4);
-    sidebar = await recoverDuringEditing(browser, origin, sidebar, errors);
+    await saved(sidebar, fourthRevision, true);
+    sidebar = await recoverDuringEditing(browser, origin, sidebar, errors, fourthRevision);
+    assert.equal(await readFile(join(directory, 'settings.json'), 'utf8'), '{"pending":"recover despite newer edits"}', 'recovery saves the original request while preserving the newer editor draft');
     if (process.env.IDLE_ASSEMBLY_OUTPUT) await savePage(sidebar, 'settings', process.env.IDLE_ASSEMBLY_OUTPUT);
     passed = true;
   } finally {
@@ -62,7 +71,7 @@ export async function checkConfiguration(browser, origin, errors, savePage) {
   }
 }
 
-async function recoverDuringEditing(browser, origin, page, errors) {
+async function recoverDuringEditing(browser, origin, page, errors, previousRevision) {
   await page.evaluate(() => { window.assemblyFixture.holdMutation = true; });
   await edit(page, '{"pending":"recover despite newer edits"}');
   await click(page, 'Save');
@@ -90,7 +99,7 @@ async function recoverDuringEditing(browser, origin, page, errors) {
   });
   assert.equal(pending.request.request_id, JSON.parse(original).data.context.request_id, 'the persisted draft retains its original request');
   await click(page, 'Recover save');
-  await saved(page, 5);
+  await saved(page, previousRevision);
   const retry = await page.evaluate(() => window.assemblyFixture.requests.findLast(request => request.method === 'app.coordination' && JSON.parse(request.params.command).kind === 'mutate').params.command);
   assert.equal(retry, original, 'new edits do not replace the original save payload');
   assert.equal(await page.$eval('textarea', element => element.value), newer, 'confirming the original save preserves current edits');
@@ -126,9 +135,13 @@ async function edit(page, value) {
   await waitStored(page);
 }
 
-async function saved(page, revision) {
-  await page.waitForFunction(revision => document.body.textContent.includes(`Saved revision ${revision}.`), {}, revision);
+async function saved(page, previous = '0', unchanged = false) {
+  await page.waitForFunction((previous, unchanged) => {
+    const revision = document.body.textContent.match(/Saved revision (\d+)\./)?.[1];
+    return revision && (unchanged ? revision === previous : BigInt(revision) > BigInt(previous));
+  }, {}, previous, unchanged);
   await waitStored(page);
+  return page.evaluate(() => document.body.textContent.match(/Saved revision (\d+)\./)[1]);
 }
 
 async function waitStored(page) {

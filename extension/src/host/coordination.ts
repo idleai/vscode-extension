@@ -139,6 +139,7 @@ export class CoordinationHost {
     const directory = path.join(this.context.globalStorageUri.fsPath, 'coordination', key);
     return { cwd: config.cwd, configuration: {
       state_directory: path.join(directory, 'state'), chain_directory: config.chainDirectory,
+      workspace_root: config.cwd,
       device_directory: path.join(directory, 'device'),
       workspace: { id: binding.workspace_id, name: config.folder.name, chain: binding.chain,
         mode: { kind: 'standalone', repository: { id: binding.repository_id, name: config.folder.name, remote: null } } },
