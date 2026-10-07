@@ -13,7 +13,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 idle-protocol = { registry = "idle-host-tools", version = "0.1.0" }
 app-core = { registry = "idle-app-core", version = "0.1.0" }
-web-ui = { registry = "idle-web-ui", version = "0.1.0" }
+web-ui = { registry = "idle-web-ui", version = "0.2.0" }
 dioxus = { version = "=0.7.10", default-features = false, features = ["macro", "html", "hooks", "signals"] }
 serde_json = "=1.0.151"
 serde = { version = "1", features = ["derive"] }
