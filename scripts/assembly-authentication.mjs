@@ -38,12 +38,14 @@ export async function checkAuthentication(browser, origin, fixture, host, errors
   };
   try {
     const selections = [];
-    for (const kind of ['sidebar', 'detail']) {
+    // Repository account controls live in detail views; use two documents to
+    // retain the shared approval and reconnect checks across workspace selections.
+    for (const width of [360, 1200]) {
       const page = await browser.newPage();
       pages.push(page);
       page.on('pageerror', error => errors.push(String(error)));
-      await page.setViewport({ width: kind === 'sidebar' ? 360 : 1200, height: 900 });
-      await page.goto(`${origin}/?kind=${kind}`);
+      await page.setViewport({ width, height: 900 });
+      await page.goto(`${origin}/?kind=detail`);
       await page.waitForSelector('select[id$=-workspace] option[value^="local-workspace:"]');
       const selected = await page.$$eval('select[id$=-workspace] option[value^="local-workspace:"]', (options, index) => options[index].value, pages.length - 1);
       selections.push(selected);
@@ -89,7 +91,8 @@ export async function checkAuthentication(browser, origin, fixture, host, errors
     await broadcasts;
     finish();
     for (const page of pages) await account(page, 'Approved account');
-    assert(failures.slice(failureStart).every(error => ['cancelled', 'account_changed', 'authentication_cancelled'].includes(error.code)), 'only retired reads and the deliberate cancellation may fail');
+    const unexpected = failures.slice(failureStart).filter(error => !['cancelled', 'account_changed', 'authentication_cancelled'].includes(error.code));
+    assert.deepEqual(unexpected, [], 'only retired reads and the deliberate cancellation may fail');
     passed = true;
   } finally {
     subscription.dispose();
@@ -107,7 +110,7 @@ async function account(page, label) {
 
 async function connect(page) {
   await page.bringToFront();
-  await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent === 'Connect GitHub repository access' && !button.disabled));
+  await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent === 'Connect GitHub repository access' && !button.disabled && button.getAttribute('aria-disabled') !== 'true'));
   await page.evaluate(() => [...document.querySelectorAll('button')].find(button => button.textContent === 'Connect GitHub repository access' && !button.disabled).click());
 }
 

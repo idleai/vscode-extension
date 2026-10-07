@@ -12,12 +12,15 @@ export function repositoryInputs(source) {
 }
 
 export async function checkRepository(browser, origin, records, fixture, enableProjections, errors, savePage) {
-  let page = await open(browser, origin, 'sidebar', errors);
+  let page = await open(browser, origin, 'detail', errors);
   let passed = false;
   try {
     await page.waitForFunction(() => document.querySelector('[aria-label="Repository workspace"]')?.textContent.includes('main'));
     assert(await page.evaluate(() => document.body.textContent.includes('No commit yet') === false));
     await capture(page, 'repository', savePage);
+    await page.close();
+    page = await open(browser, origin, 'sidebar', errors);
+    assert.equal(await page.$('[aria-label="Repository workspace"]'), null, 'repository inspection is exclusive to the detail view');
     await click(page, 'Users');
     await page.waitForFunction(() => document.querySelector('[aria-label="Git authors"]')?.textContent.includes('Repository Fixture'));
     assert(await page.evaluate(() => document.body.textContent.includes('Idle members and online status')));
@@ -104,8 +107,8 @@ async function open(browser, origin, kind, errors, holdRepository = false) {
 
 async function click(page, label) {
   await page.bringToFront();
-  await page.waitForFunction(label => [...document.querySelectorAll('button')].some(button => button.textContent.trim() === label && !button.disabled), {}, label);
-  await page.evaluate(label => [...document.querySelectorAll('button')].find(button => button.textContent.trim() === label && !button.disabled).click(), label);
+  await page.waitForFunction(label => [...document.querySelectorAll('button')].some(button => (button.textContent.trim() === label || button.getAttribute('aria-label') === `Open ${label}`) && !button.disabled), {}, label);
+  await page.evaluate(label => [...document.querySelectorAll('button')].find(button => (button.textContent.trim() === label || button.getAttribute('aria-label') === `Open ${label}`) && !button.disabled).click(), label);
 }
 
 async function remembered(page) {

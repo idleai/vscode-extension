@@ -1,10 +1,19 @@
 import { isDeepStrictEqual } from "node:util";
+import { setTimeout as delay } from "node:timers/promises";
 import { StdioClient } from "../host/processes";
 import { HostError, record } from "../host/protocol";
 import { NativeServices } from "../host/nativeHost";
 import * as vscode from "vscode";
 import { HistoryBinding, HistoryFailure, HistoryPreview, HistoryProvider, HistoryRequest, parseRecord } from "./contracts";
 import { ActivityPreview, ActivityRequest, parsePreview } from "../authorActivity/contracts";
+
+function storageFailure(request: unknown, response: unknown): boolean {
+  if (!record(response) || !record(response.Err)) return false;
+  if (response.Err.code === 'storage') return true;
+  // Released query/projection replies have only a message, without a typed code.
+  return record(request) && ('query' in request || 'projection' in request)
+    && !Object.hasOwn(response.Err, 'code') && response.Err.message === 'Unable to read the bound history source.';
+}
 
 /** Lazy history channel; every request uses the installed storage binding. */
 export class NativeHistoryProvider implements HistoryProvider {
@@ -51,10 +60,26 @@ export class NativeHistoryProvider implements HistoryProvider {
   }
 
   private async request(request: unknown, signal: AbortSignal): Promise<unknown> {
+    try {
+      for (let attempt = 0; ; attempt++) {
+        this.assertReadable(signal);
+        this.client.ensureStarted();
+        const response = await this.client.request(request, { signal });
+        this.assertReadable(signal);
+        if (attempt >= 3 || !storageFailure(request, response)) return response;
+        // Another service channel can briefly own the derived index checkpoint.
+        // These requests only read history; persistent failures retain their reply.
+        await delay(25 * 2 ** attempt, undefined, { signal });
+      }
+    } catch (error) {
+      this.assertReadable(signal);
+      throw error;
+    }
+  }
+
+  private assertReadable(signal: AbortSignal): void {
     if (this.closed || signal.aborted) throw new HostError("cancelled", "The history connection was closed.");
     if (!vscode.workspace.isTrusted) throw new HostError("workspace_untrusted", "Trust this workspace before reading history.");
-    this.client.ensureStarted();
-    return this.client.request(request, { signal });
   }
 
   async restart(): Promise<void> {

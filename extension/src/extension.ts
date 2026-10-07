@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import { HostServices } from "./host/services";
 import { WorkspaceViewProvider } from "./host/webviews";
+import { SIDEBAR_VIEWS } from "./host/viewSelection";
+import { NativeSidebar } from "./host/nativeSidebar";
 
 let active: HostServices | undefined;
 
@@ -8,8 +10,11 @@ let active: HostServices | undefined;
 export function activate(context: vscode.ExtensionContext): HostServices {
   const host = new HostServices(context);
   active = host;
-  const provider = new WorkspaceViewProvider(context.extensionUri, host.effects,
-    error => host.diagnostics.failure("Webview operation", error));
+  const provider = new WorkspaceViewProvider(context, host.effects,
+    error => host.diagnostics.failure("Webview operation", error), binding => host.assembly.validateBinding(binding),
+    () => host.assembly.defaultBinding());
+  const sidebar = new NativeSidebar(context, host.effects, provider,
+    error => host.diagnostics.failure("Sidebar operation", error));
   const register = (name: string, run: () => unknown) => vscode.commands.registerCommand(name,
     () => host.diagnostics.command(name, run));
   const changed = () => {
@@ -19,7 +24,7 @@ export function activate(context: vscode.ExtensionContext): HostServices {
     provider.broadcast("host.configurationChanged", host.configuration.snapshot());
   };
   context.subscriptions.push(
-    host, provider,
+    host, sidebar, provider,
     host.onDidChangeContext(() => provider.broadcast("host.configurationChanged", host.configuration.snapshot())),
     host.collection.onDidChange(folder => {
       host.activity.refresh();
@@ -31,9 +36,18 @@ export function activate(context: vscode.ExtensionContext): HostServices {
       try { provider.broadcast("history.changed", { binding: host.assembly.bindingFor(folder) }); }
       catch (error) { host.diagnostics.failure("Shared history notification", error); }
     }),
-    vscode.window.registerWebviewViewProvider("idle.workspace", provider),
+    vscode.window.registerWebviewViewProvider("idle.activity", provider),
+    ...Object.entries(SIDEBAR_VIEWS).flatMap(([id, section]) => [
+      register(`${id}.openDetail`, () => provider.openDetail(section)),
+      register(`${id}.refresh`, () => section === "Activity" ? provider.refresh(section) : sidebar.refresh(section)),
+      ...(section === "Activity" ? [] : [register(`${id}.filter`, () => sidebar.filter(id)),
+        register(`${id}.clearFilter`, () => sidebar.clearFilter(id))]),
+    ]),
+    vscode.commands.registerCommand("idle.sidebar.activate", value => host.diagnostics.command("idle.sidebar.activate", () => sidebar.activate(value))),
     register("idle.open", () => vscode.commands.executeCommand("idle.workspace.focus")),
     register("idle.openDetail", () => provider.openDetail()),
+    register("idle.workspaceSettings", () => provider.openDetail("Settings")),
+    register("idle.agentRules", () => provider.openDetail("AgentRules")),
     register("idle.showOutput", () => host.diagnostics.show()),
     register("idle.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "@ext:idleai.idle")),
     register("idle.restartNative", async () => {

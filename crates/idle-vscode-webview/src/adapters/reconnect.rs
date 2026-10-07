@@ -9,6 +9,9 @@ mod tests;
 
 impl Runtime {
     pub(super) fn remember_workspace(&mut self) {
+        if self.reconnect.is_some() {
+            return;
+        }
         let view = self.core.view().workspace;
         let Some(selected) = view.workspaces.iter().find(|info| {
             Some(&info.id) == view.selected_workspace.as_ref()

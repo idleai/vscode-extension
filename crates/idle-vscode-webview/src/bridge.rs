@@ -30,7 +30,7 @@ const MAX_IDENTIFIER_BYTES: usize = 128;
 const MAX_MESSAGE_BYTES: usize = 1024 * 1024;
 
 /// An error reported by the platform bridge or returned by the extension host.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct BridgeError {
     /// Stable machine-readable classification; remote codes remain unchanged.
     pub code: String,

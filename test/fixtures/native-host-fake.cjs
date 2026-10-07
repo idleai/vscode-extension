@@ -18,7 +18,7 @@ function harness(t, options = {}) {
     const decoder = new FrameDecoder(maximum), active = new Map();
     const write = child.stdin.write;
     child.send = (kind, id, payload) => child.stdout.emit('data', routed(kind, id, payload));
-    child.hello = (versions = services) => child.send(0, 0, JSON.stringify({ version: 1, services: versions }));
+    child.hello = (versions = services, features = options.features) => child.send(0, 0, JSON.stringify({ version: 1, services: versions, features }));
     child.stdin.write = (bytes, callback) => {
       const accepted = write(bytes, callback);
       for (const frame of decoder.push(bytes)) {

@@ -16,9 +16,9 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "app-core"
-version = "0.1.4"
+version = "0.1.5"
 source = "sparse+https://raw.githubusercontent.com/idleai/app-core/cargo-index/"
-checksum = "385efb1567d946d9603c4d342b90d88402d8a725202a166ec4ba5eadabe470bd"
+checksum = "e3c0523d6148f9df89527b98757ee74c00aa922e7e0165a953303ca938c6b682"
 dependencies = [
  "bincode",
  "crux_core",
@@ -612,9 +612,9 @@ dependencies = [
 
 [[package]]
 name = "editchain-core"
-version = "0.1.3"
+version = "0.1.4"
 source = "sparse+https://raw.githubusercontent.com/idleai/editchain/cargo-index/"
-checksum = "1e2fceec588f781363f0d49798c3c4ec69b3747aa669984eb5761d96205f44a8"
+checksum = "878854a859245278b77ced566dbe689de1de3e7bbf6780ae124484c4a5443a04"
 dependencies = [
  "blake3",
  "serde",
@@ -622,9 +622,9 @@ dependencies = [
 
 [[package]]
 name = "editchain-engine"
-version = "0.1.3"
+version = "0.1.4"
 source = "sparse+https://raw.githubusercontent.com/idleai/editchain/cargo-index/"
-checksum = "de6541354b7231e449cec1fedce558594490dc4b10f8a2761d24e8678f5b6bb1"
+checksum = "1305ebe93ee38d7535d6d348fc172c324bb9131595b902cf406415e867a0a323"
 dependencies = [
  "blake3",
  "editchain-core",
@@ -635,9 +635,9 @@ dependencies = [
 
 [[package]]
 name = "editchain-index"
-version = "0.1.3"
+version = "0.1.4"
 source = "sparse+https://raw.githubusercontent.com/idleai/editchain/cargo-index/"
-checksum = "390b6d61017a664bac4324f95e48e079a3658f98fa246a2e67fa1d0891c1d925"
+checksum = "9c3689033ca6515aaaeed64c307e66470596527f7b875cd86cc6ae110431cca2"
 dependencies = [
  "editchain-core",
  "editchain-index-pages",
@@ -647,9 +647,9 @@ dependencies = [
 
 [[package]]
 name = "editchain-index-pages"
-version = "0.1.3"
+version = "0.1.4"
 source = "sparse+https://raw.githubusercontent.com/idleai/editchain/cargo-index/"
-checksum = "6b6f226eee9d20f994731080448b8f1aa6bc4ea45e3aa92d7a1fec766705a6c3"
+checksum = "a9434514ab1de2cd896e5072a848401f089ed2d2af642d05cad0f7f6915dbd07"
 dependencies = [
  "blake3",
  "ciborium",
@@ -658,9 +658,9 @@ dependencies = [
 
 [[package]]
 name = "editchain-store"
-version = "0.1.3"
+version = "0.1.4"
 source = "sparse+https://raw.githubusercontent.com/idleai/editchain/cargo-index/"
-checksum = "f795b2eab717b3752d248acfdcbc61a1f480d774b66138c97c05c2525bb8f211"
+checksum = "65ad11318ae572a896a75cdcfe77eb7b04475f73a98b3db49e29ffce65bc5fd2"
 dependencies = [
  "blake3",
  "crc",
@@ -957,9 +957,9 @@ dependencies = [
 
 [[package]]
 name = "history-geometry"
-version = "0.1.2"
+version = "0.1.3"
 source = "sparse+https://raw.githubusercontent.com/idleai/web-ui/cargo-index/"
-checksum = "934d3698f8d015f4222ad68bd424bbdcdacfefa4fcb43d405b55ef026ca13e89"
+checksum = "7d5be4cf2dbee1a6b084ea468f10d208298dc18fc5fb3041e35450029d2e24f4"
 dependencies = [
  "editchain-index",
  "serde",
@@ -1001,9 +1001,9 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "idle-history"
-version = "0.1.3"
+version = "0.1.5"
 source = "sparse+https://raw.githubusercontent.com/idleai/host-tools/cargo-index/"
-checksum = "7cb90c2298e067deaea338ba839bb825c158a57cb693670ff98517d91ad6324c"
+checksum = "16ee1f41cf9c2b61dc713d8b260d9d536d6fa46288c04407c2f4c927d5920232"
 dependencies = [
  "editchain-core",
  "facet",
@@ -1014,9 +1014,9 @@ dependencies = [
 
 [[package]]
 name = "idle-history-native"
-version = "0.1.3"
+version = "0.1.5"
 source = "sparse+https://raw.githubusercontent.com/idleai/host-tools/cargo-index/"
-checksum = "c70336877fbe247d31987f7f8d18dc6ad65bc0ca5fb403f5169448be21a83a92"
+checksum = "41b9049013bc9b1e92cbb49aa2cb5d97559a4cd249e950acf021d96f39b5dea3"
 dependencies = [
  "editchain-core",
  "editchain-engine",
@@ -1027,9 +1027,9 @@ dependencies = [
 
 [[package]]
 name = "idle-protocol"
-version = "0.1.3"
+version = "0.1.5"
 source = "sparse+https://raw.githubusercontent.com/idleai/host-tools/cargo-index/"
-checksum = "67db638913807b0c417bc8ed3eb7766ec16714c0ab5e7ed08a9f9a55a9783068"
+checksum = "b8fdf258ea970882bf38e0c682709161ed228f69d8174f994a3e6183bd71418e"
 dependencies = [
  "facet",
  "serde",
@@ -1778,9 +1778,9 @@ dependencies = [
 
 [[package]]
 name = "web-ui"
-version = "0.1.2"
+version = "0.2.0"
 source = "sparse+https://raw.githubusercontent.com/idleai/web-ui/cargo-index/"
-checksum = "df33c35ad16904c21155863d9d9938679148d89475707ff674e30fb9d919a12d"
+checksum = "8d59fdf625a23fd1192cf935506f40b5d1bfb72b1c4d0df17ecb1daba66c4c19"
 dependencies = [
  "app-core",
  "dioxus",

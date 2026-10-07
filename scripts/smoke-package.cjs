@@ -11,6 +11,7 @@ const { smokeCapture } = require('./smoke-capture.cjs');
 const { smokeHistory } = require('./smoke-history.cjs');
 const { smokeCoordination } = require('./smoke-coordination.cjs');
 const { smokeCollection } = require('./smoke-collection.cjs');
+const { smokeNativeSidebar } = require('./smoke-native-sidebar.cjs');
 
 async function main() {
   const temporary = mkdtempSync(path.join(tmpdir(), 'idle-package-smoke-'));
@@ -22,6 +23,7 @@ async function main() {
     const archive = path.resolve(process.argv[2] ?? 'idle.vsix');
     const files = execFileSync('unzip', ['-Z1', archive], { encoding: 'utf8' }).trim().split('\n');
     assert.ok(files.includes('extension/dist/pkg/idle_vscode_webview_bg.wasm'));
+    assert.ok(files.includes('extension/dist/native/idle_vscode_webview_bg.wasm'));
     assert.ok(!files.some(file => file.includes('/dist/peer-state/')), 'sharing runs in the native service');
     assert.ok(!files.some(file => file.includes('editchain-peer') || file.includes('editchain-vscode-service') || file.includes('editchain_history_renderer') || file.includes('editchain_client_state')));
     const hostBinary = `bin/${process.platform}-${process.arch}/idle-host${process.platform === 'win32' ? '.exe' : ''}`;
@@ -36,14 +38,22 @@ async function main() {
     f.context.extensionUri = uri(pathToFileURL(path.join(temporary, 'extension')).toString());
     Module._load = function(name, ...args) {
       if (name === 'vscode') return f.api;
-      if (!name.startsWith(temporary + path.sep) && !builtinModules.includes(name) && !name.startsWith('node:')) {
-        external.push(name);
-        throw new Error('The VSIX attempted to load an external runtime package.');
+      if (!builtinModules.includes(name) && !name.startsWith('node:')) {
+        // Generated WASM bindings import sibling files. Resolve before checking
+        // that every runtime module belongs to the extracted package.
+        const resolved = Module._resolveFilename(name, ...args);
+        if (!resolved.startsWith(path.join(temporary, 'extension') + path.sep)) {
+          external.push(name);
+          throw new Error('The VSIX attempted to load an external runtime package.');
+        }
       }
       return original.call(this, name, ...args);
     };
     extension = createRequire(entry)(entry);
+    smokeNativeSidebar(path.join(temporary, 'extension'));
     const host = extension.activate(f.context);
+    assert.deepEqual(f.calls.providers.map(view => view.id), ['idle.activity']);
+    assert.equal(f.calls.trees.length, 6);
     assert.equal(f.calls.auth.length, 0);
     assert.equal(typeof host.native.connection, 'function');
     assert.equal(typeof host.transport.bridgeDuplex, 'function');

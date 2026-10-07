@@ -10,7 +10,7 @@ type Service = keyof typeof LIMITS;
 const enum Kind { Hello, Open, Data, Close, Ready, Closed, Shutdown }
 
 interface Installation { workspace: string; service: { kind: Service; binding: unknown } }
-export type NativeServices = Pick<NativeHost, 'connection'>;
+export type NativeServices = Pick<NativeHost, 'connection'> & Partial<Pick<NativeHost, 'supports'>>;
 
 function deferred() {
   let resolve!: () => void, reject!: (error: Error) => void;
@@ -43,6 +43,7 @@ export class NativeHost {
   private hello?: ReturnType<typeof deferred>;
   private helloTimer?: NodeJS.Timeout;
   private greeted = false;
+  private features = new Set<string>();
   private next = 1;
   private disposed = false;
   private restarting?: Promise<void>;
@@ -63,6 +64,14 @@ export class NativeHost {
     const installation = JSON.stringify({ workspace, service: { kind, binding } } satisfies Installation);
     if (Buffer.byteLength(installation) > 64 * 1024) throw new Error('Native service binding is too large.');
     return events => new HostChannel(this, installation, LIMITS[kind], events);
+  }
+
+  /** Optional operations are used only after the installed host advertises them. */
+  async supports(feature: string): Promise<boolean> {
+    const hello = this.hello;
+    if (!hello) return false;
+    await hello.promise;
+    return this.hello === hello && this.features.has(feature);
   }
 
   open(installation: string, events: ConnectionEvents): Lease {
@@ -143,6 +152,7 @@ export class NativeHost {
         throw new Error('Incompatible native host services.');
       }
       clearTimeout(this.helloTimer);
+      this.features = new Set(Array.isArray(hello.features) ? hello.features.filter(value => typeof value === 'string') : []);
       this.greeted = true;
       this.hello.resolve();
       return;
@@ -186,6 +196,7 @@ export class NativeHost {
     clearTimeout(this.helloTimer);
     this.hello?.reject(error);
     this.hello = undefined;
+    this.features.clear();
     for (const lease of this.channels.values()) this.finish(lease, error);
   }
 }

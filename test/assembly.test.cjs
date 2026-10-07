@@ -1,11 +1,36 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { fixture, loadWithVSCode } = require('./helpers/vscode.cjs');
+const { fixture, loadWithVSCode, uri } = require('./helpers/vscode.cjs');
 const { HostEffects } = require('../out/host/effects');
+const { HostError } = require('../out/host/protocol');
 
 const f = fixture();
 const { HostConfiguration } = loadWithVSCode('../../out/host/configuration', f.api);
 const { AssemblyHost } = loadWithVSCode('../../out/host/assembly', f.api);
+
+test('startup chooses the active folder or the sole folder without guessing another root', () => {
+  const effects = new HostEffects(() => true);
+  const folders = f.api.workspace.workspaceFolders;
+  const history = { connect() { return { dispose() {} }; } };
+  const host = new AssemblyHost(new HostConfiguration('/extension'), history, effects, () => {});
+  try {
+    assert.equal(host.defaultBinding(), undefined, 'a multi-root window without an active file needs a choice');
+    f.api.window.activeTextEditor = { document: { uri: uri('file:///two/src/main.rs') } };
+    assert.deepEqual(host.defaultBinding(), host.bindingFor(folders[1].uri));
+    f.api.window.activeTextEditor = { document: { uri: uri('file:///elsewhere/file.rs') } };
+    assert.equal(host.defaultBinding(), undefined, 'an unrelated file cannot select the first root');
+    f.api.workspace.workspaceFolders = folders.slice(0, 1);
+    host.reset();
+    assert.deepEqual(host.defaultBinding(), host.bindingFor(folders[0].uri));
+    f.api.workspace.isTrusted = false;
+    assert.throws(() => host.defaultBinding(), { code: 'workspace_untrusted' });
+  } finally {
+    f.api.window.activeTextEditor = undefined;
+    f.api.workspace.workspaceFolders = folders;
+    f.api.workspace.isTrusted = true;
+    host.dispose(); effects.dispose();
+  }
+});
 
 test('local discovery installs explicit independent folder bindings without processes or account access', async () => {
   const effects = new HostEffects(() => f.api.workspace.isTrusted);
@@ -146,5 +171,30 @@ test('repository failures leave local Activity projection reads available', asyn
     assert.equal(reads.length, 1);
     assert.equal(reads[0].inputs, undefined, 'native adapter supplies explicit unavailable derived views');
     assert.equal(failures.length, 1, 'source failure remains reportable');
+  } finally { host.dispose(); effects.dispose(); }
+});
+
+for (const outcome of ['success', 'account_changed']) test('a projection retires across an account reset after repository ' + outcome, async () => {
+  const effects = new HostEffects(() => true);
+  const bindings = [];
+  const reads = [];
+  const failures = [];
+  let finish;
+  let reject;
+  const history = { connect(binding) { bindings.push(binding); return { dispose() {} }; },
+    async projection(params) { reads.push(params); return { Ok: 'local activity' }; } };
+  const repository = { snapshot() { return new Promise((resolve, fail) => { finish = resolve; reject = fail; }); }, reset() {} };
+  const host = new AssemblyHost(new HostConfiguration('/extension'), history, effects, (...failure) => failures.push(failure), undefined, repository);
+  const context = { session: 'view', signal: new AbortController().signal };
+  try {
+    await effects.execute('app.workspace', { operation: 'List' }, context);
+    const params = { binding: bindings[0].repository, operation: {} };
+    const pending = effects.execute('app.projection', params, context);
+    host.reset();
+    if (outcome === 'success') finish({ projections: [] });
+    else reject(new HostError('account_changed', 'The GitHub account changed during the repository read.'));
+    await assert.rejects(pending, { code: outcome === 'success' ? 'cancelled' : 'account_changed' });
+    assert.deepEqual(reads, [], 'retired repository results cannot start reads against removed history bindings');
+    assert.deepEqual(failures, [], 'retired work does not report a source failure');
   } finally { host.dispose(); effects.dispose(); }
 });

@@ -89,12 +89,102 @@ fn settle(runtime: &mut Runtime, mut calls: Vec<Call>) -> Vec<Call> {
             }
         } else if call.method == "app.subscription" {
             json!({"Ok":"Left"})
+        } else if call.method == "app.repository" {
+            waiting.push(call);
+            continue;
         } else {
             json!({"Err":{"message":"No controller connected"}})
         };
         calls.extend(runtime.receive(&call.id, Ok(result)).unwrap());
     }
     waiting
+}
+
+#[test]
+fn local_sessions_are_selectable_while_remote_details_are_pending() {
+    let (mut runtime, calls) = start_with(&json!({
+        "capabilities":["app.coordination", "app.repository"]
+    }));
+    let waiting = settle(&mut runtime, calls);
+    let initial = waiting
+        .iter()
+        .find(|call| call.method == "app.repository")
+        .unwrap();
+    assert_eq!(initial.params.get("initial"), Some(&json!(true)));
+    let binding = json!({"workspace_id":"one", "repository_id":"repository", "chain":"one"});
+    let session = "ab".repeat(32);
+    let _calls = runtime
+        .navigate_from_host(json!({
+            "binding":binding, "section":"Sessions", "recorded_session":session
+        }))
+        .unwrap();
+    let snapshot = json!({
+        "scope":binding, "checked_at_ms":1000, "checkout":null, "github":null, "account":null,
+        "git_authors":[], "contributors":[], "collaborators":[],
+        "reports":[{"topic":"history.sessions", "state":"complete", "message":"Recorded sessions",
+            "checked_at_ms":1000, "retry_at_ms":null, "source_url":null}],
+        "sessions":[{"id":session, "labels":["Local session"], "actions":["Started"], "sources":[],
+            "records":[{"observation":"cd".repeat(32), "item":session, "record_hash":"ef".repeat(32)}]}]
+    });
+    let result = json!({"Ok":{"Snapshot":{"snapshot":snapshot, "selected_session":null}}});
+    let calls = runtime
+        .receive(&initial.id, Ok(json!({"local":result})))
+        .unwrap();
+    assert!(
+        runtime.view().repository.snapshot.is_some(),
+        "{:?}",
+        runtime.view().repository
+    );
+    let poll = calls
+        .iter()
+        .find(|call| call.params.pointer("/operation/action") == Some(&json!("Poll")))
+        .unwrap();
+    let view = runtime.view();
+    assert_eq!(
+        view.repository.load,
+        app_core::repository::RepositoryLoadState::Loading
+    );
+    assert_eq!(view.repository.snapshot.as_ref().unwrap().sessions.len(), 1);
+    assert_eq!(
+        view.repository.selected_session.as_deref(),
+        Some(session.as_str())
+    );
+    assert_eq!(
+        view.workspace.section,
+        workspace::NavigationSection::Sessions
+    );
+    let followup = runtime.receive(&poll.id, Ok(result.clone())).unwrap();
+    assert!(
+        !followup.iter().any(|call| call.method == "app.repository"),
+        "full completion must not poll in a loop"
+    );
+    assert_eq!(
+        runtime.view().repository.load,
+        app_core::repository::RepositoryLoadState::Ready
+    );
+    let refresh = runtime
+        .dispatch(Event::Repository(app_core::repository::Event::Refresh))
+        .unwrap();
+    let read = refresh
+        .iter()
+        .find(|call| call.method == "app.repository")
+        .unwrap();
+    assert_eq!(
+        read.params.get("initial"),
+        Some(&json!(false)),
+        "manual refresh includes remote details"
+    );
+    runtime.invalidate();
+    assert!(
+        runtime
+            .receive(&read.id, Ok(json!({"local":result})))
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        runtime.view().repository.snapshot.is_none(),
+        "retired local data cannot reappear after reset"
+    );
 }
 
 #[test]

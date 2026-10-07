@@ -79,8 +79,10 @@ Missing records, digest mismatches, conflicts, unrecorded fields, missing blobs,
 corrupt blobs and unresolvable addresses have separate error codes. No failure
 is converted to an empty editor document. A diff requires both complete sides;
 the stored `FileEdit` remains separately accessible through a content action.
-Storage/index contention returns an error and can be retried; the packaged
-service releases its derived index after each request.
+Native history reads retry storage failures up to three times to allow brief
+index contention to clear. Persistent failures retain their error,
+and cancelled requests stop before another read. The packaged service releases
+its derived index after each request.
 
 Native framing uses the existing little-endian length-prefixed `{ id, body }`
 transport. The service accepts requests up to 1 MiB and responses up to 64 MiB.

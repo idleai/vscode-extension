@@ -6,6 +6,25 @@ const { CoordinationClient } = require('../out/host/coordinationClient');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const client = (host, workspace = '/workspace', kind = 'history') => new StdioClient({}, host.connection(workspace, kind, {}));
 
+test('optional features wait for the handshake and cannot survive a host replacement', async t => {
+  const h = harness(t, { manualHello: true });
+  const a = client(h.host);
+  a.start();
+  let settled = false;
+  const supported = h.host.supports('repository.local').then(value => { settled = true; return value; });
+  await tick();
+  assert.equal(settled, false);
+  h.processes[0].hello(services, ['repository.local']);
+  assert.equal(await supported, true);
+  assert.equal(await h.host.supports('unknown.feature'), false);
+  await h.host.restart();
+  assert.equal(await h.host.supports('repository.local'), false);
+  a.start();
+  await tick();
+  h.processes[1].hello();
+  assert.equal(await h.host.supports('repository.local'), false, 'an older replacement has no optional operations');
+});
+
 test('multiple services and workspaces share one process and close independently', async t => {
   const h = harness(t, { request: (channel, request) => channel.reply({ id: request.id, body: request.body }) });
   const a = client(h.host, '/first'), b = client(h.host, '/second', 'capture');

@@ -1,0 +1,46 @@
+/* Codicons by Microsoft, bundled unchanged from VS Code 1.140.0.
+ * https://github.com/microsoft/vscode-codicons — CC BY 4.0, see codicons-license.txt.
+ * These bindings replace the shared SVG fallback only inside the VS Code sidebar.
+ */
+@font-face {
+  font-family: idle-codicon;
+  src: url("./codicon.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+#main[data-view-kind="sidebar"] .idle-navigation .idle-icon > svg { display: none; }
+#main[data-view-kind="sidebar"] .idle-navigation .idle-icon::before {
+  content: var(--idle-codicon);
+  font: normal normal normal 16px/1 idle-codicon;
+  display: inline-block;
+  text-decoration: none;
+  text-transform: none;
+  text-rendering: auto;
+  text-align: center;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}
+#main[data-view-kind="sidebar"] [data-icon="Add"] { --idle-codicon: "\ea60"; }
+#main[data-view-kind="sidebar"] [data-icon="Close"] { --idle-codicon: "\ea76"; }
+#main[data-view-kind="sidebar"] [data-icon="Search"] { --idle-codicon: "\ea6d"; }
+#main[data-view-kind="sidebar"] [data-icon="ChevronRight"] { --idle-codicon: "\eab6"; }
+#main[data-view-kind="sidebar"] [data-icon="ChevronDown"] { --idle-codicon: "\eab4"; }
+#main[data-view-kind="sidebar"] .idle-navigation-section[open] > .idle-navigation-heading [data-icon="ChevronRight"] { --idle-codicon: "\eab4"; }
+#main[data-view-kind="sidebar"] [data-icon="Refresh"] { --idle-codicon: "\eb37"; }
+#main[data-view-kind="sidebar"] [data-icon="Check"] { --idle-codicon: "\eab2"; }
+#main[data-view-kind="sidebar"] [data-icon="Info"] { --idle-codicon: "\ea74"; }
+#main[data-view-kind="sidebar"] [data-icon="Alert"] { --idle-codicon: "\ea6c"; }
+#main[data-view-kind="sidebar"] [data-icon="ExternalLink"] { --idle-codicon: "\eb14"; }
+#main[data-view-kind="sidebar"] [data-icon="Copy"] { --idle-codicon: "\ebcc"; }
+#main[data-view-kind="sidebar"] [data-icon="File"] { --idle-codicon: "\ea7b"; }
+#main[data-view-kind="sidebar"] [data-icon="Diff"] { --idle-codicon: "\eae1"; }
+#main[data-view-kind="sidebar"] [data-icon="Workspace"] { --idle-codicon: "\ea83"; }
+#main[data-view-kind="sidebar"] [data-icon="User"] { --idle-codicon: "\ea67"; }
+#main[data-view-kind="sidebar"] [data-icon="Session"] { --idle-codicon: "\ea85"; }
+#main[data-view-kind="sidebar"] [data-icon="Table"] { --idle-codicon: "\ebb7"; }
+#main[data-view-kind="sidebar"] [data-icon="Host"] { --idle-codicon: "\eb50"; }
+#main[data-view-kind="sidebar"] [data-icon="Provider"] { --idle-codicon: "\eb2d"; }
+#main[data-view-kind="sidebar"] [data-icon="Settings"] { --idle-codicon: "\eb51"; }
+#main[data-view-kind="sidebar"] [data-icon="Rules"] { --idle-codicon: "\eb12"; }
