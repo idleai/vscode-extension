@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/idleai/vscode-extension/compare/idle-vscode-webview-v0.1.2...idle-vscode-webview-v0.1.3) - 2026-10-07
+
+### Other
+
+- *(f43/d9-sidebar-structure)* add native sidebar views and fast local startup ([#24](https://github.com/idleai/vscode-extension/pull/24))
+
 ## [0.1.2](https://github.com/idleai/vscode-extension/compare/idle-vscode-webview-v0.1.1...idle-vscode-webview-v0.1.2) - 2026-10-05
 
 ### Other
