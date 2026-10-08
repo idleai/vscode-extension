@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export async function checkResources(browser, origin, errors, workspace, host) {
   console.log('Checking declared and published resources');
+  const directory = join(workspace, '.idle', 'workspace');
+  for (const [filename, document] of [
+    ['hosts.json', { hosts: [{ id: 'browser-host', name: 'Configured browser host' }] }],
+    ['providers.json', { providers: [{ id: 'browser-provider', name: 'Configured browser models', host_id: 'browser-host' }] }],
+  ]) {
+    const destination = join(directory, filename);
+    await writeFile(`${destination}.tmp`, JSON.stringify(document));
+    await rename(`${destination}.tmp`, destination);
+  }
   const page = await browser.newPage();
   page.on('pageerror', error => errors.push(String(error)));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -11,9 +20,6 @@ export async function checkResources(browser, origin, errors, workspace, host) {
   await page.waitForSelector('select[id$=-workspace] option[value^="local-workspace:"]');
   const workspaceId = await page.$eval('select[id$=-workspace] option[value^="local-workspace:"]', option => option.value);
   await page.select('select[id$=-workspace]', workspaceId);
-  const directory = join(workspace, '.idle', 'workspace');
-  await writeFile(join(directory, 'hosts.json'), JSON.stringify({ hosts: [{ id: 'browser-host', name: 'Configured browser host' }] }));
-  await writeFile(join(directory, 'providers.json'), JSON.stringify({ providers: [{ id: 'browser-provider', name: 'Configured browser models', host_id: 'browser-host' }] }));
   const declaredHost = await row(page, 'Compute hosts', 'Configured browser host', 'Availability unknown');
   const declaredProvider = await row(page, 'Model providers', 'Configured browser models', 'Availability unknown');
   const contributor = await host.coordination.contributor();
@@ -58,7 +64,10 @@ async function row(page, section, name, availability) {
   await page.waitForSelector('.idle-resources');
   await click(page, 'Refresh resources');
   await page.waitForFunction(({ name, availability }) => [...document.querySelectorAll('article.idle-resource-card')]
-    .some(card => card.getAttribute('aria-label') === name && card.textContent.includes(availability)), {}, { name, availability });
+    .some(card => card.getAttribute('aria-label') === name && card.textContent.includes(availability)), {}, { name, availability }).catch(async error => {
+      const text = await page.$eval('body', element => element.innerText);
+      throw new Error(`Resource ${name} did not show ${availability}:\n${text}`, { cause: error });
+    });
   assert.equal(await page.$$eval('article.idle-resource-card', cards => cards.length), 1, 'publication replaces its declaration');
   return page.$eval('article.idle-resource-card', card => card.textContent.match(/Revision (\d+)/)[1]);
 }
