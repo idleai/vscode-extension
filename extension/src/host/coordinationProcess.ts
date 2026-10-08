@@ -46,6 +46,10 @@ export class CoordinationProcess {
       if (!record(versions) || ['service', 'repository_api', 'invitation', 'saved_sharing'].some(key => versions[key] !== 1)) {
         throw new HostError('incompatible_host', 'The native coordinator uses an incompatible protocol.');
       }
+      if (record(installation.configuration) && typeof installation.configuration.workspace_root === 'string'
+        && versions.workspace_configuration !== 1) {
+        throw new HostError('incompatible_host', 'Update the native host to use repository workspace configuration.');
+      }
       this.validate();
       return client;
     } catch (error) { await client.shutdown(); throw error; }

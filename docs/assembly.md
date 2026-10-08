@@ -234,6 +234,31 @@ by Containers; the test does not start or stop them.
 
 ## Application ownership
 
+Standalone metadata channels now pass the selected checkout as `workspace_root`
+to host-tools and require its `workspace_configuration: 1` capability. The
+existing Settings and Agent Rules editors save to `.idle/workspace/settings.json`
+and `agent-rules.json`. Native subscription polls reconcile direct file edits,
+branch changes and conflicts through the existing app-core state machinery.
+Deleting a settings or rules file produces a newer empty logical document while
+leaving the file absent. Clean editors reset, unsaved drafts require conflict
+review, and only a subsequent save recreates the file.
+
+The native service creates a stable manifest and migrates earlier private
+settings/rules/view definitions once. Tracked files take priority on subsequent
+loads, including a fresh clone. Commit and push them through the repository's
+normal Git workflow; saving in Idle writes the working tree. Controller and
+declared resource files remain configuration, with runtime actions unavailable
+until a real execution provider connects. Invalid or unresolved configuration
+files report a load failure until repaired; they are not replaced with defaults.
+Declared resources have valid unknown health and share revision history with
+their authorized publications, including when access expires or is restored.
+
+Local checkout/history aliases, draft journals, credentials and account-scoped
+sharing bindings retain their existing ownership. The shared implementation and
+file schemas live in host-tools' `docs/workspace-config.md`. Native packaging
+requires `idle-coordination ^0.2.0`, whose bundle includes the workspace
+configuration capability.
+
 The extension owns editor recording, platform events, credentials, trust checks
 and service lifetime. Host-tools owns imports, source discovery and collection,
 portable peer coordination and shared protocol/history contracts. App-core owns

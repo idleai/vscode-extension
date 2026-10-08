@@ -9,6 +9,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import puppeteer from "puppeteer-core";
 import { checkConfiguration } from "./assembly-configuration.mjs";
+import { checkResources } from "./assembly-resources.mjs";
 import { checkRepository, repositoryInputs } from "./assembly-repository.mjs";
 import { checkAuthentication } from "./assembly-authentication.mjs";
 
@@ -147,11 +148,12 @@ try {
   }
   const origin = `http://127.0.0.1:${server.address().port}`;
   await checkRepository(browser, origin, records, f, () => { projectionFixture = true; }, errors, savePage);
-  await checkConfiguration(browser, origin, errors, savePage);
+  await checkConfiguration(browser, origin, errors, savePage, workspace);
+  await checkResources(browser, origin, errors, workspace, host);
   assert.deepEqual(expectedFailures, [], "host operations succeed");
   await checkAuthentication(browser, origin, f, host, errors, expectedFailures);
   assert.deepEqual(errors, [], "the packaged views have no browser or CSP errors");
-  console.log("PASS: packaged sidebar/detail, Git repository/authors, recorded sessions and reopened selection, projection URLs/exact Originals, native history, configuration conflicts/drafts, original-request recovery and GitHub authentication/reconnection.");
+  console.log("PASS: packaged sidebar/detail, Git repository/authors, recorded sessions and reopened selection, projection URLs/exact Originals, native history, configuration conflicts/drafts/deletion/recreation, declared/live resources, original-request recovery and GitHub authentication/reconnection.");
 } catch (error) {
   for (const [index, page] of (await browser?.pages() ?? []).entries()) {
     try { await savePage(page, `failure-${index}`, process.env.IDLE_ASSEMBLY_OUTPUT ?? join(root, 'outputs', 'assembly')); } catch {}
