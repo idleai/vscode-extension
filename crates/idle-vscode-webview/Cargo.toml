@@ -1,6 +1,6 @@
 [package]
 name = "idle-vscode-webview"
-version = "0.1.4"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.97"
 license = "MIT"
@@ -11,23 +11,23 @@ description = "Idle VS Code Rust application, native tree models and custom webv
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-idle-protocol = { registry = "idle-host-tools", version = "0.1.0" }
-app-core = { registry = "idle-app-core", version = "0.1.0" }
-web-ui = { registry = "idle-web-ui", version = "0.2.0" }
+idle-protocol = { registry = "idle-host-tools", version = "0.3.0" }
+app-core = { registry = "idle-app-core", version = "0.2.0" }
+web-ui = { registry = "idle-web-ui", version = "0.3.0" }
 dioxus = { version = "=0.7.10", default-features = false, features = ["macro", "html", "hooks", "signals"] }
 serde_json = "=1.0.151"
 serde = { version = "1", features = ["derive"] }
 crux_core = { version = "=0.20.0", default-features = false }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-dioxus-web = { version = "=0.7.10", default-features = false }
+dioxus-web = { version = "=0.7.10", default-features = false, features = ["mounted"] }
 js-sys = "=0.3.104"
 wasm-bindgen = "=0.2.127"
 wasm-bindgen-futures = "=0.4.77"
 web-sys = { version = "=0.3.104", features = ["Window", "Document", "Element", "EventTarget", "MessageEvent", "console"] }
 
 [dev-dependencies]
-app-core = { registry = "idle-app-core", version = "0.1.0", features = ["session-fixtures", "peer-fixtures"] }
+app-core = { registry = "idle-app-core", version = "0.2.0", features = ["session-fixtures", "peer-fixtures"] }
 editchain-core = { registry = "idle-editchain", version = "0.1.0" }
 
 [lints]

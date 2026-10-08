@@ -19,6 +19,7 @@ function storageFailure(request: unknown, response: unknown): boolean {
 export class NativeHistoryProvider implements HistoryProvider {
   private client: StdioClient;
   private closed = false;
+  private timelineReady = false;
 
   constructor(private readonly native: NativeServices, private readonly binding: HistoryBinding) {
     this.client = this.connect();
@@ -26,12 +27,14 @@ export class NativeHistoryProvider implements HistoryProvider {
 
   private connect(): StdioClient {
     return new StdioClient({}, this.native.connection(this.binding.root.fsPath, 'history', {
+      repository_directory: this.binding.root.fsPath,
       repository: this.binding.repository, chain_directory: this.binding.chainDirectory,
       retained_directory: this.binding.retainedDirectory ?? null,
     }));
   }
 
   async resolve(request: HistoryRequest, signal: AbortSignal): Promise<HistoryPreview> {
+    if (request.target === "OperationJson") await this.ensureTimeline(signal);
     const response = await this.request(request, signal);
     if (record(response) && record(response.Err) && typeof response.Err.code === "string" && typeof response.Err.message === "string") {
       const candidates = Array.isArray(response.Err.candidates) ? response.Err.candidates.map(parseRecord) : [];
@@ -44,7 +47,19 @@ export class NativeHistoryProvider implements HistoryProvider {
   }
 
   async query(query: unknown, signal: AbortSignal): Promise<unknown> {
-    return this.request({ binding: this.binding.repository, query }, signal);
+    const timeline = record(query) && record(query.action) && 'Timeline' in query.action;
+    if (timeline) await this.ensureTimeline(signal);
+    // Initial repository reads can still own the index when Activity first opens.
+    return this.request({ binding: this.binding.repository, query }, signal, timeline ? 7 : 3);
+  }
+
+  private async ensureTimeline(signal: AbortSignal): Promise<void> {
+    if (this.timelineReady) return;
+    const response = await this.request({ capabilities: true }, signal);
+    if (!record(response) || !record(response.Ok) || response.Ok.timeline !== 2 || response.Ok.operation_json !== true) {
+      throw new HostError("incompatible_history", "This native host does not support Activity timeline version 2. Update the native tools and restart the adapters.");
+    }
+    this.timelineReady = true;
   }
 
   async projection(projection: unknown, signal: AbortSignal, inputs?: unknown[]): Promise<unknown> {
@@ -59,17 +74,17 @@ export class NativeHistoryProvider implements HistoryProvider {
     return parsePreview(record(response) ? response.Ok : undefined, request);
   }
 
-  private async request(request: unknown, signal: AbortSignal): Promise<unknown> {
+  private async request(request: unknown, signal: AbortSignal, retries = 3): Promise<unknown> {
     try {
       for (let attempt = 0; ; attempt++) {
         this.assertReadable(signal);
         this.client.ensureStarted();
         const response = await this.client.request(request, { signal });
         this.assertReadable(signal);
-        if (attempt >= 3 || !storageFailure(request, response)) return response;
+        if (attempt >= retries || !storageFailure(request, response)) return response;
         // Another service channel can briefly own the derived index checkpoint.
         // These requests only read history; persistent failures retain their reply.
-        await delay(25 * 2 ** attempt, undefined, { signal });
+        await delay(Math.min(25 * 2 ** attempt, 250), undefined, { signal });
       }
     } catch (error) {
       this.assertReadable(signal);
@@ -85,6 +100,7 @@ export class NativeHistoryProvider implements HistoryProvider {
   async restart(): Promise<void> {
     if (this.closed) throw new HostError("cancelled", "The history connection was closed.");
     await this.client.shutdown();
+    this.timelineReady = false;
     if (!this.closed) this.client = this.connect();
   }
 

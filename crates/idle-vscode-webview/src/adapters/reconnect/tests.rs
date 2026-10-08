@@ -261,3 +261,123 @@ fn detail_navigation_survives_initial_loading_and_a_later_user_choice_cancels_it
         workspace::NavigationSection::Settings
     );
 }
+
+#[test]
+fn activity_destination_preserves_the_exact_mini_record_through_native_views() {
+    let mut runtime = selected();
+    let selection = json!({"occurrence": format!("retained:{}", "a".repeat(64)),
+        "address": {"Record": {"source": "retained", "record": {"operation": "a".repeat(64), "hash": "b".repeat(64)}}}});
+    let calls = runtime
+        .navigate_from_host(json!({
+            "binding": binding("two"), "section": "Activity", "timeline": selection,
+        }))
+        .expect("exact Activity destination");
+    assert!(calls.iter().any(|call| {
+        call.params
+            .pointer("/operation/action/Timeline/action/Window/position/Seek")
+            == selection.get("occurrence")
+    }));
+    assert_eq!(
+        runtime
+            .navigation_target(workspace::NavigationSection::Activity)
+            .get("timeline"),
+        Some(&selection)
+    );
+    assert!(
+        calls
+            .iter()
+            .all(|call| call.params.pointer("/operation/action/OpenAt").is_none()),
+        "revealing the Activity editor does not activate a document"
+    );
+}
+
+#[test]
+fn mini_destination_waits_for_subscription_binding_and_reconciliation() {
+    use app_core::{Effect, history, subscriptions};
+
+    let mut runtime = selected();
+    runtime.coordination.enabled = true;
+    let selection = json!({"occurrence": format!("current:{}", "a".repeat(64)),
+        "address": {"Record": {"source": "current", "record": {"operation": "a".repeat(64), "hash": "b".repeat(64)}}}});
+    let early = runtime
+        .navigate_from_host(json!({
+            "binding": binding("two"), "section": "Activity", "timeline": selection,
+        }))
+        .expect("early mini destination");
+    assert!(
+        early
+            .iter()
+            .all(|call| call.params.pointer("/operation/action/Timeline").is_none())
+    );
+    assert!(runtime.view().history.timeline.selected.is_none());
+    let mounted = runtime
+        .dispatch(Event::History(history::Event::Timeline(
+            history::timeline::Event::Load(history::timeline::Surface::Editor),
+        )))
+        .expect("mounted editor");
+    let _calls = runtime
+        .dispatch(Event::Subscriptions(subscriptions::Event::Connect(
+            subscriptions::Context {
+                provider: "local".into(),
+                workspace: "two".into(),
+                contributor: "person".into(),
+                chain: "chain-two".into(),
+            },
+        )))
+        .expect("late subscription binding");
+    let join = runtime
+        .pending
+        .iter()
+        .find_map(|(id, effect)| {
+            matches!(effect, Effect::Subscription(request)
+                if request.operation.action == subscriptions::SubscriptionAction::Join)
+            .then(|| id.clone())
+        })
+        .expect("join request");
+    let joined = runtime
+        .receive(&join, Ok(json!({"Ok": {"Joined": {"connection": "live"}}})))
+        .expect("subscription joined");
+    assert!(runtime.view().history.timeline.selected.is_none());
+    let stale = mounted
+        .iter()
+        .find(|call| call.method == "app.history")
+        .expect("early timeline read");
+    let interrupted = runtime
+        .receive(&stale.id, Ok(json!({"Err": {"message": "retired read"}})))
+        .expect("late retired read");
+    assert!(
+        interrupted
+            .iter()
+            .all(|call| call.params.pointer("/operation/action/Reconcile").is_none()),
+        "a pending destination must not restart reconciliation on every reply"
+    );
+    let reconcile = joined
+        .iter()
+        .find(|call| call.params.pointer("/operation/action/Reconcile").is_some())
+        .expect("replacement history read");
+    let calls = runtime
+        .receive(
+            &reconcile.id,
+            Ok(json!({"Ok": {"Reconciled": {
+                "history": [{"observations": [], "next_after": null, "scanned": 0}],
+                "search": [], "items": [], "details": []
+            }}})),
+        )
+        .expect("completed history reconciliation");
+    assert!(calls.iter().any(|call| {
+        call.params
+            .pointer("/operation/action/Timeline/action/Window/position/Seek")
+            == selection.get("occurrence")
+    }));
+    assert_eq!(
+        runtime
+            .navigation_target(workspace::NavigationSection::Activity)
+            .get("timeline"),
+        Some(&selection)
+    );
+    assert!(
+        calls
+            .iter()
+            .all(|call| call.params.pointer("/operation/action/OpenAt").is_none())
+    );
+}

@@ -4,6 +4,8 @@
   max-width: 100%;
 }
 
+body:has(.idle-activity-editor) { margin: 0; padding: 0; overflow: hidden; }
+
 body:has(#main[data-view-kind="sidebar"]) {
   margin: 0;
   padding: 0;

@@ -6,7 +6,7 @@ import type { ActivityPreview, ActivityRequest } from "../authorActivity/contrac
 export interface RepositoryBinding { workspace_id: string; repository_id: string; chain: string }
 export interface RecordReference { operation: string; hash: string }
 export type RecordSource = "current" | "retained";
-export type HistoryTarget = "Record" | "Original" | "File" | "Diff" |
+export type HistoryTarget = "OperationJson" | "Record" | "Original" | "File" | "Diff" |
   { Content: { field: unknown; reference: unknown } };
 export interface HistoryRequest {
   binding: RepositoryBinding;
@@ -84,7 +84,7 @@ export function parseHistoryRequest(value: unknown): HistoryRequest {
   const source = value.source ?? "current";
   if (source !== "current" && source !== "retained") throw new HostError("invalid_request", "Invalid history source.");
   const target = value.target;
-  if (!["Record", "Original", "File", "Diff"].includes(target as string) &&
+  if (!["OperationJson", "Record", "Original", "File", "Diff"].includes(target as string) &&
       !(record(target) && Object.keys(target).length === 1 && record(target.Content) &&
         Object.keys(target.Content).length === 2 && "field" in target.Content && "reference" in target.Content)) {
     throw new HostError("invalid_request", "Invalid history target.");

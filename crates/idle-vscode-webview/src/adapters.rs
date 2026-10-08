@@ -426,6 +426,7 @@ fn capabilities(value: &Value) -> HostCapabilities {
         ("clipboard.write", HostCapability::CopyText),
         ("external.open", HostCapability::OpenExternal),
         ("history.openQuery", HostCapability::OpenRecord),
+        ("history.openQuery", HostCapability::OpenOperationJson),
         ("history.openQuery", HostCapability::OpenOriginal),
         ("history.openQuery", HostCapability::OpenFile),
         ("history.openQuery", HostCapability::OpenDiff),
