@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/idleai/vscode-extension/compare/idle-vscode-webview-v0.1.3...idle-vscode-webview-v0.1.4) - 2026-10-08
+
+### Other
+
+- *(f43/d10-workspace-config)* bind standalone editors to repository configuration ([#25](https://github.com/idleai/vscode-extension/pull/25))
+
 ## [0.1.3](https://github.com/idleai/vscode-extension/compare/idle-vscode-webview-v0.1.2...idle-vscode-webview-v0.1.3) - 2026-10-07
 
 ### Other
