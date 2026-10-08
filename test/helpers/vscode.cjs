@@ -79,6 +79,7 @@ function fixture() {
       showQuickPick: async (choices, options) => { calls.choices.push({ choices, options }); },
       showInputBox: async options => { calls.choices.push({ options }); },
       showInformationMessage: async message => { calls.notifications.push(message); },
+      setStatusBarMessage: message => { calls.notifications.push(message); return { dispose() {} }; },
       showWarningMessage: async message => { calls.notifications.push(message); },
       showErrorMessage: async message => { calls.notifications.push(message); },
       registerWebviewViewProvider: (id, provider) => { calls.providers.push({ id, provider }); return { dispose() {} }; },

@@ -5,6 +5,9 @@ Sessions, Projections, Compute hosts and Model providers. Activity is a
 `WebviewView` containing the Rust graph and a footer with standalone Settings and
 Agent Rules links. The links have no section headers or disclosure controls;
 they stay below the scrollable graph and share the Activity view's visibility.
+Its shared `HistoryMini` rows open the full `HistoryExplorer` editor through
+**Idle: Open Activity History**. See the [activity editor guide](activity-editor.md)
+for the layout, shared component boundary and unpublished integration checks.
 VS Code owns the section headers,
 dividers, resizing, ordering and collapse state, plus the native lists' rows,
 icons, tooltips, selection, keyboard navigation, menus and virtualized scrolling.
@@ -99,7 +102,8 @@ and replacement reads. Interrupted transport uses app-core's retry state.
 ## History and projections
 
 `app.history` uses the history service inside `idle-host` and app-core's engine
-adapter. Native record, Original, file and diff actions retain exact record
+adapter. Timeline version 1 supplies bounded rows and native graph routing.
+Native record, operation JSON, Original, file and diff actions retain exact record
 identities. Every read rechecks its installed binding, cancellation and Workspace
 Trust. A missing chain is unavailable. Refreshes preserve current selection and
 disclosure when those records still exist.
@@ -256,7 +260,7 @@ their authorized publications, including when access expires or is restored.
 Local checkout/history aliases, draft journals, credentials and account-scoped
 sharing bindings retain their existing ownership. The shared implementation and
 file schemas live in host-tools' `docs/workspace-config.md`. Native packaging
-requires `idle-coordination ^0.2.0`, whose bundle includes the workspace
+requires `idle-coordination ^0.3.0`, whose bundle includes the workspace
 configuration capability.
 
 The extension owns editor recording, platform events, credentials, trust checks

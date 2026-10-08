@@ -110,3 +110,41 @@ for (const reason of ['abort', 'shutdown', 'trust']) test(`storage retries stop 
   assert.equal(h.requests.length, 1, 'retired requests never read again');
   assert.equal(getEventListeners(abort.signal, 'abort').length, 0);
 });
+
+test('timeline capabilities are checked before a query and again after adapter restart', async t => {
+  const query = { chain: 'chain', action: { Timeline: { version: 2, action: 'Cancel' } } };
+  const h = setup(t, selected => selected.capabilities === true
+    ? { Ok: { timeline: 2, operation_json: true } } : { Ok: { Timeline: 'Cancelled' } });
+  const signal = new AbortController().signal;
+  await h.provider.query(query, signal);
+  await h.provider.query(query, signal);
+  assert.deepEqual(h.requests, [{ capabilities: true }, { binding: binding.repository, query }, { binding: binding.repository, query }]);
+  await h.provider.restart();
+  await h.provider.query(query, signal);
+  assert.deepEqual(h.requests.slice(3), [{ capabilities: true }, { binding: binding.repository, query }]);
+});
+
+test('a timeline window waits through initial repository contention with the same exact query', async t => {
+  const query = { chain: 'chain', action: { Timeline: { version: 2,
+    action: { Window: { position: 'Latest', limit: 200, view: { filter: {}, disclosures: [] } } } } } };
+  const result = { Ok: { Timeline: { Window: { revision: 'ready', rows: [] } } } };
+  let attempts = 0;
+  const h = setup(t, selected => {
+    if (selected.capabilities === true) return { Ok: { timeline: 2, operation_json: true } };
+    attempts++;
+    assert.deepEqual(selected, { binding: binding.repository, query });
+    return attempts <= 5 ? { Err: { message: storage.Err.message } } : result;
+  });
+  assert.deepEqual(await h.provider.query(query, new AbortController().signal), result);
+  assert.equal(attempts, 6);
+});
+
+test('an older host cannot receive a timeline query or operation JSON request', async t => {
+  for (const response of [{ Err: { message: 'Invalid native history request.' } }, { Ok: { timeline: 1, operation_json: true } }, { Ok: { timeline: 2, operation_json: false } }]) {
+    const h = setup(t, () => response);
+    const signal = new AbortController().signal;
+    await assert.rejects(h.provider.query({ action: { Timeline: {} } }, signal), { code: 'incompatible_history' });
+    await assert.rejects(h.provider.resolve({ ...request, target: 'OperationJson' }, signal), { code: 'incompatible_history' });
+    assert.deepEqual(h.requests, [{ capabilities: true }, { capabilities: true }]);
+  }
+});

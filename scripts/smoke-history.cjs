@@ -56,9 +56,12 @@ async function smokeHistory(host, f, binary, extensionPath) {
     await assert.rejects(documents.readFile(f.api.Uri.parse(beforeRestart.byteUris[0])), { code: 'unavailable' });
     const afterRestart = await host.history.open(fixture.requests[0]);
     assert.deepEqual(Buffer.from(await documents.readFile(f.api.Uri.parse(afterRestart.byteUris[0]))), Buffer.from(fixture.after));
-    await assert.rejects(host.history.open(fixture.requests[5]), { code: 'missing_content' });
+    const missing = await host.history.open(fixture.requests[5]);
+    const fallback = JSON.parse(await text.provideTextDocumentContent(f.api.Uri.parse(missing.uris[0])));
+    assert.equal(fallback.id, fixture.requests[5].record.operation, 'missing file content opens its exact operation JSON');
+    assert(missing.uris[0].includes('.json'));
     await assert.rejects(fs.readFile(path.join(root, 'recorded.ts')), { code: 'ENOENT' });
-    console.log('PASS: packaged native previews match engine bytes, retain bindings across Restart Native, and keep missing content distinct from empty content.');
+    console.log('PASS: packaged native previews match engine bytes, retain bindings across Restart Native, and open exact operation JSON when file content is missing.');
   } finally {
     lease?.dispose();
     await host.history.shutdown();

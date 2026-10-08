@@ -2,7 +2,7 @@ import artifacts from './native-artifacts.cjs';
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -12,6 +12,7 @@ import { checkConfiguration } from "./assembly-configuration.mjs";
 import { checkResources } from "./assembly-resources.mjs";
 import { checkRepository, repositoryInputs } from "./assembly-repository.mjs";
 import { checkAuthentication } from "./assembly-authentication.mjs";
+import { checkActivityPerformance, checkMiniActivity } from "./assembly-activity.mjs";
 
 // Isolated browser and synthetic chain. This never attaches to the user's editor.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -43,6 +44,11 @@ try {
   const otherUri = f.api.Uri.parse(pathToFileURL(otherWorkspace).toString());
   f.api.workspace.workspaceFolders = [{ name: "Recorded workspace", index: 0, uri }, { name: "Other workspace", index: 1, uri: otherUri }];
   for (const resource of [uri, otherUri]) f.configuration.set(resource.toString(), { chainDirectory: "chain", "tracking.enabled": false, "live.enabled": false });
+  if (process.env.IDLE_ACTIVITY_BENCHMARK_CHAIN) {
+    const benchmark = f.api.Uri.parse(pathToFileURL(resolve(process.env.IDLE_ACTIVITY_BENCHMARK_CHAIN)).toString());
+    f.api.workspace.workspaceFolders.push({ name: 'Activity benchmark', index: 2, uri: benchmark });
+    f.configuration.set(benchmark.toString(), { chainDirectory: '.', 'tracking.enabled': false, 'live.enabled': false });
+  }
   extension = loadWithVSCode(join(extensionRoot, "out/extension.js"), f.api);
   const host = extension.activate(f.context);
   let projectionFixture = false;
@@ -60,6 +66,7 @@ try {
   const WebviewBridge = [...provider.views][0].bridge.constructor;
   mounted.dispose();
   const expectedFailures = [];
+  let pageSequence = 0;
   server = createServer(async (request, response) => {
     try {
       const origin = `http://127.0.0.1:${server.address().port}`;
@@ -79,13 +86,16 @@ try {
         response.on("close", () => bridge.dispose());
         await bridge.receive(envelope);
         bridge.dispose();
+        if (process.env.IDLE_ASSEMBLY_TRACE) await appendFile(process.env.IDLE_ASSEMBLY_TRACE,
+          JSON.stringify({ request: envelope, response: delivery }) + '\n');
         response.setHeader("Content-Type", "application/json");
         response.end(JSON.stringify(delivery));
         return;
       }
       if (url.pathname === "/") {
         const kind = url.searchParams.get("kind") === "detail" ? "detail" : "sidebar";
-        const html = webviewHtml(origin, `${origin}/dist/bootstrap.js`, `${origin}/dist/theme.css`, `assembly-${kind}`, kind)
+        const section = url.searchParams.get('section') === 'Activity' ? 'Activity' : '';
+        const html = webviewHtml(origin, `${origin}/dist/bootstrap.js`, `${origin}/dist/theme.css`, `assembly-${++pageSequence}-${kind}`, kind, undefined, section)
           .replace('<script nonce=', '<script src="/fixture.js"></script>\n  <script nonce=');
         response.setHeader("Content-Type", "text/html"); response.end(html); return;
       }
@@ -97,7 +107,7 @@ try {
     } catch (error) { response.writeHead(500).end(String(error)); }
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-  browser = await puppeteer.launch({ executablePath: chrome, headless: true, userDataDir: join(temporary, "profile"),
+  browser = await puppeteer.launch({ executablePath: chrome, headless: true, protocolTimeout: 30_000, userDataDir: join(temporary, "profile"),
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-background-networking"] });
   const errors = [];
   for (const kind of ["sidebar", "detail"]) {
@@ -119,6 +129,9 @@ try {
     await selectRecord(page, recordId);
     await checkWorkspaceSwitch(page, workspaceId);
     await selectRecord(page, recordId);
+    if (kind === 'detail') {
+      await checkActivityEditor(page, records, f);
+    } else {
     await page.evaluate(() => [...document.querySelectorAll("button")].find(button => button.textContent === "Inspect record").click());
     await page.waitForFunction(() => [...document.querySelectorAll("button")].some(button => button.textContent === "Open recorded revision" && !button.disabled));
     if (process.env.IDLE_ASSEMBLY_OUTPUT) await savePage(page, kind, process.env.IDLE_ASSEMBLY_OUTPUT);
@@ -132,7 +145,8 @@ try {
     const content = await hex.provideTextDocumentContent(opened.args[0]);
     const bytes = content.split("\n").flatMap(line => line.split("  ")[1].split(" ").map(byte => parseInt(byte, 16)));
     assert.deepEqual(Buffer.from(bytes), Buffer.from(records.after));
-    assert.equal(await page.$eval("#idle-history", element => element.getBoundingClientRect().height), kind === "sidebar" ? 400 : 640, 'CSP permits graph sizing');
+    assert.equal(await page.$eval('#idle-history', element => element.getBoundingClientRect().height), 400, 'CSP permits graph sizing');
+    }
     assert.equal(await page.evaluate(() => document.body.textContent.includes('Starting Idle…')), false, 'the startup placeholder is removed after mounting');
     await page.evaluate(() => document.documentElement.style.setProperty("--vscode-editor-background", "#112233"));
     assert.equal(await page.$eval(".idle-theme", element => getComputedStyle(element).backgroundColor), "rgb(17, 34, 51)", 'the view follows host theme tokens');
@@ -147,14 +161,21 @@ try {
     await page.close();
   }
   const origin = `http://127.0.0.1:${server.address().port}`;
+  await checkMiniActivity(browser, origin, {
+    binding: provider.selectedWorkspace, fixture: f, errors, savePage,
+    append: () => appendCapture(host, workspace, 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'),
+  });
+  console.log('PASS: packaged mini Activity loads at 280px, reveals the exact editor record and receives live capture updates.');
   await checkRepository(browser, origin, records, f, () => { projectionFixture = true; }, errors, savePage);
   await checkConfiguration(browser, origin, errors, savePage, workspace);
   await checkResources(browser, origin, errors, workspace, host);
   assert.deepEqual(expectedFailures, [], "host operations succeed");
   await checkAuthentication(browser, origin, f, host, errors, expectedFailures);
+  if (process.env.IDLE_ACTIVITY_BENCHMARK_CHAIN) await checkActivityPerformance(browser, origin, errors, savePage);
   assert.deepEqual(errors, [], "the packaged views have no browser or CSP errors");
   console.log("PASS: packaged sidebar/detail, Git repository/authors, recorded sessions and reopened selection, projection URLs/exact Originals, native history, configuration conflicts/drafts/deletion/recreation, declared/live resources, original-request recovery and GitHub authentication/reconnection.");
 } catch (error) {
+  console.error('Assembly failed:', error);
   for (const [index, page] of (await browser?.pages() ?? []).entries()) {
     try { await savePage(page, `failure-${index}`, process.env.IDLE_ASSEMBLY_OUTPUT ?? join(root, 'outputs', 'assembly')); } catch {}
   }
@@ -172,33 +193,141 @@ async function waitFor(condition) {
   while (!condition()) { if (Date.now() > deadline) throw new Error("Host action did not complete."); await new Promise(resolve => setTimeout(resolve, 20)); }
 }
 
-async function checkSearch(page) {
+async function checkActivityEditor(page, records, fixture) {
+  const before = fixture.calls.editorCommands.length;
+  await selectRecord(page, records.requests[0].record.operation);
+  await waitFor(() => fixture.calls.editorCommands.length > before);
+  const opened = fixture.calls.editorCommands.at(-1);
+  assert.equal(opened.id, 'vscode.diff', 'file changes open a normal recorded diff on one click');
+  assert.deepEqual(opened.args[3], { preview: true }, 'native previews use normal editor placement');
+  const hex = fixture.calls.contentProviders.find(provider => provider.scheme === 'idle-history-hex').provider;
+  for (const [index, expected] of [records.before, records.after].entries()) {
+    const content = await hex.provideTextDocumentContent(opened.args[index]);
+    const bytes = content.split('\n').flatMap(line => line.split('  ')[1].split(' ').map(byte => parseInt(byte, 16)));
+    assert.deepEqual(Buffer.from(bytes), Buffer.from(expected));
+  }
+  const count = fixture.calls.editorCommands.length;
+  await page.$eval('.idle-timeline-row[aria-selected="true"]', row => row.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 })));
+  await page.focus('#idle-history');
+  await page.keyboard.press('ArrowDown');
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(fixture.calls.editorCommands.length, count, 'arrows and the second click do not open another editor');
+  await selectRecord(page, records.requests.at(-1).record.operation);
+  await waitFor(() => fixture.calls.editorCommands.length > count);
+  const json = fixture.calls.editorCommands.at(-1);
+  assert.equal(json.id, 'vscode.open', 'unavailable file content opens operation JSON');
+  assert(json.args[0].path.endsWith('.json'));
+  const text = fixture.calls.contentProviders.find(provider => provider.scheme === 'idle-history-text').provider;
+  const operation = JSON.parse(await text.provideTextDocumentContent(json.args[0]));
+  assert.equal(operation.id, records.requests.at(-1).record.operation);
+  assert.equal(await page.$('.idle-history-inspector'), null);
+  assert.ok(await page.$('.idle-timeline-header'), 'the editor uses one continuous table');
+  assert.ok(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight), 'the table owns vertical scrolling');
+  assert.equal(await page.$eval('.idle-timeline-row', element => element.getBoundingClientRect().height), 34);
+  if (process.env.IDLE_ASSEMBLY_OUTPUT) await savePage(page, 'detail', process.env.IDLE_ASSEMBLY_OUTPUT);
+  await checkActivityScroll(page);
+}
+
+async function checkActivityScroll(page) {
+  const viewport = page.viewport();
+  await page.setViewport({ ...viewport, height: 260 });
+  await page.waitForFunction(() => {
+    const grid = document.querySelector('#idle-history');
+    return grid.scrollHeight > grid.clientHeight;
+  });
+  const last = await page.$eval('.idle-timeline-canvas', canvas => canvas.lastElementChild.dataset.occurrence);
+  await page.click(`.idle-timeline-row[data-occurrence="${last}"]`);
+  await page.focus('#idle-history');
+  const count = await page.$$eval('.idle-timeline-row', rows => rows.length);
+  for (let index = 0; index < count; index++) {
+    await page.keyboard.press('ArrowUp');
+    await page.evaluate(() => new Promise(done => requestAnimationFrame(done)));
+  }
+  await page.waitForFunction(() => document.querySelector('#idle-history').scrollTop === 0);
+  assert.ok(await page.$eval('#idle-history', grid => {
+    const selected = grid.querySelector('.idle-timeline-row[aria-selected="true"]');
+    return selected.getBoundingClientRect().top >= grid.querySelector('.idle-timeline-header').getBoundingClientRect().bottom;
+  }), 'packaged keyboard navigation reveals the newest row beneath the sticky header');
+  await page.setViewport(viewport);
+}
+
+async function checkTimelineFind(page) {
+  const input = '#idle-history-search';
+  await page.$eval(input, input => {
+    input.value = 'x'.repeat(4097);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.click('button[aria-label="Find in activity"]');
+  await page.waitForFunction(() => document.querySelector('[role="alert"]')?.textContent.includes('4096 bytes'));
+  await page.evaluate(() => { window.assemblyFixture.holdMethod = 'app.history'; });
+  await page.$eval(input, input => {
+    input.value = 'never-matches-anything';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.click('button[aria-label="Find in activity"]');
+  await page.waitForFunction(() => window.assemblyFixture.held.length > 0);
+  assert.equal(await page.$eval('button[aria-label="Next match"]', button => button.disabled), true);
+  assert(await page.$('.idle-timeline-row'), 'rows remain readable during Find');
   await page.evaluate(() => {
-    const input = document.querySelector("#idle-search");
+    window.assemblyFixture.holdMethod = undefined;
+    for (const data of window.assemblyFixture.held.splice(0)) window.dispatchEvent(new MessageEvent('message', { data }));
+  });
+  await page.waitForFunction(() => document.querySelector('.idle-history-match-count')?.textContent === '0 of 0');
+  await page.waitForFunction(() => document.body.textContent.includes('records have unavailable text'));
+  await page.$eval(input, input => {
+    input.value = 'recorded.ts';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.click('button[aria-label="Find in activity"]');
+  await page.waitForFunction(() => document.querySelector('.idle-history-match-count')?.textContent === '1 of 3');
+  await page.click('button[aria-label="Next match"]');
+  await page.waitForFunction(() => document.querySelector('.idle-history-match-count')?.textContent === '2 of 3');
+  await page.click('button[aria-label="Clear activity Find"]');
+  assert.equal(await page.$('[role="alert"]'), null);
+}
+
+async function checkSearch(page) {
+  if (await page.$('.idle-history-explorer')) return checkTimelineFind(page);
+  const editor = Boolean(await page.$('.idle-history-explorer'));
+  const selector = editor ? '#idle-history-search' : '#idle-search';
+  const submit = editor ? 'button[aria-label="Search history"]' : undefined;
+  await page.evaluate(selector => {
+    const input = document.querySelector(selector);
     input.value = "x".repeat(16_385);
     input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-  await page.evaluate(() => [...document.querySelectorAll("button")].find(button => button.textContent === "Search").click());
+  }, selector);
+  await submitSearch(page, submit);
   await page.waitForFunction(() => [...document.querySelectorAll('[role="alert"]')].some(element => element.textContent.includes("Search text exceeds")));
   assert.equal(await page.evaluate(() => [...document.querySelectorAll("button")].some(button => button.textContent === "Retry search" && !button.disabled)), true);
-  await page.evaluate(() => {
+  await page.evaluate(selector => {
     window.assemblyFixture.holdMethod = "app.history";
-    const input = document.querySelector("#idle-search");
+    const input = document.querySelector(selector);
     input.value = "never-matches-anything";
     input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-  await page.evaluate(() => [...document.querySelectorAll("button")].find(button => button.textContent === "Search").click());
+  }, selector);
+  await submitSearch(page, submit);
   await page.waitForFunction(() => window.assemblyFixture.held.length > 0);
-  assert.equal(await page.evaluate(() => [...document.querySelectorAll('[role="status"]')].some(element => element.textContent === "Searching history…")), true);
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll('[role="status"]')].some(element => /Searching(?: history)?…/.test(element.textContent))), true);
   assert.equal(await page.evaluate(() => [...document.querySelectorAll("button")].find(button => button.textContent === "Search more").getAttribute("aria-disabled")), "true");
   await page.evaluate(() => {
     window.assemblyFixture.holdMethod = undefined;
     for (const data of window.assemblyFixture.held.splice(0)) window.dispatchEvent(new MessageEvent("message", { data }));
   });
   await page.waitForFunction(() => [...document.querySelectorAll('[role="status"]')].some(element => element.textContent.includes("fields could not be searched")));
-  assert.equal(await page.evaluate(() => document.body.textContent.includes("0 loaded matches")), true);
-  assert.deepEqual(await page.evaluate(() => ["Next match", "Search more"].map(label => [...document.querySelectorAll("button")].find(button => button.textContent === label).disabled)), [true, true]);
+  if (editor) {
+    assert.equal(await page.$eval('.idle-history-match-count', element => element.textContent), '0 of 0');
+    assert.equal(await page.$eval('button[aria-label="Next match"]', button => button.disabled), true);
+    assert.equal(await page.evaluate(() => [...document.querySelectorAll('button')].some(button => button.textContent === 'Search more')), false, 'completed search has no continuation');
+  } else {
+    assert.equal(await page.evaluate(() => document.body.textContent.includes("0 loaded matches")), true);
+    assert.deepEqual(await page.evaluate(() => ["Next match", "Search more"].map(label => [...document.querySelectorAll("button")].find(button => button.textContent === label).disabled)), [true, true]);
+  }
   assert.equal(await page.evaluate(() => document.querySelector('[role="alert"]')?.textContent ?? null), null);
+}
+
+async function submitSearch(page, selector) {
+  if (selector) await page.click(selector);
+  else await page.evaluate(() => [...document.querySelectorAll('button')].find(button => button.textContent === 'Search').click());
 }
 
 async function checkReadyReplies(page, workspaceId) {
@@ -234,12 +363,19 @@ async function checkReadyReplies(page, workspaceId) {
 }
 
 async function showActivity(page) {
-  await page.evaluate(() => [...document.querySelectorAll("button")].find(button => button.textContent.trim() === "Activity" || button.getAttribute('aria-label') === 'Open Activity').click());
-  await page.waitForSelector("#idle-search");
-  await page.waitForSelector('#idle-history[aria-busy="false"] [role="treeitem"]');
+  if (!await page.$('.idle-history-explorer')) await page.evaluate(() => [...document.querySelectorAll("button")].find(button => button.textContent.trim() === "Activity" || button.getAttribute('aria-label') === 'Open Activity').click());
+  await page.waitForSelector('#idle-search, #idle-history-search');
+  await page.waitForSelector('#idle-history[aria-busy="false"] [role="treeitem"], #idle-history[aria-busy="false"] .idle-timeline-row');
 }
 
 async function selectRecord(page, recordId) {
+  if (await page.$('.idle-history-explorer')) {
+    const selector = `.idle-timeline-row[data-operation="${recordId}"]`;
+    await page.waitForSelector(selector);
+    await page.click(selector);
+    await page.waitForSelector(`${selector}[aria-selected="true"]`);
+    return;
+  }
   const selector = `#idle-history [role="treeitem"][id$="${Buffer.from(recordId).toString("hex")}"]`;
   await page.$eval('#idle-history', element => { element.scrollTop = 0; });
   for (let step = 0; step < 40; step++) {
@@ -301,16 +437,15 @@ async function checkWorkspaceSwitch(page, selected) {
     await page.select('select[id$=-workspace]', id);
     await page.waitForFunction((id, before) => ['app.coordination', 'app.history'].every(method => window.assemblyFixture.responses.slice(before).some(({ request, data }) => request.method === method && request.params.binding.workspace_id === id && data.result)), {}, id, before);
     await showActivity(page);
-    assert.equal(await page.evaluate(() => [...document.querySelectorAll('button')].some(button => button.textContent === 'Inspect record')), false, 'folder switches clear the previous record selection');
+    assert.equal(await page.evaluate(() => document.querySelector('.idle-timeline-row[aria-selected="true"]') !== null || [...document.querySelectorAll('button')].some(button => button.textContent === 'Inspect record')), false, 'folder switches clear the previous record selection');
   }
 }
 
-async function appendCapture(host, workspace) {
+async function appendCapture(host, workspace, session = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd') {
   const { StdioClient } = require('../out/host/processes');
   const client = new StdioClient({}, host.native.connection(workspace, 'capture', {
     workspace_path: workspace, chain_dir: join(workspace, 'chain'),
   }));
-  const session = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
   const event = (sequence, event) => ({ schema: 1, session, sequence, time_ms: Date.now(),
     identity: { kind: 'unsigned', guid: '22222222-2222-4222-8222-222222222222', stream: 'a'.repeat(24) },
     units: { offsets: 'utf16_code_units', positions: 'zero_based_line_utf16_column', snapshots: 'utf8_bytes' }, event });
@@ -339,6 +474,7 @@ async function checkActivityUpdate(page) {
 
 async function savePage(page, name, directory) {
   await mkdir(directory, { recursive: true });
+  await page.bringToFront();
   await page.screenshot({ path: join(directory, name + '.png'), fullPage: true });
   await writeFile(join(directory, name + '.html'), await page.content());
   await writeFile(join(directory, name + '.json'), JSON.stringify(await page.evaluate(() => window.assemblyFixture), null, 2));
