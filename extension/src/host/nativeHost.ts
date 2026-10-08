@@ -5,7 +5,7 @@ import { record } from './protocol';
 const HEADER = 8;
 const MAX_FRAME = 160 * 1024 * 1024 + HEADER;
 const LIMITS = { capture: 160 * 1024 * 1024, history: 8 * 1024 * 1024,
-  collection: 1024 * 1024, repository: 16 * 1024, coordination: 16 * 1024 * 1024 };
+  collection: 1024 * 1024, repository: 16 * 1024, coordination: 16 * 1024 * 1024, runtime: 1024 * 1024 };
 type Service = keyof typeof LIMITS;
 const enum Kind { Hello, Open, Data, Close, Ready, Closed, Shutdown }
 
@@ -148,7 +148,7 @@ export class NativeHost {
       if (!this.hello || this.greeted || payload.length > 64 * 1024) throw new Error('Unexpected native host handshake.');
       const hello: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(payload));
       if (!record(hello) || hello.version !== 1 || !record(hello.services)
-        || Object.keys(LIMITS).some(service => (hello.services as Record<string, unknown>)[service] !== 1)) {
+        || ['capture', 'history', 'collection', 'repository', 'coordination'].some(service => (hello.services as Record<string, unknown>)[service] !== 1)) {
         throw new Error('Incompatible native host services.');
       }
       clearTimeout(this.helloTimer);

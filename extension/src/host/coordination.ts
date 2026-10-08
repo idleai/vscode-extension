@@ -10,6 +10,7 @@ import { NativeServices } from './nativeHost';
 import { ConfigurationJournal } from './configurationJournal';
 import { HostCallContext } from './effects';
 import { HostError, record } from './protocol';
+import { RuntimeHost } from './runtime';
 
 /** One private metadata authority per folder, owned by the extension lifetime. */
 export class CoordinationHost {
@@ -21,7 +22,7 @@ export class CoordinationHost {
   private readonly journal: ConfigurationJournal;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly configuration: HostConfiguration,
-    private readonly native: NativeServices) {
+    private readonly native: NativeServices, private readonly runtime?: RuntimeHost) {
     this.journal = new ConfigurationJournal(path.join(context.globalStorageUri.fsPath, 'configuration'));
     const saved = context.globalState.get<string>('coordination.localContributor');
     const id = saved ?? randomUUID();
@@ -69,7 +70,12 @@ export class CoordinationHost {
         ? await client.request('{"kind":"snapshot"}', signal) : undefined;
       if (mutation) await this.journal.settled(binding, mutation.contributor, mutation.id);
       this.assertCurrent(generation, signal);
-      if (params.watch !== true || command.kind !== 'catch_up' || Date.now() >= deadline) return { native: raw, snapshot, now_ms: Date.now() };
+      if (params.watch !== true || command.kind !== 'catch_up' || Date.now() >= deadline) {
+        const runtime = params.runtime === true && command.kind === 'snapshot'
+          ? await this.runtime?.snapshot(config, binding, signal) : undefined;
+        this.assertCurrent(generation, signal);
+        return { native: raw, snapshot, runtime, now_ms: Date.now() };
+      }
       const result = JSON.parse(raw).result.Ok;
       if (result.kind !== 'events' || result.data.events.length) return { native: raw, now_ms: Date.now() };
       await delay(1000, undefined, { signal });

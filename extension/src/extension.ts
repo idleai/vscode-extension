@@ -3,6 +3,7 @@ import { HostServices } from "./host/services";
 import { WorkspaceViewProvider } from "./host/webviews";
 import { SIDEBAR_VIEWS } from "./host/viewSelection";
 import { NativeSidebar } from "./host/nativeSidebar";
+import { runtimeCommands } from "./host/runtimeCommands";
 
 let active: HostServices | undefined;
 
@@ -21,10 +22,16 @@ export function activate(context: vscode.ExtensionContext): HostServices {
     host.presence.disconnect();
     host.history.disconnect();
     host.assembly.reset();
+    void host.runtime.reset();
     provider.broadcast("host.configurationChanged", host.configuration.snapshot());
   };
   context.subscriptions.push(
     host, sidebar, provider,
+    ...runtimeCommands(host, provider),
+    host.runtime.onDidChange(() => {
+      void sidebar.refresh("ComputeHosts").catch(error => host.diagnostics.failure("Compute hosts refresh", error));
+      provider.refresh("ComputeHosts");
+    }),
     host.onDidChangeContext(() => provider.broadcast("host.configurationChanged", host.configuration.snapshot())),
     host.collection.onDidChange(folder => {
       host.activity.refresh();
@@ -54,6 +61,7 @@ export function activate(context: vscode.ExtensionContext): HostServices {
       host.configuration.assertTrusted();
       await host.capture.flush();
       await host.sharing.reset(false);
+      await host.runtime.reset();
       await host.native.restart();
       host.coordination.reset();
       host.repository.reset();

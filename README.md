@@ -13,6 +13,9 @@ resource screens and native actions are connected. Git/GitHub data and recorded-
 are being assembled; live session execution requires a runtime;
 see the [assembly notes](docs/assembly.md).
 
+Compute hosts can connect to a Codex Evo daemon through Dev Tunnels. See
+[connecting a compute host](docs/compute-hosts.md) for pairing and testing.
+
 ## Setup
 
 Use Node.js 22.12+, Python 3.12+, rustup and an authenticated GitHub CLI (`gh`).

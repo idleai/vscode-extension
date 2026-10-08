@@ -6,6 +6,9 @@ use crate::adapters::{Call, Runtime};
 #[path = "workspace_config_tests.rs"]
 mod workspace_config;
 
+#[path = "runtime_tests.rs"]
+mod runtime;
+
 fn snapshot(workspace: &str) -> Value {
     json!({
         "as_of": {"workspace_id":workspace, "contributor_id":"local-contributor:test", "stream_id":"stream", "position":"9007199254740993"},

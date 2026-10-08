@@ -83,10 +83,11 @@ pub(super) fn resource(
     operation: &resources::ResourceOperation,
     data: Value,
     now: u64,
+    runtime: Option<&Value>,
 ) -> Result<Value, String> {
     let snapshot: RepositorySnapshot =
         serde_json::from_value(data).map_err(|error| error.to_string())?;
-    let projected = resources::ResourceSnapshot::from_protocol(
+    let mut projected = resources::ResourceSnapshot::from_protocol(
         &recovery(snapshot),
         &resources::ResourceAdapterContext {
             context: operation.context.clone(),
@@ -95,6 +96,9 @@ pub(super) fn resource(
         },
     )
     .map_err(|error| error.to_string())?;
+    if let Some(runtime) = runtime.filter(|value| !value.is_null()) {
+        super::runtime::append(&mut projected, runtime.clone(), now)?;
+    }
     Ok(json!({"Ok": resources::ResourceResult::Snapshot(Box::new(projected))}))
 }
 

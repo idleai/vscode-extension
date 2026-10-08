@@ -9,6 +9,7 @@ import { ActivityDecorations } from "../authorActivity";
 import { HostConfiguration } from "./configuration";
 import { NativeHost } from "./nativeHost";
 import { CoordinationHost } from "./coordination";
+import { RuntimeHost } from "./runtime";
 import { RepositoryHost } from "./repository";
 import { AssemblyHost } from "./assembly";
 import { HostCredentials } from "./credentials";
@@ -31,6 +32,7 @@ export class HostServices implements vscode.Disposable {
   readonly history: HistoryHost;
   readonly assembly: AssemblyHost;
   readonly coordination: CoordinationHost;
+  readonly runtime: RuntimeHost;
   readonly repository: RepositoryHost;
   readonly activity: ActivityDecorations;
   private readonly changed = new vscode.EventEmitter<void>();
@@ -49,7 +51,8 @@ export class HostServices implements vscode.Disposable {
     this.collection = new CollectionHost(context, this.configuration, this.diagnostics, this.native);
     this.sharing = new SharingHost(context, this.configuration, this.credentials, this.diagnostics, this.native);
     this.history = new HistoryHost(this.native, this.effects, this.diagnostics);
-    this.coordination = new CoordinationHost(context, this.configuration, this.native);
+    this.runtime = new RuntimeHost(context, this.configuration, this.native, () => this.coordination.contributor());
+    this.coordination = new CoordinationHost(context, this.configuration, this.native, this.runtime);
     this.repository = new RepositoryHost(context, this.configuration, this.credentials, () => this.coordination.contributor(), this.native);
     this.assembly = new AssemblyHost(this.configuration, this.history, this.effects, (folder, error) => {
       this.diagnostics.failure("Workspace " + folder, error);
@@ -64,6 +67,7 @@ export class HostServices implements vscode.Disposable {
       this.presence.disconnect();
       this.history.disconnect();
       this.assembly.reset();
+      void this.runtime.reset();
       void this.sharing.reset(false).catch(error => this.diagnostics.failure("Account sharing reset", error));
       this.changed.fire();
     });
@@ -108,7 +112,7 @@ export class HostServices implements vscode.Disposable {
     this.effects.dispose();
     try {
       const services = await Promise.allSettled([this.sharing.shutdown(), this.capture.shutdown(),
-        this.collection.shutdown(), this.history.shutdown(), this.coordination.shutdown(), this.repository.shutdown()]);
+        this.collection.shutdown(), this.history.shutdown(), this.coordination.shutdown(), this.repository.shutdown(), this.runtime.shutdown()]);
       if (services.some(result => result.status === "rejected")) {
         throw new HostError("shutdown_failed", "Some host services did not close successfully.");
       }
