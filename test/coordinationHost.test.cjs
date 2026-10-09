@@ -96,10 +96,12 @@ test('a transferred workspace routes reads to its daemon and stays unavailable w
     channel.reply({ version: 1, id: request.data.id, result: { Ok: command.kind === 'versions' ? versions : receipt } });
   } });
   let available = true;
+  let resetDuringStatus = false;
   const calls = [];
   const runtime = { async coordination(_config, _binding, raw) {
     if (!available) throw Object.assign(new Error('daemon unavailable'), { code: 'unavailable' });
     const request = JSON.parse(raw); calls.push(request);
+    if (request.kind === 'status' && resetDuringStatus) { resetDuringStatus = false; host.reset(); }
     return JSON.stringify({ version: 1, id: 'remote', result: { Ok: request.kind === 'status'
       ? { target: receipt.target, receipt } : { owner: 'daemon' } } });
   } };
@@ -116,4 +118,8 @@ test('a transferred workspace routes reads to its daemon and stays unavailable w
   host.reset();
   available = true;
   assert.deepEqual(JSON.parse((await read()).native).result.Ok, { owner: 'daemon' }, 'editor restart retains the frozen route');
+  resetDuringStatus = true;
+  const beforeReset = calls.length;
+  await assert.rejects(read(), { code: 'cancelled' });
+  assert.deepEqual(calls.slice(beforeReset).map(call => call.kind), ['status'], 'reset during route lookup cannot dispatch a retired workspace command');
 });

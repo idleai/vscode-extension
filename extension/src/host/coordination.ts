@@ -57,10 +57,12 @@ export class CoordinationHost {
     });
     this.assertCurrent(generation, signal);
     const client = await this.routed(local, config, binding, signal);
+    this.assertCurrent(generation, signal);
     if (command.kind === 'presence') await this.publishPresence(client, config, binding, signal);
     // A watch owns no cursor in JavaScript. Rust supplies the original exact cursor.
     const deadline = Date.now() + 20_000;
     for (;;) {
+      this.assertCurrent(generation, signal);
       const raw = await client.request(params.command, signal);
       const snapshot = mutation && JSON.parse(raw)?.result?.Ok?.result?.status === 'success'
         ? await client.request('{"kind":"snapshot"}', signal) : undefined;
