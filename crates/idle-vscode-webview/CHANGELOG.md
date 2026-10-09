@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/idleai/vscode-extension/compare/idle-vscode-webview-v0.2.0...idle-vscode-webview-v0.2.1) - 2026-10-09
+
+### Added
+
+- pair VS Code workspaces with Codex compute hosts ([#27](https://github.com/idleai/vscode-extension/pull/27))
+
 ## [0.2.0](https://github.com/idleai/vscode-extension/compare/idle-vscode-webview-v0.1.4...idle-vscode-webview-v0.2.0) - 2026-10-08
 
 ### Other
