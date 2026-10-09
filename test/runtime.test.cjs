@@ -51,6 +51,32 @@ test('pairing stores the invitation privately and sends the exact workspace bind
   assert.deepEqual(native.channels[0].requests.filter(call => call.kind === 'call').map(call => call.data.command.kind), ['status']);
 });
 
+test('attachment-only invitations cannot send coordination operations', async t => {
+  const { runtime, native } = setup(t);
+  await runtime.connect(config, binding, 'idle-runtime:PRIVATE');
+  native.host.supports = async () => true;
+  await assert.rejects(runtime.coordination(config, binding, '{"kind":"status"}'), { code: 'denied' });
+  assert.deepEqual(native.channels[0].requests.map(request => request.data?.command.kind), ['status']);
+});
+
+test('coordination requests preserve the caller command and stop on revoked connections', async t => {
+  let denied = false;
+  const { runtime, native } = setup(t, (channel, call) => {
+    if (call.kind !== 'call') return;
+    const command = call.data.command;
+    channel.reply({ version: 1, id: call.data.id, result: denied ? { Err: 'forbidden' }
+      : { Ok: command.kind === 'status' ? { status: { ...status, capabilities: [...status.capabilities, 'workspaceCoordination'] } }
+        : { saved: command.request.command.data.context.request_id } } });
+  });
+  native.host.supports = async () => true;
+  await runtime.connect(config, binding, 'idle-runtime:PRIVATE');
+  const request = '{"kind":"call","command":{"kind":"mutate","data":{"context":{"request_id":"original-write"},"body":{"exact":9007199254740993}}}}';
+  assert.equal(JSON.parse(await runtime.coordination(config, binding, request)).result.Ok.saved, 'original-write');
+  assert.ok(native.channels[0].raw.at(-1).toString().includes('9007199254740993'), 'forwarding cannot round large native values');
+  denied = true;
+  await assert.rejects(runtime.coordination(config, binding, request), { code: 'denied' });
+});
+
 test('revoked access keeps the host visible as unavailable', async t => {
   let now = Date.now(), denied = false;
   t.mock.method(Date, 'now', () => now);
