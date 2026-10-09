@@ -46,5 +46,12 @@ export function runtimeCommands(host: HostServices, views: WorkspaceViewProvider
       await host.runtime.disconnect(context.binding);
       await host.diagnostics.notify('info', 'Saved compute connection removed. The compute daemon is still running.');
     }),
+    register('idle.compute.moveCoordination', async () => {
+      const context = await selected();
+      if (!context) return;
+      host.assembly.validateBinding(context.binding);
+      await host.coordination.moveToRuntime(context.config, context.binding);
+      await host.diagnostics.notify('info', 'Workspace coordination now runs on the compute host and continues when this editor closes.');
+    }),
   ];
 }

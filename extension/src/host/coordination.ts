@@ -11,8 +11,9 @@ import { ConfigurationJournal } from './configurationJournal';
 import { HostCallContext } from './effects';
 import { HostError, record } from './protocol';
 import { RuntimeHost } from './runtime';
+import { coordinationReceipt, coordinationResult, transferCoordination } from './coordinationTransfer';
 
-/** One private metadata authority per folder, owned by the extension lifetime. */
+/** Local metadata or a retained route to the daemon that owns its transferred state. */
 export class CoordinationHost {
   private readonly clients = new Map<string, CoordinationProcess>();
   private retiring: Promise<void> = Promise.resolve();
@@ -20,6 +21,7 @@ export class CoordinationHost {
   private closed = false;
   private readonly identity: Promise<string>;
   private readonly journal: ConfigurationJournal;
+  private readonly transfers = new Set<string>();
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly configuration: HostConfiguration,
     private readonly native: NativeServices, private readonly runtime?: RuntimeHost) {
@@ -49,18 +51,12 @@ export class CoordinationHost {
       await this.journal.prepare(binding, mutation.contributor, mutation.id, params.command);
       this.assertCurrent(generation, signal);
     }
-    let owner = this.clients.get(binding.workspace_id);
-    if (!owner) {
-      owner = new CoordinationProcess(this.native,
-        () => this.installation(config, binding, generation), undefined,
-        () => this.assertCurrent(generation));
-      this.clients.set(binding.workspace_id, owner);
-    }
-    const client = await owner.acquire(true).catch(error => {
+    const local = await this.client(config, binding, generation).catch(error => {
       this.assertCurrent(generation, signal);
       throw error;
     });
     this.assertCurrent(generation, signal);
+    const client = await this.routed(local, config, binding, signal);
     if (command.kind === 'presence') await this.publishPresence(client, config, binding, signal);
     // A watch owns no cursor in JavaScript. Rust supplies the original exact cursor.
     const deadline = Date.now() + 20_000;
@@ -101,6 +97,45 @@ export class CoordinationHost {
   /** Host-local identity used to scope non-runtime repository preferences. */
   async contributor(): Promise<string> { return `local-contributor:${await this.identity}`; }
 
+  async moveToRuntime(config: FolderConfiguration, binding: RepositoryBinding): Promise<void> {
+    this.configuration.assertTrusted();
+    const generation = this.generation;
+    if (!this.runtime || !await this.native.supports?.('coordination.runtime-owner')) {
+      throw new HostError('incompatible_host', 'Update the native host to move workspace coordination to the compute daemon.');
+    }
+    if (this.transfers.has(binding.workspace_id)) throw new HostError('busy', 'Workspace coordination is already moving.');
+    this.transfers.add(binding.workspace_id);
+    try {
+      const client = await this.client(config, binding, generation);
+      await transferCoordination(client, request => this.runtime!.coordination(config, binding, request), () => this.assertCurrent(generation));
+    } finally { this.transfers.delete(binding.workspace_id); }
+  }
+
+  private client(config: FolderConfiguration, binding: RepositoryBinding, generation: number): Promise<CoordinationClient> {
+    let owner = this.clients.get(binding.workspace_id);
+    if (!owner) {
+      owner = new CoordinationProcess(this.native, () => this.installation(config, binding, generation), undefined,
+        () => this.assertCurrent(generation));
+      this.clients.set(binding.workspace_id, owner);
+    }
+    return owner.acquire(true);
+  }
+
+  private async routed(local: CoordinationClient, config: FolderConfiguration, binding: RepositoryBinding, signal: AbortSignal): Promise<Pick<CoordinationClient, 'request'>> {
+    if (!await this.native.supports?.('coordination.runtime-owner')) return local;
+    const route = coordinationResult(await local.request('{"kind":"runtime_transfer_status"}', signal));
+    if (route === null) return local;
+    const receipt = coordinationReceipt(route);
+    if (!this.runtime) throw new HostError('unavailable', 'Workspace coordination belongs to a compute host. Reconnect that host to continue.');
+    const status = coordinationResult(await this.runtime.coordination(config, binding, '{"kind":"status"}', signal));
+    if (!record(status) || !record(status.target) || status.target.host_id !== receipt.target.host_id
+      || status.target.checkout_id !== receipt.target.checkout_id || !record(status.receipt)
+      || status.receipt.transfer_id !== receipt.transfer_id || status.receipt.package_hash !== receipt.package_hash) {
+      throw new HostError('unavailable', 'Reconnect the original compute host and run Move Workspace Coordination again to finish the transfer.');
+    }
+    return { request: (command, requestSignal) => this.runtime!.coordination(config, binding, `{"kind":"call","command":${command}}`, requestSignal) };
+  }
+
   private async validateMutation(value: unknown, binding: RepositoryBinding): Promise<{ contributor: string; id: string }> {
     const subject = await this.identity;
     const contributor = `local-contributor:${subject}`;
@@ -116,7 +151,7 @@ export class CoordinationHost {
     return { contributor, id: value.context.request_id };
   }
 
-  private async publishPresence(client: CoordinationClient, config: FolderConfiguration, binding: RepositoryBinding, signal: AbortSignal): Promise<void> {
+  private async publishPresence(client: Pick<CoordinationClient, 'request'>, config: FolderConfiguration, binding: RepositoryBinding, signal: AbortSignal): Promise<void> {
     const subject = await this.identity;
     const active = vscode.window.activeTextEditor?.document.uri;
     const relative = active && active.scheme === config.folder.uri.scheme && active.authority === config.folder.uri.authority
