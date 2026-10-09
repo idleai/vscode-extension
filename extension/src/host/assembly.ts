@@ -92,6 +92,11 @@ export class AssemblyHost implements vscode.Disposable {
     return this.selected({ binding }).binding;
   }
 
+  /** Resolve a command's selected workspace using the same checks as view reads. */
+  configurationFor(binding: RepositoryBinding): FolderConfiguration {
+    return this.selected({ binding }).config;
+  }
+
   /** Prefer the active editor's folder; a single-folder window is unambiguous. */
   defaultBinding(): RepositoryBinding | undefined {
     const active = vscode.window.activeTextEditor?.document.uri;

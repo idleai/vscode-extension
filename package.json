@@ -88,6 +88,22 @@
         "enablement": "isWorkspaceTrusted"
       },
       {
+        "command": "idle.compute.request",
+        "title": "Idle: Copy Compute Connection Request",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.compute.connect",
+        "title": "Idle: Connect Compute Host",
+        "icon": "$(plug)",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "idle.compute.disconnect",
+        "title": "Idle: Disconnect Compute Host",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
         "command": "idle.tracking.start",
         "title": "Idle: Start Editor Capture",
         "enablement": "isWorkspaceTrusted"
@@ -480,6 +496,11 @@
     "menus": {
       "view/title": [
         {
+          "command": "idle.compute.connect",
+          "when": "view == idle.computeHosts",
+          "group": "navigation@0"
+        },
+        {
           "command": "idle.workspaceSettings",
           "when": "view == idle.workspace",
           "group": "1_settings"
@@ -769,6 +790,7 @@
     "test": "python3 scripts/release_dependencies.py run -- npm run test:resolved",
     "test:resolved": "node scripts/prepare-host-tests.mjs && npm run compile && node --test test/*.test.cjs",
     "test:tunnels:live": "npm run compile && node scripts/smoke-dev-tunnels.cjs",
+    "test:compute:live": "npm run compile && node scripts/smoke-compute.cjs",
     "test:webview": "node scripts/smoke-webview.mjs idle.vsix",
     "test:assembly": "node scripts/smoke-assembly.mjs idle.vsix",
     "build:host": "node scripts/build-host.mjs",

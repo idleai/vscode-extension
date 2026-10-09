@@ -2,6 +2,7 @@
 
 mod reads;
 mod recovery;
+mod runtime;
 mod writes;
 
 use app_core::{
@@ -76,7 +77,8 @@ impl Adapter {
         let drafts = matches!(effect, Effect::Configuration(request) if matches!(request.operation.action, configuration::ConfigurationAction::Save(_)))
             .then(|| serde_json::to_string(&view.configuration.drafts).ok()).flatten();
         Some(
-            json!({"binding":binding, "command":command.to_string(), "watch":watch, "drafts":drafts}),
+            json!({"binding":binding, "command":command.to_string(), "watch":watch, "drafts":drafts,
+                "runtime":matches!(effect, Effect::Resource(_))}),
         )
     }
 
@@ -105,7 +107,8 @@ impl Adapter {
                 .workspace(&request.operation, data.clone(), now, view)
                 .map(Some),
             Effect::Resource(request) => {
-                reads::resource(&request.operation, data.clone(), now).map(Some)
+                reads::resource(&request.operation, data.clone(), now, value.get("runtime"))
+                    .map(Some)
             }
             Effect::Configuration(request) => {
                 if request.operation.action == configuration::ConfigurationAction::Load {
