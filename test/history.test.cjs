@@ -384,3 +384,117 @@ test('working files resolve within the explicit checkout, reject symlink escapes
   assert.equal(opened.length, 1);
   assert.equal(h.requests.length, 0);
 });
+
+test('timeline opens retain exact source and JSON target in a normal preview editor', async t => {
+  const h = setup(t, '{"kind":"Message"}\n');
+  h.host.connect({ ...binding(), retainedDirectory: '/history/retained-inputs' }, h.provider);
+  const output = await h.host.query({ binding: repository, operation: { chain: repository.chain,
+    action: { OpenAt: { address: { Record: { source: 'retained', record: reference } }, target: 'OperationJson' } } } });
+  assert.deepEqual(output, { Ok: 'Opened' });
+  assert.equal(h.requests[0].selected.source, 'retained');
+  assert.equal(h.requests[0].selected.target, 'OperationJson');
+  const command = f.calls.editorCommands.at(-1);
+  assert.equal(command.id, 'vscode.open');
+  assert.deepEqual(command.args[1], { preview: true });
+  assert.equal(documentAddress(command.args[0]).request.record.hash, reference.hash);
+});
+
+test('missing recorded file content opens the exact operation JSON with an explanation', async t => {
+  const h = setup(t);
+  h.host.connect(binding(), h.provider);
+  h.provider.resolve = async selected => {
+    if (selected.target !== 'OperationJson') throw new HistoryFailure('missing_content', 'Blob has not arrived.');
+    return { request: selected, documents: [{ ...document('{"kind":"File"}\n'), name: 'operation.json' }] };
+  };
+  const opened = await h.host.open(request('Diff'));
+  assert.equal(f.calls.editorCommands.at(-1).id, 'vscode.open');
+  assert.equal(documentAddress(uri(opened.uris[0])).request.target, 'OperationJson');
+  assert.match(f.calls.notifications.at(-1), /content is unavailable.*operation JSON/);
+  assert.equal(f.calls.editorCommands.length, 1);
+});
+
+test('a slower preview cannot replace the latest clicked operation', async t => {
+  const h = setup(t);
+  h.host.connect(binding(), h.provider);
+  const pending = [];
+  h.provider.resolve = (selected, signal) => new Promise(done => pending.push({ signal, finish: () => done({ request: selected, documents: [{ ...document('{}'), record: selected.record }] }) }));
+  const first = assert.rejects(h.host.open(request('OperationJson')), { code: 'cancelled' });
+  const latestRecord = { operation: '3'.repeat(64), hash: '4'.repeat(64) };
+  const second = h.host.open({ ...request('OperationJson'), record: latestRecord });
+  assert.equal(pending[0].signal.aborted, true);
+  pending[1].finish();
+  await second;
+  pending[0].finish();
+  await first;
+  assert.equal(f.calls.editorCommands.length, 1);
+  assert.deepEqual(documentAddress(f.calls.editorCommands[0].args[0]).request.record, latestRecord);
+});
+
+test('a started VS Code command finishes before the latest selection is committed', async t => {
+  const h = setup(t);
+  h.host.connect(binding(), h.provider);
+  const execute = f.api.commands.executeCommand;
+  t.after(() => { f.api.commands.executeCommand = execute; });
+  let finish;
+  f.api.commands.executeCommand = async (id, ...args) => {
+    const count = f.calls.editorCommands.length;
+    await execute(id, ...args);
+    if (count === 0) await new Promise(done => { finish = done; });
+  };
+  const first = assert.rejects(h.host.open(request('OperationJson')), { code: 'cancelled' });
+  await turn();
+  assert.equal(typeof finish, 'function');
+  const second = h.host.open(request('File'));
+  await turn();
+  assert.equal(f.calls.editorCommands.length, 1);
+  finish();
+  await Promise.all([first, second]);
+  assert.equal(f.calls.editorCommands.length, 2);
+  assert.equal(documentAddress(f.calls.editorCommands.at(-1).args[0]).request.target, 'File');
+});
+
+test('Git timeline destinations open the exact bound commit and expire with their connection', async t => {
+  const h = setup(t);
+  const commit = { repository: '123', oid: 'a'.repeat(40) };
+  const calls = [];
+  h.provider.query = async query => {
+    calls.push(query);
+    return { Ok: { Commit: { ...commit, content: 'commit aaaa\n\n    Recorded change\n' } } };
+  };
+  h.host.connect(binding(), h.provider);
+  const open = address => h.host.openQuery({ binding: repository,
+    query: { chain: repository.chain, action: { OpenAt: { address, target: 'Record' } } } });
+  assert.equal(await open({ Commit: commit }), 'Opened');
+  const opened = f.calls.editorCommands.at(-1);
+  assert.equal(opened.id, 'vscode.open');
+  assert.equal(opened.args[0].scheme, 'idle-history-git');
+  assert.deepEqual(calls[0], { chain: repository.chain, action: { Commit: commit } });
+  const provider = f.calls.contentProviders.find(item => item.scheme === 'idle-history-git').provider;
+  assert.match(await provider.provideTextDocumentContent(opened.args[0]), /Recorded change/);
+  for (const invalid of [ { ...commit, oid: 'HEAD' }, { ...commit, repository: '/tmp/repo' },
+    { ...commit, oid: 'a'.repeat(40), path: '/tmp/repo' } ]) {
+    await assert.rejects(open({ Commit: invalid }), { code: 'invalid_request' });
+  }
+  assert.equal(f.calls.editorCommands.length, 1);
+  h.host.connect(binding(), h.provider);
+  await assert.rejects(provider.provideTextDocumentContent(opened.args[0]), { code: 'unavailable' });
+});
+
+test('late and foreign commit replies cannot open an editor', async t => {
+  const h = setup(t);
+  const commit = { repository: '123', oid: 'a'.repeat(40) };
+  const request = { binding: repository,
+    query: { chain: repository.chain, action: { OpenAt: { address: { Commit: commit }, target: 'Record' } } } };
+  h.provider.query = async () => ({ Ok: { Commit: { ...commit, oid: 'b'.repeat(40), content: 'different' } } });
+  h.host.connect(binding(), h.provider);
+  await assert.rejects(h.host.openQuery(request), { code: 'invalid_response' });
+  let finish;
+  h.provider.query = () => new Promise(done => { finish = done; });
+  const controller = new AbortController();
+  const pending = assert.rejects(h.host.openQuery(request, controller.signal), { code: 'cancelled' });
+  await turn();
+  controller.abort();
+  finish({ Ok: { Commit: { ...commit, content: 'late reply' } } });
+  await pending;
+  assert.equal(f.calls.editorCommands.length, 0);
+});

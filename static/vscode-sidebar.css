@@ -17,6 +17,7 @@ html:has(.idle-native-pane), body:has(.idle-native-pane),
 .idle-navigation-pane .idle-navigation-content { border: 0; }
 .idle-navigation-pane[data-section="Activity"] { display: flex; flex-direction: column; overflow: hidden; }
 .idle-navigation-pane[data-section="Activity"] .idle-navigation-activity,
+.idle-navigation-pane[data-section="Activity"] .idle-history-mini,
 .idle-navigation-pane[data-section="Activity"] .idle-history { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .idle-navigation-pane[data-section="Activity"] .idle-history-viewport { height: auto !important; flex: 1; min-height: 0; }
 .idle-navigation-pane .idle-navigation-configuration { flex: none; font-size: var(--vscode-font-size); }

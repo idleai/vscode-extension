@@ -12,6 +12,8 @@ import {
 } from "./contracts";
 import { BYTE_SCHEME, TEXT_SCHEME, HEX_SCHEME, DocumentAddress, HexDocuments, TextDocuments, HistoryDocuments, documentUri, needsHex } from "./documents";
 import { NativeHistoryProvider } from "./native";
+import { CommitTarget, parseTimelineTarget } from "./timelineTarget";
+import { GIT_SCHEME, GitAddress, GitDocuments, gitUri } from "./gitDocuments";
 import { NativeServices } from "../host/nativeHost";
 import { openWorkingFile } from "./workingFile";
 import { linkCancellation } from "./cancellation";
@@ -36,12 +38,15 @@ export class HistoryHost implements vscode.Disposable {
   private readonly installed: vscode.Disposable[] = [];
   private readonly documents = new HistoryDocuments(address => this.read(address));
   private closed = false;
+  private opening?: AbortController;
+  private editorQueue: Promise<void> = Promise.resolve();
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
 
   constructor(private readonly native: NativeServices, effects: HostEffects, private readonly diagnostics: HostDiagnostics) {
     this.installed.push(
       this.documents,
+      vscode.workspace.registerTextDocumentContentProvider(GIT_SCHEME, new GitDocuments(address => this.readCommit(address))),
       vscode.workspace.registerFileSystemProvider(BYTE_SCHEME, this.documents, { isReadonly: true, isCaseSensitive: true }),
       vscode.workspace.registerTextDocumentContentProvider(TEXT_SCHEME, new TextDocuments(this.documents)),
       vscode.workspace.registerTextDocumentContentProvider(HEX_SCHEME, new HexDocuments(this.documents)),
@@ -49,7 +54,7 @@ export class HistoryHost implements vscode.Disposable {
       effects.register("history.openQuery", (params, context) => this.openQuery(params, context.signal)),
       effects.register("history.openWorkingFile", (params, context) => this.openWorking(params, context.signal)),
     );
-    for (const target of ["Record", "Original", "File", "Diff"] as const) {
+    for (const target of ["OperationJson", "Record", "Original", "File", "Diff"] as const) {
       const command = `idle.history.open${target}`;
       this.installed.push(vscode.commands.registerCommand(command, (params: unknown) =>
         this.diagnostics.command(command, () => this.open({ ...(record(params) ? params : {}), target }))));
@@ -128,7 +133,7 @@ export class HistoryHost implements vscode.Disposable {
     if (!record(params) || !record(params.operation)) throw new HostError("invalid_request", "Expected a bound history query.");
     const connection = this.connection(parseBinding(params.binding));
     if (params.operation.chain !== connection.binding.repository.chain) throw new HostError("binding_mismatch", "The query belongs to a different chain.");
-    if (record(params.operation.action) && record(params.operation.action.Open)) {
+    if (record(params.operation.action) && (record(params.operation.action.Open) || record(params.operation.action.OpenAt))) {
       return { Ok: await this.openQuery({ binding: params.binding, query: params.operation }, signal) };
     }
     if (!connection.provider.query) throw new HostError("unavailable", "History reads are unavailable on this connection.");
@@ -163,33 +168,106 @@ export class HistoryHost implements vscode.Disposable {
     } finally { linked.dispose(); }
   }
 
-  /** Adapter for app-core QueryAction::Open; the reducer receives Opened after editor success. */
+  /** The reducer receives Opened only after the selected native editor succeeds. */
   async openQuery(params: unknown, signal?: AbortSignal): Promise<"Opened"> {
-    if (!record(params) || !record(params.query) || !record(params.query.action) || !record(params.query.action.Open)) {
+    if (!record(params) || !record(params.query) || !record(params.query.action) || Object.keys(params.query.action).length !== 1) {
       throw new HostError("invalid_request", "Expected an app-core native history query.");
     }
     const binding = parseBinding(params.binding);
     if (params.query.chain !== binding.chain) throw new HostError("binding_mismatch", "The query belongs to a different chain.");
     const open = params.query.action.Open;
-    if (Object.keys(open).some(key => key !== "record" && key !== "target")) throw new HostError("invalid_request", "Invalid app-core native history action.");
-    await this.open({ binding, source: "current", record: open.record, target: open.target }, signal);
+    const exact = params.query.action.OpenAt;
+    if (record(exact) && Object.keys(exact).every(key => key === "address" || key === "target")) {
+      const destination = parseTimelineTarget(exact.address);
+      if ("Record" in destination) {
+        await this.open({ binding, ...destination.Record, target: exact.target }, signal);
+      } else {
+        await this.openCommit(binding, destination.Commit, signal);
+      }
+    } else if (record(open) && Object.keys(open).every(key => key === "record" || key === "target")) {
+      await this.open({ binding, source: "current", record: open.record, target: open.target }, signal);
+    } else throw new HostError("invalid_request", "Invalid app-core native history action.");
     return "Opened";
+  }
+
+  private async readCommit(address: GitAddress, signal?: AbortSignal): Promise<string> {
+    const connection = this.connection(address.binding);
+    if (connection.id !== address.connection) throw new HostError("unavailable", "This commit document's history binding has expired.");
+    const result = await this.query({ binding: address.binding, operation: {
+      chain: address.binding.chain, action: { Commit: address.commit },
+    } }, signal);
+    this.assertCurrent(connection, signal);
+    if (record(result) && record(result.Err)) throw new HostError("unavailable", String(result.Err.message));
+    const commit = record(result) && record(result.Ok) ? result.Ok.Commit : undefined;
+    if (!record(commit) || commit.repository !== address.commit.repository || commit.oid !== address.commit.oid || typeof commit.content !== "string") {
+      throw new HostError("invalid_response", "The history adapter returned a different commit.");
+    }
+    return commit.content;
+  }
+
+  private async openCommit(binding: RepositoryBinding, commit: CommitTarget, signal?: AbortSignal): Promise<void> {
+    this.opening?.abort();
+    const opening = new AbortController();
+    this.opening = opening;
+    const cancellation = linkCancellation(opening.signal, signal);
+    try {
+      const connection = this.connection(binding);
+      const address = { connection: connection.id, binding, commit };
+      await this.readCommit(address, cancellation.signal);
+      const action = this.editorQueue.then(async () => {
+        this.assertCurrent(connection, cancellation.signal);
+        await vscode.commands.executeCommand("vscode.open", gitUri(address), { preview: true });
+      });
+      this.editorQueue = action.catch(() => undefined);
+      await action;
+      this.assertCurrent(connection, cancellation.signal);
+    } finally {
+      cancellation.dispose();
+      if (this.opening === opening) this.opening = undefined;
+    }
   }
 
   async open(params: unknown, signal?: AbortSignal): Promise<{ uris: string[]; byteUris: string[] }> {
     const request = parseHistoryRequest(params);
+    this.opening?.abort();
+    const opening = new AbortController();
+    this.opening = opening;
+    const cancellation = linkCancellation(opening.signal, signal);
+    try { return await this.openSelected(request, cancellation.signal); }
+    finally {
+      cancellation.dispose();
+      if (this.opening === opening) this.opening = undefined;
+    }
+  }
+
+  private async openSelected(selected: HistoryRequest, signal: AbortSignal): Promise<{ uris: string[]; byteUris: string[] }> {
+    let request = selected;
     const connection = this.connection(request.binding);
-    const preview = await this.resolve(connection, request, signal);
+    let preview: HistoryPreview;
+    let unavailable = false;
+    try { preview = await this.resolve(connection, request, signal); }
+    catch (error) {
+      if (!(error instanceof HostError) || !["File", "Diff"].includes(request.target as string) || !["not_recorded", "missing_content", "corrupt_content", "unresolvable_content", "unavailable"].includes(error.code)) throw error;
+      request = { ...request, target: "OperationJson" };
+      preview = await this.resolve(connection, request, signal);
+      unavailable = true;
+    }
     const byteUris = preview.documents.map((document, part) => documentUri({ connection: connection.id, request, part }, document.name));
     // Both sides must use the same representation for a meaningful binary diff.
     const hex = preview.documents.some(document => needsHex(documentBytes(document.bytes)));
     const uris = preview.documents.map((document, part) => documentUri({ connection: connection.id, request, part }, document.name, hex ? "hex" : "text"));
     this.assertCurrent(connection, signal);
-    if (request.target === "Diff") {
-      await vscode.commands.executeCommand("vscode.diff", uris[0], uris[1], `${preview.documents[1].name} (recorded${hex ? " bytes, hex" : ""})`, { preview: true });
-    } else {
-      await vscode.commands.executeCommand("vscode.open", uris[0], { preview: true });
-    }
+    const commit = this.editorQueue.then(async () => {
+      this.assertCurrent(connection, signal);
+      if (request.target === "Diff") {
+        await vscode.commands.executeCommand("vscode.diff", uris[0], uris[1], `${preview.documents[1].name} (recorded${hex ? " bytes, hex" : ""})`, { preview: true });
+      } else {
+        await vscode.commands.executeCommand("vscode.open", uris[0], { preview: true });
+      }
+      if (unavailable && !signal.aborted) vscode.window.setStatusBarMessage("Recorded file content is unavailable. Opened the operation JSON.", 8_000);
+    });
+    this.editorQueue = commit.catch(() => undefined);
+    await commit;
     this.assertCurrent(connection, signal);
     return { uris: uris.map(uri => uri.toString()), byteUris: byteUris.map(uri => uri.toString()) };
   }
@@ -284,6 +362,7 @@ export class HistoryHost implements vscode.Disposable {
 
   async shutdown(): Promise<void> {
     if (!this.closed) {
+      this.opening?.abort();
       this.closed = true;
       this.disconnect();
       for (const disposable of this.installed) disposable.dispose();

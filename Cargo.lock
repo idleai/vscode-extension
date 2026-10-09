@@ -16,9 +16,9 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "app-core"
-version = "0.1.5"
+version = "0.2.0"
 source = "sparse+https://raw.githubusercontent.com/idleai/app-core/cargo-index/"
-checksum = "e3c0523d6148f9df89527b98757ee74c00aa922e7e0165a953303ca938c6b682"
+checksum = "9e0894ffb571476ff7467583b169dbf264efdce730b68e8492edb863acfa5f82"
 dependencies = [
  "bincode",
  "crux_core",
@@ -1000,9 +1000,9 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "idle-history"
-version = "0.1.5"
+version = "0.3.0"
 source = "sparse+https://raw.githubusercontent.com/idleai/host-tools/cargo-index/"
-checksum = "16ee1f41cf9c2b61dc713d8b260d9d536d6fa46288c04407c2f4c927d5920232"
+checksum = "280846ee399d76b7c35fe4078b015b75d988a16f246ad082fa3ba637cff10be0"
 dependencies = [
  "editchain-core",
  "facet",
@@ -1023,9 +1023,9 @@ dependencies = [
 
 [[package]]
 name = "idle-history-native"
-version = "0.1.5"
+version = "0.3.0"
 source = "sparse+https://raw.githubusercontent.com/idleai/host-tools/cargo-index/"
-checksum = "41b9049013bc9b1e92cbb49aa2cb5d97559a4cd249e950acf021d96f39b5dea3"
+checksum = "ec75c1d4eab3988c95ddad8390801c30c4858875c815a2b13641baa3b12788cc"
 dependencies = [
  "editchain-core",
  "editchain-engine",
@@ -1036,17 +1036,18 @@ dependencies = [
 
 [[package]]
 name = "idle-protocol"
-version = "0.1.5"
+version = "0.3.0"
 source = "sparse+https://raw.githubusercontent.com/idleai/host-tools/cargo-index/"
-checksum = "b8fdf258ea970882bf38e0c682709161ed228f69d8174f994a3e6183bd71418e"
+checksum = "06fb8eca6d3e63ca08822df61c6935944b3d117efc7493e4bbdc7b13d8c9ff15"
 dependencies = [
  "facet",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "idle-vscode-webview"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "app-core",
  "crux_core",
@@ -1787,13 +1788,14 @@ dependencies = [
 
 [[package]]
 name = "web-ui"
-version = "0.2.1"
+version = "0.3.0"
 source = "sparse+https://raw.githubusercontent.com/idleai/web-ui/cargo-index/"
-checksum = "88af5ac9d3e0e17beb83a20e1154509ddbf74857a5d8f9981309e3cbb476fbb8"
+checksum = "dc325ee6e3cc788476887c318ed7da3f06fb89d9866001caf669f59637cf117d"
 dependencies = [
  "app-core",
  "dioxus",
  "history-geometry",
+ "js-sys",
  "wasm-bindgen",
  "web-sys",
 ]

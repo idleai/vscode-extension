@@ -15,6 +15,7 @@ pub(super) struct Target {
     host: Option<String>,
     provider: Option<String>,
     history: Option<history::Selected>,
+    timeline: Option<history::timeline::Selection>,
 }
 
 impl Runtime {
@@ -45,7 +46,8 @@ impl Runtime {
         let view = self.core.view();
         json!({"binding": view.workspace.repository_binding, "section": section,
             "session": view.sessions.selected, "host": view.resources.selected_host,
-            "provider": view.resources.selected_provider, "history": view.history.selected})
+            "provider": view.resources.selected_provider, "history": view.history.selected,
+            "timeline": view.history.timeline.selected})
     }
 
     /// Open a typed destination once its current workspace data is available.
@@ -70,7 +72,10 @@ impl Runtime {
             self.navigation = Some(target);
             return Vec::new();
         }
-        let mut events = vec![Event::Workspace(workspace::Event::Navigate(target.section))];
+        let mut events = Vec::new();
+        if view.workspace.section != target.section {
+            events.push(Event::Workspace(workspace::Event::Navigate(target.section)));
+        }
         if view.repository.snapshot.is_some()
             && let Some(id) = target.recorded_session.take()
         {
@@ -91,9 +96,24 @@ impl Runtime {
                 events.push(Event::Resources(resources::Event::SelectProvider(Some(id))));
             }
         }
-        if view.history.chain.is_some()
-            && let Some(selected) = target.history.take()
-        {
+        // The initial join replaces history state. Keep an exact destination
+        // queued until that replacement has finished, so it cannot erase a seek.
+        let history_ready = view.history.chain.as_deref() == Some(target.binding.chain.as_str())
+            && (!self.coordination.enabled
+                || (view.subscriptions.status == app_core::subscriptions::ConnectionStatus::Live
+                    && view.subscriptions.context.as_ref().is_some_and(|context| {
+                        context.workspace == target.binding.workspace_id
+                            && context.chain == target.binding.chain
+                    })));
+        if history_ready && let Some(selection) = target.timeline.take() {
+            events.push(Event::History(history::Event::Timeline(
+                history::timeline::Event::Reveal {
+                    surface: history::timeline::Surface::Editor,
+                    selection,
+                },
+            )));
+        }
+        if history_ready && let Some(selected) = target.history.take() {
             events.push(Event::History(history::Event::Select(selected)));
         }
         if target.session.is_some()
@@ -101,6 +121,7 @@ impl Runtime {
             || target.host.is_some()
             || target.provider.is_some()
             || target.history.is_some()
+            || target.timeline.is_some()
         {
             self.navigation = Some(target);
         }

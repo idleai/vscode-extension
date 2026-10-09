@@ -129,6 +129,11 @@
         "enablement": "isWorkspaceTrusted"
       },
       {
+        "command": "idle.history.openOperationJson",
+        "title": "Idle: Open Operation JSON",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
         "command": "idle.history.openRecord",
         "title": "Idle: Open Raw Record",
         "enablement": "isWorkspaceTrusted"
@@ -270,7 +275,7 @@
       },
       {
         "command": "idle.activity.openDetail",
-        "title": "Idle: Open Detail View",
+        "title": "Idle: Open Activity History",
         "icon": "$(open-preview)"
       },
       {
@@ -637,6 +642,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "idle.history.openOperationJson",
+          "when": "false"
+        },
         {
           "command": "idle.history.openRecord",
           "when": "false"

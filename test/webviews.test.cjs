@@ -48,6 +48,10 @@ test('native trees, Activity and detail share the latest workspace across docume
     assert.equal(detail.posted.at(-1).params.recorded_session, 'recorded-2');
     assert.equal(detail.posted.at(-1).params.section, 'Sessions');
     assert.deepEqual(detail.posted.at(-1).params.binding, binding('one'));
+    const timeline = { occurrence: `retained:${'a'.repeat(64)}`, address: { Record: { source: 'retained', record: { operation: 'a'.repeat(64), hash: 'b'.repeat(64) } } } };
+    provider.openTarget({ binding: binding('one'), section: 'Activity', timeline });
+    await turn();
+    assert.deepEqual(detail.posted.at(-1).params.timeline, timeline, 'mini handoff preserves occurrence, source and exact stored hash');
     await send(detail, 'views.selectWorkspace', { binding: binding('two') });
     assert.deepEqual(reopenedActivity.posted.at(-1).params, binding('two'), 'detail workspace picker updates Activity');
     assert.deepEqual(changes.at(-1).params, binding('two'), 'detail workspace picker updates the native tree runtime');
@@ -75,6 +79,7 @@ test('detail routing only accepts typed destinations and rechecks the full repos
   assert.throws(() => detailTarget({ binding: binding('one'), section: 'Sessions', recorded_session: {} }, validate), /selection/);
   assert.throws(() => detailTarget({ binding: binding('one'), section: 'Activity', history: 'x' }, validate), /history selection/);
   assert.deepEqual(detailTarget({ binding: binding('one'), section: 'Activity', history: { item: 'item-2' } }, validate).history, { item: 'item-2', observation: null });
+  assert.throws(() => detailTarget({ binding: binding('one'), section: 'Activity', timeline: { occurrence: 'current:x', address: { Record: { source: 'current', record: { operation: 'x', hash: 'y' } } } } }, validate), /record/);
 });
 
 test('startup selects the current folder, preserves an explicit choice, and replaces a removed binding', async () => {
