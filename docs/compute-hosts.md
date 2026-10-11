@@ -1,20 +1,22 @@
 # Connect a Codex compute host
 
 VS Code connects to the compute machine through Dev Tunnels. The daemon keeps
-running when the editor closes. This first connection supports workspace
-attachment and status; it does not start agents or run file and process actions.
+running when the editor closes. You can attach a workspace, inspect its status
+and explicitly move workspace coordination to that daemon. Agent execution and
+general file and process actions are separate work.
 
 ## Build the matching changes
 
-Use the `evo1/daemon-workspaces` branches in `idleai/codex-evo`,
+Use the `evo1/coordination-owner` branches in `idleai/codex-evo`,
 `idleai/host-tools` and this repository. Build `codex` from the Codex fork and
 `idle-host` from host-tools. Build/install this extension using the normal
 [setup instructions](../README.md#setup).
 
-Until the companion native host is released, set **Idle: Native Host Path**
+The released native host supports attachment and status. To use coordination
+ownership before the companion changes are released, set **Idle: Native Host Path**
 (`idle.native.hostPath`) to your new `idle-host` executable on the machine
-running the extension. The extension checks for compute connection support and
-reports an incompatible native host when an older binary is installed.
+running the extension. The extension checks the native host and daemon's
+capabilities before moving coordination.
 
 ## Pair the workspace
 
@@ -43,6 +45,37 @@ The request binds this client workspace to the approved server checkout. It
 does not copy files or enable history sharing. Each invitation belongs to the
 named VS Code installation; use a new request for another installation.
 
+## Move workspace coordination
+
+1. Sync the tracked `.idle/workspace` definitions to the compute checkout. The
+   transfer checks that both checkouts have exactly the same definitions before
+   it changes ownership; it does not copy or overwrite repository files.
+2. Create a new invitation using the pairing command above with the additional
+   `--coordination-owner` flag. This grants the named installation permission to
+   transfer and use coordination for that checkout. A normal invitation permits
+   attachment and status only.
+3. Paste that invitation into **Idle: Connect Compute Host**, then run
+   **Idle: Move Workspace Coordination to Compute Host**.
+
+The transfer preserves workspace revisions, access grants, change cursors and
+recorded write results. It retires the current control lease; a controller must
+acquire a new lease from the daemon. Configuration changes now update
+`.idle/workspace` in the compute checkout. Sync those tracked files back through
+your normal repository workflow when needed.
+
+The editor's private coordinator freezes before transfer. It keeps a durable
+route to the selected daemon and cannot resume local writes. If the connection
+drops during transfer, reconnect and run the same command again; the transfer
+keeps its original ID and safely accepts a repeated acknowledgement. This also
+works after restarting either process. Closing the editor leaves the daemon's
+coordinator running. The daemon restores the coordinator and its saved state
+after a restart without needing the editor to be open.
+
+An unavailable host, expired grant, revoked grant or disconnected invitation
+makes coordination unavailable in that editor. It never creates a second local
+writer. Reconnect to the same daemon and checkout with an owner invitation to
+restore access. History sharing retains its separate connection and consent.
+
 ## Verify lifecycle and access
 
 - Close and reopen VS Code. The saved invitation reconnects to the same host.
@@ -64,7 +97,10 @@ checkout directories reports unavailable.
 
 The following test creates its own temporary daemon and Dev Tunnel, uses the
 extension's actual native runtime adapter, verifies reconnect and revocation,
-and removes the tunnel afterward. It needs authenticated GitHub CLI access.
+transfers coordination, checks writes on the compute checkout and removes the
+tunnel afterward. It also exercises a lost transfer acknowledgement, editor and
+daemon restart, and rejection of an attachment-only grant. It needs authenticated
+GitHub CLI access.
 Run it on Linux; it uses a temporary Unix control socket and signals only the
 daemon it starts.
 

@@ -114,6 +114,26 @@ export class RuntimeHost {
     this.changed.fire(binding);
   }
 
+  /** Existing standalone commands travel through the daemon's owner-scoped grant. */
+  async coordination(config: FolderConfiguration, binding: RepositoryBinding, request: string, signal?: AbortSignal): Promise<string> {
+    const generation = this.generation;
+    if (Buffer.byteLength(request) > 256 * 1024) throw new HostError('invalid_request', 'This coordination request exceeds the compute connection limit.');
+    if (this.native.supports && !await this.native.supports('coordination.runtime-owner')) {
+      throw new HostError('incompatible_host', 'Update the native host to use daemon workspace coordination.');
+    }
+    const observation = await this.snapshot(config, binding, signal);
+    this.assertCurrent(generation);
+    if (!observation?.connected || !record(observation.status)) throw new HostError('unavailable', 'Reconnect the compute host that owns workspace coordination.');
+    if (!Array.isArray(observation.status.capabilities) || !observation.status.capabilities.includes('workspaceCoordination')) {
+      throw new HostError('denied', 'This invitation does not allow workspace coordination. The compute owner must issue one with --coordination-owner.');
+    }
+    const connection = this.connections.get(this.key(binding));
+    if (!connection || connection.closed) throw new HostError('unavailable', 'Workspace coordination is disconnected.');
+    const response = await connection.client.request(`{"kind":"coordination","request":${request}}`, signal, 45_000);
+    this.assertCurrent(generation);
+    return response;
+  }
+
   private async open(config: FolderConfiguration, binding: RepositoryBinding, invitation: string): Promise<Connection> {
     const clientId = await this.contributor();
     const client = new CoordinationClient({}, undefined, this.native.connection(config.cwd, 'runtime', {

@@ -93,6 +93,11 @@
         "enablement": "isWorkspaceTrusted"
       },
       {
+        "command": "idle.compute.moveCoordination",
+        "title": "Idle: Move Workspace Coordination to Compute Host",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
         "command": "idle.compute.connect",
         "title": "Idle: Connect Compute Host",
         "icon": "$(plug)",
