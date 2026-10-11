@@ -39,6 +39,9 @@ exports.run = async () => {
   try {
     if (phase === 'prepare') {
       await read({ kind: 'snapshot' });
+      if (process.env.IDLE_COMPUTE_RUNNER === '1') {
+        assert.ok(await host.native.supports('runtime.runners'), 'the selected native helper supports runners');
+      }
       assert.equal((await save('desktop-before', '{"savedBeforeTransfer":true}', { kind: 'absent' })).result.status, 'success');
       await fs.writeFile(path.join(directory, 'request', 'request.json'), await host.runtime.connectionRequest(binding));
       await fs.writeFile(path.join(directory, 'before.json'), JSON.stringify(await read({ kind: 'snapshot' })));

@@ -38,8 +38,12 @@ async function prepare() {
   await fs.writeFile(path.join(directory, 'workspace/.vscode/settings.json'), JSON.stringify({
     'idle.chainDirectory': 'chain', 'idle.live.enabled': false, 'idle.tracking.enabled': false,
     'idle.decorations.enabled': false, 'telemetry.telemetryLevel': 'off', 'update.mode': 'none',
-    ...(process.env.IDLE_COMPUTE_RUNNER_HOST ? { 'idle.native.hostPath': process.env.IDLE_COMPUTE_RUNNER_HOST } : {}),
   }));
+  if (process.env.IDLE_COMPUTE_RUNNER_HOST) {
+    await fs.mkdir(path.join(directory, 'profile/User'), { recursive: true });
+    await fs.writeFile(path.join(directory, 'profile/User/settings.json'),
+      JSON.stringify({ 'idle.native.hostPath': process.env.IDLE_COMPUTE_RUNNER_HOST }));
+  }
   await exec('git', ['init', '-b', 'main', path.join(directory, 'workspace')]);
   await fs.writeFile(path.join(directory, 'driver/package.json'), JSON.stringify({
     name: 'idle-compute-test-driver', publisher: 'idle-tests', version: '0.0.1', engines: { vscode: '^1.85.0' },
@@ -53,7 +57,9 @@ exports.activate = async () => {
   try { await require('./test.cjs').run(); }
   catch (error) { await require('node:fs/promises').writeFile(require('node:path').join(process.env.IDLE_COMPUTE_TEST_DIR,
     process.env.IDLE_TEST_PHASE + '.json'), JSON.stringify({ passed: false,
-      error: error instanceof require('node:assert').AssertionError ? error.message : 'Desktop compute operation failed' })); }
+      error: error instanceof require('node:assert').AssertionError ? error.message : 'Desktop compute operation failed',
+      code: /^[a-zA-Z_]+$/.test(error.code ?? '') ? error.code : undefined,
+      frames: String(error.stack ?? '').split('\\n').slice(1).filter(line => /^\\s+at /.test(line)).slice(0, 6) })); }
   finally { await vscode.commands.executeCommand('workbench.action.quit'); }
 };
 `);
