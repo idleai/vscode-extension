@@ -93,7 +93,8 @@ async function run() {
   await desktop('restore');
 }
 
-(process.argv[2] === 'prepare' ? prepare() : run()).catch(error => {
+(process.argv[2] === 'prepare' ? prepare()
+  : ['connect', 'restore'].includes(process.argv[2]) ? desktop(process.argv[2]) : run()).catch(error => {
   console.error(error instanceof assert.AssertionError ? error.message : 'Desktop compute acceptance failed.');
   process.exitCode = 1;
 });

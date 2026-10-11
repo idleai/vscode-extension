@@ -197,5 +197,6 @@ jobs:
           path: |
             ${{ env.IDLE_COMPUTE_TEST_DIR }}/connect.json
             ${{ env.IDLE_COMPUTE_TEST_DIR }}/restore.json
+            ${{ env.IDLE_COMPUTE_TEST_DIR }}/*-progress.jsonl
           if-no-files-found: warn
           retention-days: 1

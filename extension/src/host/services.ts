@@ -37,6 +37,8 @@ export class HostServices implements vscode.Disposable {
   readonly activity: ActivityDecorations;
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChangeContext = this.changed.event;
+  private readonly stopping = new vscode.EventEmitter<void>();
+  readonly onWillShutdown = this.stopping.event;
   /** Byte adapters; the caller/Rust runtime owns protocol interpretation. */
   readonly transport = { bridgeDuplex, consumeTransport, writeTransport };
   private shutdownWork: Promise<void> | undefined;
@@ -104,6 +106,8 @@ export class HostServices implements vscode.Disposable {
   }
 
   private async close(): Promise<void> {
+    this.stopping.fire();
+    this.stopping.dispose();
     this.accountChanged.dispose();
     this.presence.dispose();
     this.activity.dispose();

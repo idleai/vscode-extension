@@ -27,6 +27,7 @@ export function activate(context: vscode.ExtensionContext): HostServices {
   };
   context.subscriptions.push(
     host, sidebar, provider,
+    host.onWillShutdown(() => { sidebar.dispose(); provider.dispose(); }),
     ...runtimeCommands(host, provider),
     host.runtime.onDidChange(() => {
       void sidebar.refresh("ComputeHosts").catch(error => host.diagnostics.failure("Compute hosts refresh", error));

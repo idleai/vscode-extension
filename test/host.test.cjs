@@ -175,6 +175,8 @@ test('activation and views share extension-lifetime services without acquiring c
   await assert.rejects(host.effects.execute('external.open', { url: 'command:workbench.action.closeWindow' }, { session, signal: new AbortController().signal }), /Only HTTP/);
   await extension.deactivate();
   assert.equal(captureClosed, 1);
+  assert.ok(f.calls.trees.every(tree => tree.disposed), 'deactivation closes native views before waiting for host services');
+  assert.equal(second.messages.listeners.size, 0, 'deactivation detaches webview requests');
   for (const disposable of f.context.subscriptions) disposable.dispose();
   assert.equal(JSON.stringify(f.calls.output).includes('TOKEN-NEVER-PRINT'), false);
 });
