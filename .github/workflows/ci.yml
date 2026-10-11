@@ -162,7 +162,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      IDLE_COMPUTE_TEST_DIR: ${{ github.workspace }}/../idle-compute-desktop
+      IDLE_COMPUTE_TEST_DIR: /tmp/idle-compute-desktop
       VSCODE_BIN: /tmp/idle-compute-vscode/VSCode-linux-x64/bin/code
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
