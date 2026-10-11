@@ -43,6 +43,13 @@
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
+      { "command": "idle.runner.connect", "title": "Idle: Connect Runner Host" },
+      { "command": "idle.runner.start", "title": "Idle: Start Runner" },
+      { "command": "idle.runner.show", "title": "Idle: Open Runner" },
+      { "command": "idle.runner.send", "title": "Idle: Send to Runner" },
+      { "command": "idle.runner.review", "title": "Idle: Review Runner Approval" },
+      { "command": "idle.runner.interrupt", "title": "Idle: Interrupt Runner" },
+      { "command": "idle.runner.disconnect", "title": "Idle: Disconnect Runner Host" },
       {
         "command": "idle.open",
         "title": "Idle: Open Workspace"
