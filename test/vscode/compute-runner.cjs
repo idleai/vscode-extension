@@ -23,12 +23,17 @@ exports.run = async (host, config, binding, directory, phase, progress) => {
     await fs.writeFile(saved, JSON.stringify({ id, marker: task.marker }));
     for (let attempt = 0; attempt < 120; attempt++) {
       const { thread } = await rpc('thread/read', { threadId: id, includeTurns: true });
+      await fs.writeFile(path.join(directory, 'runner-state.json'), JSON.stringify(thread), { mode: 0o600 });
+      const failed = thread.turns.find(turn => turn.status === 'failed');
+      assert.ok(!failed, `The runner turn failed: ${JSON.stringify(failed?.error)}`);
       const started = thread.turns.some(turn => turn.items.some(item =>
         item.type === 'commandExecution' && item.status === 'inProgress' && item.command.includes(task.marker)));
       if (started) {
         await progress('sandboxed command started before desktop exit');
         return { runnerId: id };
       }
+      assert.ok(!thread.turns.some(turn => turn.status === 'completed'),
+        'the model finished without starting the requested command');
       await pause(1000);
     }
     assert.fail('the configured model started the requested sandbox check within two minutes');
