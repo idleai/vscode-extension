@@ -10,6 +10,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { fixture, loadWithVSCode } = require('../test/helpers/vscode.cjs');
 const { CoordinationProbe } = require('./smoke-coordination-owner.cjs');
+const { createSoak } = require('./smoke-compute-soak.cjs');
 
 const exec = promisify(execFile);
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -37,6 +38,8 @@ async function main() {
   const chain = path.join(directory, 'chain');
   const socket = path.join(directory, 'daemon.sock');
   await Promise.all([home, checkout, chain].map(value => fs.mkdir(value, { mode: 0o700 })));
+  const soak = process.argv.includes('--soak') ? await createSoak(directory, github) : null;
+  const credentialProgram = soak?.credentialProgram ?? github;
   const env = { ...process.env, CODEX_HOME: home };
   let daemon, hosted = false, clean = false;
   const f = fixture();
@@ -71,7 +74,7 @@ async function main() {
     await fs.writeFile(requestPath, await runtime.connectionRequest(binding), { mode: 0o600 });
     hosted = true;
     await owner(['host', '--request', requestPath, '--checkout-root', checkout, '--chain-directory', chain,
-      '--relay-helper', helper, '--github-cli', github, '--output', invitationPath, '--hours', '1']);
+      '--relay-helper', helper, '--github-cli', credentialProgram, '--output', invitationPath, '--hours', '1']);
     const invitation = (await fs.readFile(invitationPath, 'utf8')).trim();
     let grant = JSON.parse(Buffer.from(invitation.slice('idle-runtime:'.length), 'base64url').toString());
     await runtime.connect(config, binding, invitation);
@@ -82,7 +85,7 @@ async function main() {
     await assert.rejects(runtime.coordination(config, binding, '{"kind":"status"}'), { code: 'denied' });
     const ownerInvitationPath = path.join(directory, 'owner-invitation.txt');
     await owner(['host', '--request', requestPath, '--checkout-root', checkout, '--chain-directory', chain,
-      '--relay-helper', helper, '--github-cli', github, '--output', ownerInvitationPath, '--hours', '1', '--coordination-owner']);
+      '--relay-helper', helper, '--github-cli', credentialProgram, '--output', ownerInvitationPath, '--hours', '1', '--coordination-owner']);
     const ownerInvitation = (await fs.readFile(ownerInvitationPath, 'utf8')).trim();
     grant = JSON.parse(Buffer.from(ownerInvitation.slice('idle-runtime:'.length), 'base64url').toString());
     assert.equal(grant.version, 2);
@@ -107,6 +110,17 @@ async function main() {
     assert.notEqual(restarted.status.runtimeId, first.status.runtimeId);
     await coordination.verify();
     console.log('PASS: daemon restart preserves host identity and grants');
+    if (soak) {
+      await soak.run({ grant, runtime, coordination, config, binding, until });
+      const replacementPath = path.join(directory, 'replacement-invitation.txt');
+      await owner(['host', '--request', requestPath, '--checkout-root', checkout, '--chain-directory', chain,
+        '--relay-helper', helper, '--github-cli', credentialProgram, '--output', replacementPath, '--hours', '1', '--coordination-owner']);
+      const replacement = (await fs.readFile(replacementPath, 'utf8')).trim();
+      grant = JSON.parse(Buffer.from(replacement.slice('idle-runtime:'.length), 'base64url').toString());
+      await runtime.connect(config, binding, replacement);
+      await coordination.verify();
+      console.log('PASS: a fresh owner invitation restores the existing coordinator after expiry');
+    }
     await owner(['revoke', '--grant-id', grant.grantId]);
     await coordination.verifyDenied();
     await runtime.reset();
@@ -132,6 +146,7 @@ async function main() {
 main().catch(error => {
   // Child-process errors may contain private stdout. Print only a controlled summary.
   console.error(error instanceof assert.AssertionError || error.message?.startsWith('Timed out:')
-    ? error.message : 'Compute connection test failed; inspect the affected step.');
+    ? error.message : ['unavailable', 'host_timeout', 'denied', 'busy', 'cancelled', 'invalid_request', 'invalid_data'].includes(error.code)
+      ? `Compute connection test failed (${error.code}).` : 'Compute connection test failed; inspect the affected step.');
   process.exitCode = 1;
 });
