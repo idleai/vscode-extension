@@ -2,8 +2,9 @@
 
 VS Code connects to the compute machine through Dev Tunnels. The daemon keeps
 running when the editor closes. You can attach a workspace, inspect its status
-and explicitly move workspace coordination to that daemon. Agent execution and
-general file and process actions are separate work.
+and explicitly move workspace coordination to that daemon. With a runner
+invitation, you can also submit agent work and reopen its results after the
+editor closes.
 
 ## Install matching versions
 
@@ -96,6 +97,57 @@ a new invitation from the owner. Wrong workspace, expired and revoked
 invitations cannot fall back to local owner access. A saved host with missing
 checkout directories reports unavailable.
 
+## Run an agent on the compute host
+
+Runner support requires matching Codex and native helper builds. The native
+helper must advertise `runtime.runners`; the released 0.4.0 helper does not
+support runner commands. For this preview, use host-tools' `evo2/runner-client`
+build on both machines and set **Idle: Native Host Path** on the editor machine
+to that executable. Use the Codex runner branch paired with this extension.
+
+1. Complete the workspace coordination transfer above. The current runner
+   connection uses that same contributor and approved checkout.
+2. Sign in to the desired model provider on the compute machine and configure
+   the daemon's model using the normal Codex settings.
+3. Issue a separate invitation with `--runner` in place of
+   `--coordination-owner`, using a new private output file. The default runner
+   grant permits reading and writing the compute checkout. Workspace agent
+   rules can narrow that scope.
+4. In VS Code, run **Idle: Connect Runner Host** and paste the invitation. Run
+   **Idle: Start Runner** to submit a task. The **Idle Runners** output channel
+   shows its output and thread ID.
+5. Use **Idle: Open Runner** to select a saved runner or enter its thread ID,
+   and **Idle: Send to Runner** to submit another task. **Idle: Review Runner
+   Approval** displays any command waiting for a decision.
+
+Runners execute on the selected daemon's local executor. Network access is
+denied. The checkout's `.idle` and `.codex` directories, the chain directory and
+the daemon's private state remain inaccessible to runner commands. Required
+platform runtime files remain readable. The daemon's existing approval policy
+still applies, and approval cannot expand the runner's saved permissions.
+
+In `.idle/workspace/agent-rules.json`, keep the existing document and add a
+`runners` object to narrow execution, for example:
+
+```json
+{
+  "schema_version": 1,
+  "runners": { "version": 1, "readRoots": ["."], "writeRoots": ["src"] }
+}
+```
+
+Roots must name existing directories inside the checkout. An empty
+`writeRoots` list makes checkout access read-only; `enabled: false` disables
+runners. Changing rules or revoking a grant stops affected active work.
+Reopen the runner to apply narrowed rules. A saved runner or fork cannot gain
+broader access from a later invitation or rule change.
+
+Closing VS Code or disconnecting its runner connection leaves admitted work
+running. Pending approvals remain undecided. Use **Idle: Interrupt Runner** to
+request interruption, or revoke its grant on the compute machine to stop
+authorized access. A daemon restart retains saved history and scope; it does
+not restart a terminated command automatically.
+
 ## Automated live check
 
 The following test creates its own temporary daemon and Dev Tunnel, uses the
@@ -148,3 +200,12 @@ coordination, writes configuration on the compute machine, exits completely and
 reopens using VS Code secret storage. The owner verifies the resulting compute
 files, revokes the grant and removes the tunnel, temporary branch and local
 state. The `compute-results` artifact records the desktop version and host IDs.
+
+Branches named `acceptance/compute/evo2-...` also run the real model test. Supply
+`IDLE_COMPUTE_RUNNER=1`, `IDLE_CODEX_AUTH_SOURCE` pointing to a private Codex
+`auth.json`, and `IDLE_CODEX_RUNNER_CONFIG` pointing to a Codex configuration
+file when starting the owner script. Those files are copied only into the
+temporary compute daemon's private home. The model runs a command that spans
+desktop exit and checks checkout writes, denied reads/writes, symlink escape,
+network denial and excluded account environment variables. Reopening the
+desktop must recover the completed result from native history.
