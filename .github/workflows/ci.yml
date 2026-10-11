@@ -181,7 +181,7 @@ jobs:
         if: env.IDLE_COMPUTE_RUNNER == '1'
         with:
           repository: idleai/host-tools
-          ref: 3dcac121efa3027677270407b4e487d1113331ed
+          ref: 8d186f863e506b9f654957584e6526cfcc818c24
           path: runner-host
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable

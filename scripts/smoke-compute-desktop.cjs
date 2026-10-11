@@ -58,6 +58,7 @@ exports.activate = async () => {
   catch (error) { await require('node:fs/promises').writeFile(require('node:path').join(process.env.IDLE_COMPUTE_TEST_DIR,
     process.env.IDLE_TEST_PHASE + '.json'), JSON.stringify({ passed: false,
       error: error instanceof require('node:assert').AssertionError ? error.message : 'Desktop compute operation failed',
+      runnerError: error.code === 'runner_request_failed' ? error.message : undefined,
       code: /^[a-zA-Z_]+$/.test(error.code ?? '') ? error.code : undefined,
       frames: String(error.stack ?? '').split('\\n').slice(1).filter(line => /^\\s+at /.test(line)).slice(0, 6) })); }
   finally { await vscode.commands.executeCommand('workbench.action.quit'); }
