@@ -13,10 +13,13 @@ exports.run = async (host, config, binding, directory, phase, progress) => {
     return result.response.result;
   };
   if (phase === 'connect') {
+    await progress('runner pairing started');
     await host.runners.connection.connect(config, binding,
       await fs.readFile(path.join(directory, 'runner-invitation.txt'), 'utf8'));
+    await progress('runner pairing completed');
     const task = JSON.parse(await fs.readFile(path.join(directory, 'runner-task.json'), 'utf8'));
     const id = await host.runners.start({ config, binding }, task.prompt);
+    await progress('runner turn submitted');
     await fs.writeFile(saved, JSON.stringify({ id, marker: task.marker }));
     for (let attempt = 0; attempt < 120; attempt++) {
       const { thread } = await rpc('thread/read', { threadId: id, includeTurns: true });
