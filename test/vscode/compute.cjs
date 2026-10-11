@@ -39,6 +39,9 @@ exports.run = async () => {
   try {
     if (phase === 'prepare') {
       await read({ kind: 'snapshot' });
+      if (process.env.IDLE_COMPUTE_RUNNER === '1') {
+        assert.ok(await host.native.supports('runtime.runners'), 'the selected native helper supports runners');
+      }
       assert.equal((await save('desktop-before', '{"savedBeforeTransfer":true}', { kind: 'absent' })).result.status, 'success');
       await fs.writeFile(path.join(directory, 'request', 'request.json'), await host.runtime.connectionRequest(binding));
       await fs.writeFile(path.join(directory, 'before.json'), JSON.stringify(await read({ kind: 'snapshot' })));
@@ -67,12 +70,17 @@ exports.run = async () => {
         settings: snapshot.settings, workspace: binding.workspace_id };
       if (phase === 'restore') {
         const previous = JSON.parse(await fs.readFile(path.join(directory, 'connect.json'), 'utf8'));
-        assert.deepEqual({ ...result, phase: 'connect' }, previous,
+        const { runnerId, ...coordination } = previous;
+        assert.deepEqual({ ...result, phase: 'connect' }, coordination,
           'a complete desktop restart retains the same host, daemon and saved configuration');
       }
       await vscode.commands.executeCommand('workbench.view.extension.idle');
       await vscode.commands.executeCommand('idle.computeHosts.refresh');
       await progress('compute view refreshed');
+      if (process.env.IDLE_COMPUTE_RUNNER === '1') {
+        const runner = await require('./compute-runner.cjs').run(host, config, binding, directory, phase, progress);
+        result = { ...result, ...runner };
+      }
     }
   } finally { await progress('shutdown started'); await host.shutdown(); await progress('shutdown completed'); }
   await fs.writeFile(path.join(directory, `${phase}.json`), JSON.stringify(result));

@@ -39,19 +39,28 @@ async function prepare() {
     'idle.chainDirectory': 'chain', 'idle.live.enabled': false, 'idle.tracking.enabled': false,
     'idle.decorations.enabled': false, 'telemetry.telemetryLevel': 'off', 'update.mode': 'none',
   }));
+  if (process.env.IDLE_COMPUTE_RUNNER_HOST) {
+    await fs.mkdir(path.join(directory, 'profile/User'), { recursive: true });
+    await fs.writeFile(path.join(directory, 'profile/User/settings.json'),
+      JSON.stringify({ 'idle.native.hostPath': process.env.IDLE_COMPUTE_RUNNER_HOST }));
+  }
   await exec('git', ['init', '-b', 'main', path.join(directory, 'workspace')]);
   await fs.writeFile(path.join(directory, 'driver/package.json'), JSON.stringify({
     name: 'idle-compute-test-driver', publisher: 'idle-tests', version: '0.0.1', engines: { vscode: '^1.85.0' },
     main: './main.cjs', activationEvents: ['onStartupFinished'],
   }));
   await fs.copyFile(path.join(__dirname, '../test/vscode/compute.cjs'), path.join(directory, 'driver/test.cjs'));
+  await fs.copyFile(path.join(__dirname, '../test/vscode/compute-runner.cjs'), path.join(directory, 'driver/compute-runner.cjs'));
   await fs.writeFile(path.join(directory, 'driver/main.cjs'), `
 const vscode = require('vscode');
 exports.activate = async () => {
   try { await require('./test.cjs').run(); }
   catch (error) { await require('node:fs/promises').writeFile(require('node:path').join(process.env.IDLE_COMPUTE_TEST_DIR,
     process.env.IDLE_TEST_PHASE + '.json'), JSON.stringify({ passed: false,
-      error: error instanceof require('node:assert').AssertionError ? error.message : 'Desktop compute operation failed' })); }
+      error: error instanceof require('node:assert').AssertionError ? error.message : 'Desktop compute operation failed',
+      runnerError: error.code === 'runner_request_failed' ? error.message : undefined,
+      code: /^[a-zA-Z_]+$/.test(error.code ?? '') ? error.code : undefined,
+      frames: String(error.stack ?? '').split('\\n').slice(1).filter(line => /^\\s+at /.test(line)).slice(0, 6) })); }
   finally { await vscode.commands.executeCommand('workbench.action.quit'); }
 };
 `);
@@ -85,11 +94,20 @@ async function run() {
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(encrypted.iv, 'base64'));
   decipher.setAuthTag(Buffer.from(encrypted.tag, 'base64'));
   const invitation = Buffer.concat([decipher.update(Buffer.from(encrypted.data, 'base64')), decipher.final()]);
-  await fs.writeFile(path.join(directory, 'invitation.txt'), invitation, { mode: 0o600 });
+  if (process.env.IDLE_COMPUTE_RUNNER === '1') {
+    const payload = JSON.parse(invitation.toString('utf8'));
+    await fs.writeFile(path.join(directory, 'invitation.txt'), payload.coordination, { mode: 0o600 });
+    await fs.writeFile(path.join(directory, 'runner-invitation.txt'), payload.runner, { mode: 0o600 });
+    await fs.writeFile(path.join(directory, 'runner-task.json'), JSON.stringify(payload.task), { mode: 0o600 });
+  } else {
+    await fs.writeFile(path.join(directory, 'invitation.txt'), invitation, { mode: 0o600 });
+  }
   await desktop('connect');
   await fs.rm(path.join(directory, 'invitation.txt'));
+  await fs.rm(path.join(directory, 'runner-invitation.txt'), { force: true });
+  await fs.writeFile(path.join(directory, 'desktop-closed.json'), JSON.stringify({ at: Date.now() }));
   console.log('Desktop closed; reconnect will use VS Code secret storage.');
-  await pause(30_000);
+  await pause(process.env.IDLE_COMPUTE_RUNNER === '1' ? 90_000 : 30_000);
   await desktop('restore');
 }
 

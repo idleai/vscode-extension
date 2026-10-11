@@ -17,7 +17,7 @@ export class RunnerSessions {
 
   constructor(private readonly context: vscode.ExtensionContext, readonly connection: RuntimeHost) {}
 
-  async start(workspace: RunnerWorkspace, prompt: string): Promise<void> {
+  async start(workspace: RunnerWorkspace, prompt: string): Promise<string> {
     this.validatePrompt(prompt);
     const started = await this.rpc(workspace, 'thread/start', {});
     if (!record(started) || !record(started.thread) || typeof started.thread.id !== 'string') {
@@ -29,6 +29,7 @@ export class RunnerSessions {
     this.output.show(true);
     this.watch(workspace);
     await this.rpc(workspace, 'turn/start', { threadId: id, input: [{ type: 'text', text: prompt }] });
+    return id;
   }
 
   async show(workspace: RunnerWorkspace): Promise<void> {

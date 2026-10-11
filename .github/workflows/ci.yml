@@ -165,6 +165,8 @@ jobs:
       IDLE_COMPUTE_TEST_DIR: /tmp/idle-compute-desktop
       VSCODE_BIN: /tmp/idle-compute-vscode/VSCode-linux-x64/bin/code
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      IDLE_COMPUTE_RUNNER: ${{ startsWith(github.ref, 'refs/heads/acceptance/compute/evo2-') && '1' || '0' }}
+      IDLE_COMPUTE_RUNNER_HOST: ${{ startsWith(github.ref, 'refs/heads/acceptance/compute/evo2-') && '/tmp/idle-runner-host' || '' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -175,6 +177,22 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: idle-vscode
+      - uses: actions/checkout@v7
+        if: env.IDLE_COMPUTE_RUNNER == '1'
+        with:
+          repository: idleai/host-tools
+          ref: 8d186f863e506b9f654957584e6526cfcc818c24
+          path: runner-host
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        if: env.IDLE_COMPUTE_RUNNER == '1'
+        with:
+          toolchain: 1.97.0
+      - name: Build the runner client for this opt-in acceptance
+        if: env.IDLE_COMPUTE_RUNNER == '1'
+        run: |
+          cargo build --manifest-path runner-host/Cargo.toml --locked -p idle-host
+          cp runner-host/target/debug/idle-host /tmp/idle-runner-host
       - name: Install desktop VS Code
         run: |
           mkdir -p /tmp/idle-compute-vscode
@@ -197,6 +215,7 @@ jobs:
           path: |
             ${{ env.IDLE_COMPUTE_TEST_DIR }}/connect.json
             ${{ env.IDLE_COMPUTE_TEST_DIR }}/restore.json
+            ${{ env.IDLE_COMPUTE_TEST_DIR }}/desktop-closed.json
             ${{ env.IDLE_COMPUTE_TEST_DIR }}/*-progress.jsonl
           if-no-files-found: warn
           retention-days: 1
