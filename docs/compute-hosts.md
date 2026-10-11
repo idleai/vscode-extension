@@ -5,18 +5,21 @@ running when the editor closes. You can attach a workspace, inspect its status
 and explicitly move workspace coordination to that daemon. Agent execution and
 general file and process actions are separate work.
 
-## Build the matching changes
+## Install matching versions
 
-Use the `evo1/coordination-owner` branches in `idleai/codex-evo`,
-`idleai/host-tools` and this repository. Build `codex` from the Codex fork and
-`idle-host` from host-tools. Build/install this extension using the normal
-[setup instructions](../README.md#setup).
+Build `codex` from the `idle-base` branch of `idleai/codex-evo`. Build/install this
+extension from `main` using the normal [setup instructions](../README.md#setup).
+Its package includes native host 0.4.0 or a newer compatible release.
 
-The released native host supports attachment and status. To use coordination
-ownership before the companion changes are released, set **Idle: Native Host Path**
-(`idle.native.hostPath`) to your new `idle-host` executable on the machine
-running the extension. The extension checks the native host and daemon's
-capabilities before moving coordination.
+On the compute machine, download the matching platform bundle from the
+[native host 0.4.0 release](https://github.com/idleai/host-tools/releases/tag/idle-coordination-v0.4.0)
+and use its `idle-host` as the relay helper. A source build from host-tools `main`
+also works. Native host 0.3.1 supports attachment and status only. The extension
+checks the native host and daemon's capabilities before moving coordination.
+
+If you previously set **Idle: Native Host Path** (`idle.native.hostPath`) on the
+editor machine, clear it to use the packaged helper or point it at the updated
+executable.
 
 ## Pair the workspace
 
@@ -111,6 +114,37 @@ IDLE_GITHUB_CLI=/absolute/gh \
   npm run test:compute:live
 ```
 
+For the one-hour renewal and expiry check, append `-- --soak` to the npm command.
+It closes the client for eleven minutes, checks that the daemon rereads its
+management credential, reconnects across subsequent renewal cycles, waits for
+the invitation to expire and restores the same coordinator with a fresh owner
+invitation. The credential wrapper records timestamps only. This check uses
+real time and the live relay service.
+
 Both endpoints run as separate processes on the test machine and communicate
 through the live relay service. For a two-machine check, follow the pairing
 steps with VS Code and the daemon on different machines.
+
+### Desktop acceptance on a separate machine
+
+Push the tested extension commit to an `acceptance/compute/...` branch to opt
+into the additional CI job. After normal package checks, that job installs the
+VSIX in desktop VS Code on a GitHub-hosted machine and uploads a public
+`compute-connection-request` artifact. Once that artifact is available, run this
+on the compute machine using the workflow run ID:
+
+```sh
+IDLE_CODEX_BIN=/absolute/codex \
+IDLE_RUNTIME_HOST_BIN=/absolute/idle-host \
+IDLE_GITHUB_CLI=/absolute/gh \
+  node scripts/smoke-compute-owner.cjs WORKFLOW_RUN_ID
+```
+
+The owner script creates a temporary daemon, checkout and one-hour grant. It
+encrypts the invitation to a key generated on the test desktop and returns the
+ciphertext through a temporary Git branch containing only that invitation. No account credential or
+plaintext invitation enters CI logs or artifacts. The desktop moves
+coordination, writes configuration on the compute machine, exits completely and
+reopens using VS Code secret storage. The owner verifies the resulting compute
+files, revokes the grant and removes the tunnel, temporary branch and local
+state. The `compute-results` artifact records the desktop version and host IDs.

@@ -154,3 +154,48 @@ jobs:
         run: python scripts/release_dependencies.py restore
       - name: Check dependency selection and reuse
         run: python -m unittest discover -s scripts -p test_release_dependencies.py
+
+  compute_acceptance:
+    name: Desktop connection to a separate compute machine
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/acceptance/compute/')
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      IDLE_COMPUTE_TEST_DIR: ${{ github.workspace }}/../idle-compute-desktop
+      VSCODE_BIN: /tmp/idle-compute-vscode/VSCode-linux-x64/bin/code
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v8
+        with:
+          name: idle-vscode
+      - name: Install desktop VS Code
+        run: |
+          mkdir -p /tmp/idle-compute-vscode
+          curl --fail --location --retry 3 https://update.code.visualstudio.com/1.140.0/linux-x64/stable -o /tmp/idle-compute-vscode/archive.tar.gz
+          tar -xzf /tmp/idle-compute-vscode/archive.tar.gz -C /tmp/idle-compute-vscode
+      - name: Prepare an isolated desktop and public connection request
+        run: node scripts/smoke-compute-desktop.cjs prepare idle.vsix
+      - uses: actions/upload-artifact@v7
+        with:
+          name: compute-connection-request
+          path: ${{ env.IDLE_COMPUTE_TEST_DIR }}/request
+          if-no-files-found: error
+          retention-days: 1
+      - name: Connect to the approved compute host and restart the desktop
+        run: node scripts/smoke-compute-desktop.cjs run
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: compute-results
+          path: |
+            ${{ env.IDLE_COMPUTE_TEST_DIR }}/connect.json
+            ${{ env.IDLE_COMPUTE_TEST_DIR }}/restore.json
+          if-no-files-found: warn
+          retention-days: 1
