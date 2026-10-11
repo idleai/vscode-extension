@@ -53,5 +53,38 @@ export function runtimeCommands(host: HostServices, views: WorkspaceViewProvider
       await host.coordination.moveToRuntime(context.config, context.binding);
       await host.diagnostics.notify('info', 'Workspace coordination now runs on the compute host and continues when this editor closes.');
     }),
+    register('idle.runner.connect', async () => {
+      const context = await selected();
+      if (!context) return;
+      const invitation = await vscode.window.showInputBox({ title: 'Connect Runner Host', password: true,
+        prompt: 'Paste a private runner invitation from the compute owner', ignoreFocusOut: true });
+      if (invitation === undefined) return;
+      host.assembly.validateBinding(context.binding);
+      await host.runners.connection.connect(context.config, context.binding, invitation);
+      await host.diagnostics.notify('info', 'Runner host connected. Use Start Runner to submit a task.');
+    }),
+    register('idle.runner.start', async () => {
+      const context = await selected();
+      if (!context) return;
+      const prompt = await vscode.window.showInputBox({ title: 'Start Runner',
+        prompt: 'Describe the task for the compute host’s configured model', ignoreFocusOut: true });
+      if (!prompt?.trim()) return;
+      host.assembly.validateBinding(context.binding);
+      host.runners.validatePrompt(prompt);
+      await host.runners.start(context, prompt);
+    }),
+    ...(['show', 'send', 'interrupt', 'review'] as const).map(action => register(`idle.runner.${action}`, async () => {
+      const context = await selected();
+      if (!context) return;
+      host.assembly.validateBinding(context.binding);
+      await host.runners[action](context);
+    })),
+    register('idle.runner.disconnect', async () => {
+      const context = await selected();
+      if (!context) return;
+      await host.runners.reset();
+      await host.runners.connection.disconnect(context.binding);
+      await host.diagnostics.notify('info', 'Runner connection removed. Admitted work continues on the compute host.');
+    }),
   ];
 }
