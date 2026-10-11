@@ -18,6 +18,15 @@ exports.run = async (host, config, binding, directory, phase, progress) => {
       await fs.readFile(path.join(directory, 'runner-invitation.txt'), 'utf8'));
     await progress('runner pairing completed');
     const task = JSON.parse(await fs.readFile(path.join(directory, 'runner-task.json'), 'utf8'));
+    let commandStarted = false;
+    const runner = host.runners.connection.runner.bind(host.runners.connection);
+    host.runners.connection.runner = async (...args) => {
+      const result = await runner(...args);
+      commandStarted ||= (result.notifications ?? []).some(notification =>
+        notification.method === 'item/started' && notification.params?.item?.type === 'commandExecution'
+        && notification.params.item.command.includes(task.marker));
+      return result;
+    };
     const id = await host.runners.start({ config, binding }, task.prompt);
     await progress('runner turn submitted');
     await fs.writeFile(saved, JSON.stringify({ id, marker: task.marker }));
@@ -26,7 +35,7 @@ exports.run = async (host, config, binding, directory, phase, progress) => {
       await fs.writeFile(path.join(directory, 'runner-state.json'), JSON.stringify(thread), { mode: 0o600 });
       const failed = thread.turns.find(turn => turn.status === 'failed');
       assert.ok(!failed, `The runner turn failed: ${JSON.stringify(failed?.error)}`);
-      const started = thread.turns.some(turn => turn.items.some(item =>
+      const started = commandStarted || thread.turns.some(turn => turn.items.some(item =>
         item.type === 'commandExecution' && item.status === 'inProgress' && item.command.includes(task.marker)));
       if (started) {
         await progress('sandboxed command started before desktop exit');
