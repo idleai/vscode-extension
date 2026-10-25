@@ -168,11 +168,17 @@ jobs:
       - name: Install desktop VS Code for isolated extension checks
         run: |
           vscode_cache="$RUNNER_TOOL_CACHE/idle-vscode/1.140.0"
-          if [[ ! -x "$vscode_cache/VSCode-linux-x64/bin/code" ]]; then
-            mkdir -p "$vscode_cache"
-            curl --fail --location --retry 3 https://update.code.visualstudio.com/1.140.0/linux-x64/stable -o "$vscode_cache/archive.tar.gz"
-            tar -xzf "$vscode_cache/archive.tar.gz" -C "$vscode_cache"
-            rm "$vscode_cache/archive.tar.gz"
+          if [[ ! -f "$vscode_cache/.complete" || ! -x "$vscode_cache/VSCode-linux-x64/bin/code" ]]; then
+            install_root="$(mktemp -d "$RUNNER_TEMP/idle-vscode.XXXXXX")"
+            trap 'rm -rf "$install_root"' EXIT
+            curl --fail --location --retry 3 https://update.code.visualstudio.com/1.140.0/linux-x64/stable -o "$install_root/archive.tar.gz"
+            tar -xzf "$install_root/archive.tar.gz" -C "$install_root"
+            test -x "$install_root/VSCode-linux-x64/bin/code"
+            rm "$install_root/archive.tar.gz"
+            mkdir -p "$(dirname "$vscode_cache")"
+            rm -rf "$vscode_cache"
+            mv "$install_root" "$vscode_cache"
+            touch "$vscode_cache/.complete"
           fi
       - name: Verify installed VSIX in an isolated VS Code profile
         env:
