@@ -10,10 +10,11 @@ editor closes.
 
 Build `codex` from the `idle-base` branch of `idleai/codex-evo`. Build/install this
 extension from `main` using the normal [setup instructions](../README.md#setup).
-Its package includes native host 0.4.0 or a newer compatible release.
+Its package includes the native host selected by the repository's released
+dependency record, currently 0.5.2.
 
 On the compute machine, download the matching platform bundle from the
-[native host 0.4.0 release](https://github.com/idleai/host-tools/releases/tag/idle-coordination-v0.4.0)
+[native host 0.5.2 release](https://github.com/idleai/host-tools/releases/tag/idle-coordination-v0.5.2)
 and use its `idle-host` as the relay helper. A source build from host-tools `main`
 also works. Native host 0.3.1 supports attachment and status only. The extension
 checks the native host and daemon's capabilities before moving coordination.
@@ -99,11 +100,11 @@ checkout directories reports unavailable.
 
 ## Run an agent on the compute host
 
-Runner support requires matching Codex and native helper builds. The native
-helper must advertise `runtime.runners`; the released 0.4.0 helper does not
-support runner commands. For this preview, use host-tools' `evo2/runner-client`
-build on both machines and set **Idle: Native Host Path** on the editor machine
-to that executable. Use the Codex runner branch paired with this extension.
+Runner support requires the Codex runner implementation and a native helper
+that advertises `runtime.runners`. Native host 0.5.2 includes that capability;
+use the packaged helper on the editor machine and the matching released helper
+on the compute machine. Until the runner PRs merge, build Codex from
+`evo2/runner-validation` and this extension from `evo2/runner-acceptance`.
 
 1. Complete the workspace coordination transfer above. The current runner
    connection uses that same contributor and approved checkout.
