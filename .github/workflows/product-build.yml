@@ -42,7 +42,7 @@ permissions:
 
 concurrency:
   group: product-${{ github.repository }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   plan:
@@ -192,9 +192,28 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  checks:
+    name: Wait for component release validation
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: idleai/vscode-extension
+          ref: ${{ needs.plan.outputs.coordinator }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: product-inputs
+      - name: Require complete CI before reserving an acceptance worker
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/product_build.py checks --plan product-inputs.json
+
   verify:
     name: Product end-to-end acceptance
-    needs: [plan, desktop, codex]
+    needs: [plan, desktop, codex, checks]
     runs-on: ${{ vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 100
     env:

@@ -19,6 +19,8 @@ def main():
     checkout.add_argument("--plan", type=Path, required=True)
     checkout.add_argument("--directory", type=Path, required=True)
     checkout.add_argument("--repositories", nargs="+", choices=sources.REPOSITORIES, required=True)
+    checks = commands.add_parser("checks")
+    checks.add_argument("--plan", type=Path, required=True)
     for name in ["build", "finish"]:
         command = commands.add_parser(name)
         command.add_argument("--plan", type=Path, required=True)
@@ -31,6 +33,9 @@ def main():
         sources.plan(args.output, args.revisions, args.source_repository, args.source_revision)
     elif args.command == "checkout":
         sources.checkout(sources.read(args.plan), args.directory, args.repositories)
+    elif args.command == "checks":
+        from product_pipeline.finish import require_checks
+        require_checks(sources.read(args.plan))
     elif args.command == "build":
         from product_pipeline.build import build
         build(args.plan.resolve(), args.sources.resolve(), args.output.resolve())
