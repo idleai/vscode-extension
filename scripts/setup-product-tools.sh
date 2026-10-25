@@ -42,6 +42,7 @@ chrome_output="$(npx --yes @puppeteer/browsers@3.2.3 install chrome@156.0.8078.4
 chrome_executable="$(printf '%s\n' "$chrome_output" | tail -n 1 | awk '{print $NF}')"
 test -x "$chrome_executable"
 echo "CHROME_BIN=$chrome_executable" >> "$GITHUB_ENV"
+echo "CHROME_PATH=$chrome_executable" >> "$GITHUB_ENV"
 
 vscode_cache="$RUNNER_TOOL_CACHE/idle-vscode/1.140.0"
 if [[ ! -f "$vscode_cache/.complete" || ! -x "$vscode_cache/VSCode-linux-x64/bin/code" ]]; then

@@ -70,7 +70,12 @@ for (const policy of ['legacy', 'cutoff']) test(`a peer-supplied copy of a withh
       return live(host) === 1 && live(guest) === 1 && scope.received.length === baselineRecords
         && scope.received_blobs.length === copiedBlobs.length
         && (policy === 'cutoff' || scope.received.length + scope.excluded.length === withheld.length);
-    }, 'the peer never supplied the independently copied baseline');
+    }, 'the peer never supplied the independently copied baseline').catch(error => {
+      const scope = ledger(a.chain);
+      throw new Error(`${error.message}; host=${JSON.stringify(host.status())}; guest=${JSON.stringify(guest.status())}`
+        + `; receipts=${scope.received.length}/${baselineRecords}; blobs=${scope.received_blobs.length}/${copiedBlobs.length}`
+        + `; excluded=${scope.excluded.length}/${withheld.length}`, { cause: error });
+    });
 
     // Every record the peer held was delivered back as an exact receipt, while
     // the post-copy local work stayed withheld.
