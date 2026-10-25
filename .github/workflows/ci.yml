@@ -74,6 +74,7 @@ jobs:
           cargo fmt --all -- --check
           python3 -m unittest discover -s scripts -p 'test_release_dependencies.py'
           python3 -m unittest discover -s scripts -p 'test_ci_scope.py'
+          python3 -m unittest discover -s scripts -p 'test_product*.py'
       - name: Select build dependencies
         if: ${{ !inputs.dependencies_artifact }}
         env:

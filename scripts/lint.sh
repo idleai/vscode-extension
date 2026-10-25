@@ -45,6 +45,7 @@ fi
 # Formatting
 # ---------------------------------------------------------------------------
 check "release automation" python3 -m unittest discover -s scripts -p "test*release*.py"
+check "product automation" python3 -m unittest discover -s scripts -p "test_product*.py"
 
 check "cargo fmt" cargo fmt --all -- --check
 

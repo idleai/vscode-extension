@@ -1,0 +1,273 @@
+name: Coordinated product build
+
+on:
+  workflow_dispatch:
+    inputs:
+      revisions:
+        description: Optional JSON mapping of component names to candidate commit IDs
+        type: string
+        default: '{}'
+      source_repository:
+        description: Optional triggering repository, including idleai/
+        type: string
+        default: ''
+      source_revision:
+        description: Optional triggering commit ID
+        type: string
+        default: ''
+  workflow_call:
+    inputs:
+      source_repository:
+        type: string
+        required: true
+      source_revision:
+        type: string
+        required: true
+      tools_ref:
+        description: Coordinator branch; resolved once to an immutable revision for this run
+        type: string
+        default: main
+      revisions:
+        type: string
+        default: '{}'
+      publish:
+        description: Publish the accepted bytes for a default-branch push
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+
+concurrency:
+  group: product-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Select exact product sources
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      id: ${{ steps.plan.outputs.id }}
+      codex: ${{ steps.plan.outputs.codex }}
+      coordinator: ${{ steps.plan.outputs.coordinator }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: idleai/vscode-extension
+          ref: ${{ inputs.tools_ref || github.sha }}
+          persist-credentials: false
+      - name: Check product build contracts
+        run: python3 -m unittest discover -s scripts -p 'test_product*.py'
+      - name: Resolve all source revisions once
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISIONS: ${{ inputs.revisions || '{}' }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          python3 scripts/product_build.py plan --output product-inputs.json \
+            --revisions "$REVISIONS" --source-repository "$SOURCE_REPOSITORY" --source-revision "$SOURCE_REVISION"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: product-inputs
+          path: product-inputs.json
+          if-no-files-found: error
+
+  desktop:
+    name: Native components and tested VSIX
+    needs: plan
+    runs-on: ${{ vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PRODUCT_OUTPUT: ${{ github.workspace }}/product-output
+      PRODUCT_PLAN: ${{ github.workspace }}/product-inputs.json
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: idleai/vscode-extension
+          ref: ${{ needs.plan.outputs.coordinator }}
+          path: product-tools
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: product-inputs
+      - name: Prepare dedicated source and output directories
+        run: |
+          echo "IDLE_PRODUCT_ROOT=$RUNNER_TOOL_CACHE/idle-product" >> "$GITHUB_ENV"
+          rm -rf "$PRODUCT_OUTPUT"
+          mkdir -p "$PRODUCT_OUTPUT"
+      - name: Check out the selected Cargo components
+        run: |
+          python3 product-tools/scripts/product_build.py checkout --plan "$PRODUCT_PLAN" \
+            --directory "$IDLE_PRODUCT_ROOT/sources" \
+            --repositories editchain host-tools app-core web-ui vscode-extension
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Cargo tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20.2,wasm-bindgen@0.2.127
+          fallback: none
+      - name: Prepare native binding and browser tools
+        run: bash product-tools/scripts/setup-product-tools.sh
+      - uses: swift-actions/setup-swift@v3
+        with:
+          swift-version: '6.2.4'
+      - name: Build, test and package the coordinated sources
+        run: |
+          python3 product-tools/scripts/product_build.py build --plan "$PRODUCT_PLAN" \
+            --sources "$IDLE_PRODUCT_ROOT/sources" --output "$PRODUCT_OUTPUT"
+      - name: Save desktop outputs and stage timings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: product-desktop
+          path: product-output
+          if-no-files-found: error
+          retention-days: 14
+
+  codex:
+    name: Optimized Codex packages
+    needs: plan
+    runs-on: ${{ vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: idleai/codex-evo
+          ref: ${{ needs.plan.outputs.codex }}
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: idleai/vscode-extension
+          ref: ${{ needs.plan.outputs.coordinator }}
+          path: product-tools
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: product-inputs
+      - name: Prepare package outputs
+        run: |
+          rm -rf product-output
+          mkdir product-output
+      - uses: ./.github/actions/prepare-bazel-ci
+        with:
+          target: x86_64-unknown-linux-gnu
+          cache-scope: idle-linux-release
+      - name: Build optimized Linux binaries with the existing prebuilt V8
+        run: |
+          python3 product-tools/scripts/product_step.py --record product-output/codex-timings.json \
+            --name 'Codex optimized binaries' -- \
+            ./.github/scripts/run-bazel-ci.sh --remote-download-toplevel -- build \
+            --compilation_mode=opt --platforms=//:local_linux -- \
+            //codex-rs/cli:codex //codex-rs/app-server:codex-app-server \
+            //codex-rs/code-mode-host:codex-code-mode-host //codex-rs/bwrap:bwrap
+      - name: Assemble the shipped Codex packages
+        run: |
+          python3 product-tools/scripts/product_step.py --record product-output/codex-timings.json \
+            --name 'Codex package assembly' -- bash product-tools/scripts/package-product-codex.sh
+      - name: Save runtime outputs and stage timings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: product-codex
+          path: product-output
+          if-no-files-found: error
+          retention-days: 14
+
+  verify:
+    name: Product end-to-end acceptance
+    needs: [plan, desktop, codex]
+    runs-on: ${{ vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 100
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: idleai/vscode-extension
+          ref: ${{ needs.plan.outputs.coordinator }}
+          path: product-tools
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Prepare product outputs
+        run: |
+          rm -rf product-output product-sources
+          mkdir product-output
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: product-desktop
+          path: product-output
+          merge-multiple: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: product-codex
+          path: product-output
+      - name: Select the matching extension acceptance helpers
+        run: |
+          python3 product-tools/scripts/product_build.py checkout --plan product-output/product-inputs.json \
+            --directory product-sources --repositories vscode-extension
+      - name: Verify the packaged runtime and extension together
+        run: |
+          python3 product-tools/scripts/product_build.py finish --plan product-output/product-inputs.json \
+            --sources product-sources --output product-output
+      - name: Publish the tested product artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: idle-product-linux-x64
+          path: |
+            product-output/idle-product-linux-x64.tar.gz
+            product-output/idle-product-linux-x64.tar.gz.sha256
+            product-output/idle.vsix
+            product-output/product-inputs.json
+            product-output/product-result.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Retain final integration timings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: product-integration-timings
+          path: product-output/integration-timings.json
+          if-no-files-found: warn
+
+  publish:
+    name: Release the tested product files
+    if: inputs.publish && github.event_name == 'push'
+    needs: [plan, verify]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: idleai/vscode-extension
+          ref: ${{ needs.plan.outputs.coordinator }}
+          path: product-tools
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: idle-product-linux-x64
+          path: product-output
+      - name: Publish the accepted files without rebuilding
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 product-tools/scripts/product_build.py publish --output product-output
