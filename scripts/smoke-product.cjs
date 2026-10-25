@@ -137,10 +137,15 @@ async function main() {
     assert.equal(first.workspaces[0].available, true);
     // The same packaged coordination implementation can use a local owner
     // transport; remote tunnel lifecycle has its own live acceptance workflow.
-    const send = async (_config, _binding, request) => (await server.request('idle/coordination/call', {
-      protocolVersion: 1, checkoutId: rpcBinding.checkoutId,
-      clientId: await host.coordination.contributor(), request,
-    })).response;
+    const send = async (_config, _binding, request) => {
+      const { response } = await server.request('idle/coordination/call', {
+        protocolVersion: 1, checkoutId: rpcBinding.checkoutId,
+        clientId: await host.coordination.contributor(), request,
+      });
+      assert.equal(typeof response, 'string');
+      // The native transport wraps this result without decoding its integer values.
+      return `{"version":1,"id":"product-check","result":${response}}`;
+    };
     host.runtime.snapshot = async () => ({ connected: true, status: await status(), observed_at: Date.now(), revision: 1 });
     host.runtime.coordination = send;
     let lost = false;
