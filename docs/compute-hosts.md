@@ -104,7 +104,7 @@ Runner support requires the Codex runner implementation and a native helper
 that advertises `runtime.runners`. Native host 0.5.2 includes that capability;
 use the packaged helper on the editor machine and the matching released helper
 on the compute machine. Until the runner PRs merge, build Codex from
-`evo2/runner-validation` and this extension from `evo2/runner-acceptance`.
+`evo2/runner-authorization` and this extension from `evo2/runner-client`.
 
 1. Complete the workspace coordination transfer above. The current runner
    connection uses that same contributor and approved checkout.
