@@ -20,7 +20,6 @@ jobs:
   desktop:
     name: Installed product connected to a separate compute host
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
     env:
       IDLE_COMPUTE_TEST_DIR: /tmp/idle-product-compute-desktop
       VSCODE_BIN: /tmp/idle-product-compute-vscode/VSCode-linux-x64/bin/code

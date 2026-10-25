@@ -48,7 +48,6 @@ jobs:
   plan:
     name: Select exact product sources
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
     outputs:
       id: ${{ steps.plan.outputs.id }}
       codex: ${{ steps.plan.outputs.codex }}
@@ -81,7 +80,6 @@ jobs:
     name: Native components and tested VSIX
     needs: plan
     runs-on: ${{ vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
-    timeout-minutes: 120
     env:
       GH_TOKEN: ${{ github.token }}
       PRODUCT_OUTPUT: ${{ github.workspace }}/product-output
@@ -146,7 +144,6 @@ jobs:
     name: Optimized Codex packages
     needs: plan
     runs-on: ${{ vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
-    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
         with:
@@ -196,7 +193,6 @@ jobs:
     name: Wait for component release validation
     needs: plan
     runs-on: ubuntu-24.04
-    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v7
         with:
@@ -215,7 +211,6 @@ jobs:
     name: Product end-to-end acceptance
     needs: [plan, desktop, codex, checks]
     runs-on: ${{ vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
-    timeout-minutes: 100
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -275,7 +270,6 @@ jobs:
     if: inputs.publish && github.event_name == 'push'
     needs: [plan, verify]
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
     permissions:
       contents: write
     steps:
