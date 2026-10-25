@@ -34,7 +34,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.0
-      - uses: Swatinem/rust-cache@v2
       - uses: actions/download-artifact@v8
         if: ${{ inputs.dependencies_artifact != '' }}
         with:
@@ -48,6 +47,7 @@ jobs:
         run: gh release download "$RELEASE_TAG" --pattern released-dependencies.json --dir target --clobber
       - name: Restore the tested dependency selection
         run: python3 scripts/release_dependencies.py restore
+      - uses: Swatinem/rust-cache@v2
       - name: Build the compatibility package
         env:
           RELEASE_TAG: ${{ inputs.tag }}
