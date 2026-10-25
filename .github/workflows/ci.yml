@@ -105,7 +105,7 @@ jobs:
     needs: dependencies
     env:
       CHROME_VERSION: 156.0.8078.47
-      IDLE_RELEASE_INPUTS: ${{ github.workspace }}/vscode-extension/target/released-dependencies.json
+      IDLE_RELEASE_INPUTS: ${{ github.workspace }}/../release-inputs/released-dependencies.json
     runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.IDLE_LINUX_RUNNER || github.event_name != 'pull_request' && vars.IDLE_BACKGROUND_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 45
     defaults:
@@ -125,7 +125,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           artifact-ids: ${{ needs.dependencies.outputs.artifact_id }}
-          path: vscode-extension/target
+          path: ${{ github.workspace }}/../release-inputs
       - name: Restore this build's dependency selection
         run: python3 scripts/release_dependencies.py restore
       - uses: Swatinem/rust-cache@v2
@@ -195,7 +195,7 @@ jobs:
       run:
         working-directory: vscode-extension
     env:
-      IDLE_RELEASE_INPUTS: ${{ github.workspace }}/vscode-extension/target/released-dependencies.json
+      IDLE_RELEASE_INPUTS: ${{ github.workspace }}/../release-inputs/released-dependencies.json
     steps:
       - uses: actions/checkout@v7
         with:
@@ -208,7 +208,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           artifact-ids: ${{ needs.dependencies.outputs.artifact_id }}
-          path: vscode-extension/target
+          path: ${{ github.workspace }}/../release-inputs
       - name: Restore the Linux dependency record
         run: python scripts/release_dependencies.py restore
       - name: Check dependency selection and reuse
