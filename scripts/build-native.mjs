@@ -8,3 +8,7 @@ await copyNative('codex-exporter', ['codex-session-exporter']);
 await mkdir(path.join(artifacts.root, 'dist'), { recursive: true });
 await copyFile(process.env.IDLE_RELEASE_INPUTS || path.join(artifacts.root, 'target', 'released-dependencies.json'),
   path.join(artifacts.root, 'dist', 'released-dependencies.json'));
+
+if (process.env.IDLE_PRODUCT_INPUTS) {
+  await copyFile(process.env.IDLE_PRODUCT_INPUTS, path.join(artifacts.root, 'dist', 'product-inputs.json'));
+}

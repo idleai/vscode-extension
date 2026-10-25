@@ -40,7 +40,9 @@ async function main() {
   let daemon, hosted = false, channel = false, cleaned = false;
   try {
     const run = await api(`actions/runs/${runId}`);
-    assert.ok(run.head_branch.startsWith('acceptance/compute/'), 'the run explicitly opted into compute acceptance');
+    assert.ok(run.head_branch.startsWith('acceptance/compute/')
+      || (run.event === 'workflow_dispatch' && run.path === '.github/workflows/product-compute.yml'),
+    'the run explicitly opted into compute acceptance');
     await gh(['run', 'download', runId, '--repo', repository, '--name', 'compute-connection-request',
       '--dir', path.join(directory, 'request')]);
     await Promise.all([home, checkout, chain].map(child => fs.mkdir(child, { mode: 0o700 })));
