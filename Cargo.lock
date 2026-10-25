@@ -27,7 +27,7 @@ dependencies = [
  "facet",
  "idle-history",
  "idle-history-native",
- "idle-protocol",
+ "idle-protocol 0.3.1",
  "serde",
  "serde_json",
  "thiserror",
@@ -612,9 +612,9 @@ dependencies = [
 
 [[package]]
 name = "editchain-core"
-version = "0.1.6"
+version = "0.1.7"
 source = "sparse+https://raw.githubusercontent.com/idleai/editchain/cargo-index/"
-checksum = "920889f66f39d7f22a981d8e894f0ac397f05fad9a333ffbdf300be3029609c8"
+checksum = "3715b1424c47ddbaaa8be06d924dcc60a537802aa0b1e9f860e91b127c38bbc5"
 dependencies = [
  "blake3",
  "serde",
@@ -622,9 +622,9 @@ dependencies = [
 
 [[package]]
 name = "editchain-engine"
-version = "0.1.6"
+version = "0.1.7"
 source = "sparse+https://raw.githubusercontent.com/idleai/editchain/cargo-index/"
-checksum = "23069caedc5903d08f32a28ed134304cafcb6cc9e9bfe007a79147ca04484366"
+checksum = "d93030d009299c9f0d0e5a1f7802de1ee0c9dc9769db59cd2079551e5d9e273c"
 dependencies = [
  "blake3",
  "editchain-core",
@@ -635,9 +635,9 @@ dependencies = [
 
 [[package]]
 name = "editchain-index"
-version = "0.1.6"
+version = "0.1.7"
 source = "sparse+https://raw.githubusercontent.com/idleai/editchain/cargo-index/"
-checksum = "bf2cc27329e8ab49ed7b113c7c4f7f21b27a65da4ed9de2bcf31572c0ae930b5"
+checksum = "cac707b63ddea4827ba13810adfa8eb7b4e01f8c2665ef8b48dd47e7233b4b1e"
 dependencies = [
  "editchain-core",
  "editchain-index-pages",
@@ -647,9 +647,9 @@ dependencies = [
 
 [[package]]
 name = "editchain-index-pages"
-version = "0.1.6"
+version = "0.1.7"
 source = "sparse+https://raw.githubusercontent.com/idleai/editchain/cargo-index/"
-checksum = "3cdc76e3688795592d2441ff50ae6519520c5b3ee1eca6a3a227b4cdd544d92c"
+checksum = "560a323b92c12b695ac7d6bcdd84393b842d344fba3e30278573ad0a72542318"
 dependencies = [
  "blake3",
  "ciborium",
@@ -658,9 +658,9 @@ dependencies = [
 
 [[package]]
 name = "editchain-store"
-version = "0.1.6"
+version = "0.1.7"
 source = "sparse+https://raw.githubusercontent.com/idleai/editchain/cargo-index/"
-checksum = "8d70bb03b80016f42a4d045bf151787a7eff581e7a7f0cdf8f25d6a625433928"
+checksum = "1f365ef97370d2784080941b4d2f67f30e06dae87d2b24323b5d416380764fed"
 dependencies = [
  "blake3",
  "crc",
@@ -1006,7 +1006,7 @@ checksum = "6122a89ffe70cc0b84f6d461464d00459a026f0da81184bfdb9576b3c0b6bfc2"
 dependencies = [
  "editchain-core",
  "facet",
- "idle-protocol",
+ "idle-protocol 0.3.1",
  "serde",
  "serde_json",
 ]
@@ -1030,7 +1030,7 @@ dependencies = [
  "editchain-core",
  "editchain-engine",
  "idle-history",
- "idle-protocol",
+ "idle-protocol 0.3.1",
  "serde_json",
 ]
 
@@ -1046,6 +1046,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "idle-protocol"
+version = "0.5.1"
+source = "sparse+https://raw.githubusercontent.com/idleai/host-tools/cargo-index/"
+checksum = "ae52eb1aaae21151d20d1706e6838759da8e585101f31d6e680c158420342577"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "idle-vscode-webview"
 version = "0.2.1"
 dependencies = [
@@ -1054,7 +1064,7 @@ dependencies = [
  "dioxus",
  "dioxus-web",
  "editchain-core",
- "idle-protocol",
+ "idle-protocol 0.5.1",
  "js-sys",
  "serde",
  "serde_json",
