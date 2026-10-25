@@ -49,12 +49,7 @@ check "release automation" python3 -m unittest discover -s scripts -p "test*rele
 check "cargo fmt" cargo fmt --all -- --check
 
 # ---------------------------------------------------------------------------
-# Build check (all targets, all features, locked)
-# ---------------------------------------------------------------------------
-check "cargo check" cargo check --workspace --all-targets --all-features --locked
-
-# ---------------------------------------------------------------------------
-# Clippy (deny warnings)
+# Clippy also checks all targets; cargo test below includes doctests.
 # ---------------------------------------------------------------------------
 check "cargo clippy" cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
@@ -65,18 +60,12 @@ check "engine integration tools" python3 scripts/install-artifacts.py engine
 check "cargo test" cargo test --workspace --all-features --locked
 
 # ---------------------------------------------------------------------------
-# Doc tests
-# ---------------------------------------------------------------------------
-check "cargo test (doc)" cargo test --workspace --all-features --doc --locked
-
-# ---------------------------------------------------------------------------
 # Rustdoc lint checks
 # ---------------------------------------------------------------------------
 # Build documentation so the Rustdoc lint table is exercised beyond doctests.
 check "cargo doc" cargo doc --workspace --all-features --no-deps --locked
 
 # Browser libraries must satisfy the same policy on their actual compilation target.
-check "cargo check (wasm32)" cargo check -p idle-vscode-webview --lib --all-features --locked --target wasm32-unknown-unknown
 check "cargo clippy (wasm32)" cargo clippy -p idle-vscode-webview --lib --all-features --locked --target wasm32-unknown-unknown -- -D warnings
 
 # ---------------------------------------------------------------------------
