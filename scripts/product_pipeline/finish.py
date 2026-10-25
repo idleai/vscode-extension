@@ -4,6 +4,7 @@ from datetime import datetime
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -122,6 +123,7 @@ def finish(plan, sources, output):
     with open(output / "SHA256SUMS", "w") as sums:
         for filename, checksum in result["artifacts"].items():
             sums.write(f"{checksum}  {filename}\n")
+    shutil.copyfile(Path(__file__).parents[2] / "docs/product-installation.md", output / "INSTALL.md")
     archive = output / "idle-product-linux-x64.tar.gz"
     with tarfile.open(archive, "w:gz") as bundle:
         for path in sorted(output.iterdir()):

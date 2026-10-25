@@ -16,6 +16,8 @@ No package publication or scheduled dependency check is needed to produce a
 new VSIX.
 
 Optimized Codex CLI and app-server packages build alongside the Cargo path.
+The existing package builder strips debug symbols from its staged executables
+before archiving them, reducing compression and transfer time.
 The existing prebuilt V8 configuration remains in use. Every component's
 required CI must pass for the exact selected commit before the product can
 pass acceptance; an unchanged Codex commit can reuse its successful CI result.
@@ -30,6 +32,14 @@ This check uses a local owner stdio connection and private temporary state.
 Remote Dev Tunnels lifecycle remains covered by the extension's live compute
 acceptance workflow.
 
+The manual **Product compute acceptance** workflow accepts the repository and
+run ID of a successful product build. It installs that exact VSIX in desktop
+VS Code on a separate machine and runs the existing compute connection and
+desktop restart checks. The compute owner runs `scripts/smoke-compute-owner.cjs`
+with that acceptance run ID and the matching product's Codex and native host
+binaries. The test creates a temporary Dev Tunnel and removes it afterward;
+invitations cross the test channel only as encrypted data.
+
 The successful `idle-product-linux-x64` artifact contains the installable VSIX,
 Codex packages, native bundles, checksums, source selection, and per-stage
 timings. Default-branch pushes publish these exact files as a GitHub prerelease
@@ -40,6 +50,8 @@ package releases remain available for external consumers.
 Install the VSIX with `code --install-extension idle.vsix --force` when replacing
 an earlier product build with the same extension version. The product archive
 and its prerelease tag identify the exact build independently of that version.
+The archive's `INSTALL.md` explains how to use its matching Codex and native
+host packages on a compute machine.
 
 `product-result.json` records elapsed time from workflow creation to completed
 validation. GitHub's workflow duration additionally includes final bundle

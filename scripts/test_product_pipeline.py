@@ -13,7 +13,7 @@ from product_pipeline import sources
 from product_pipeline.build import local_packages, pinned_artifacts
 from product_pipeline.finish import require_checks, unpack_vsix
 from product_pipeline.records import Timings
-from product_pipeline.publish import validate
+from product_pipeline.publish import release_for, validate
 
 
 class ProductTests(unittest.TestCase):
@@ -147,6 +147,22 @@ class ProductTests(unittest.TestCase):
             (root / "idle.vsix").write_bytes(b"changed extension")
             with self.assertRaisesRegex(ValueError, "VSIX changed"):
                 validate(root, trigger["repository"], revision, 42)
+
+    def test_publication_finds_drafts_and_does_not_treat_permission_failures_as_missing(self):
+        import subprocess
+        missing = subprocess.CompletedProcess([], 1, stdout="", stderr="release not found\n")
+        with patch("product_pipeline.publish.subprocess.run", return_value=missing):
+            self.assertIsNone(release_for("idleai/editchain", "product-test"))
+        found = subprocess.CompletedProcess([], 0, stdout="17\n", stderr="")
+        draft = {"draft": True, "tag_name": "product-test"}
+        with patch("product_pipeline.publish.subprocess.run", return_value=found), \
+                patch("product_pipeline.publish.api", return_value=draft) as api:
+            self.assertEqual(release_for("idleai/editchain", "product-test"), draft)
+            api.assert_called_once_with("repos/idleai/editchain/releases/17")
+        denied = subprocess.CompletedProcess([], 1, stdout="", stderr="HTTP 403: Resource not accessible")
+        with patch("product_pipeline.publish.subprocess.run", return_value=denied):
+            with self.assertRaises(subprocess.CalledProcessError):
+                release_for("idleai/editchain", "product-test")
 
 
 if __name__ == "__main__":

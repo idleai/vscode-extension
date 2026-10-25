@@ -1,0 +1,91 @@
+name: Product compute acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      product_repository:
+        description: Repository containing the successful product build
+        type: string
+        required: true
+      product_run:
+        description: Workflow run ID containing idle-product-linux-x64
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  desktop:
+    name: Installed product connected to a separate compute host
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      IDLE_COMPUTE_TEST_DIR: /tmp/idle-product-compute-desktop
+      VSCODE_BIN: /tmp/idle-product-compute-vscode/VSCode-linux-x64/bin/code
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ inputs.product_repository }}
+          run-id: ${{ inputs.product_run }}
+          name: idle-product-linux-x64
+          path: product
+      - name: Select the matching desktop acceptance helpers
+        id: sources
+        env:
+          PRODUCT_REPOSITORY: ${{ inputs.product_repository }}
+          PRODUCT_RUN: ${{ inputs.product_run }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re
+          root = pathlib.Path('product')
+          plan = json.loads((root / 'product-inputs.json').read_text())
+          result = json.loads((root / 'product-result.json').read_text())
+          assert result['result'] == 'success' and result['product_id'] == plan['id']
+          assert str(result['run']['id']) == os.environ['PRODUCT_RUN']
+          assert result['run']['url'] == f"https://github.com/{os.environ['PRODUCT_REPOSITORY']}/actions/runs/{os.environ['PRODUCT_RUN']}"
+          assert hashlib.file_digest((root / 'idle.vsix').open('rb'), 'sha256').hexdigest() == result['artifacts']['idle.vsix']
+          revision = plan['repositories']['vscode-extension']['revision']
+          assert re.fullmatch(r'[0-9a-f]{40}', revision)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'extension={revision}\n')
+          PY
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.sources.outputs.extension }}
+          path: extension-source
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Install desktop VS Code
+        run: |
+          mkdir -p /tmp/idle-product-compute-vscode
+          curl --fail --silent --show-error --location --retry 3 \
+            https://update.code.visualstudio.com/1.140.0/linux-x64/stable \
+            --output /tmp/idle-product-compute-vscode/archive.tar.gz
+          tar -xzf /tmp/idle-product-compute-vscode/archive.tar.gz -C /tmp/idle-product-compute-vscode
+      - name: Prepare the installed VSIX and public connection request
+        run: node extension-source/scripts/smoke-compute-desktop.cjs prepare product/idle.vsix
+      - uses: actions/upload-artifact@v7
+        with:
+          name: compute-connection-request
+          path: ${{ env.IDLE_COMPUTE_TEST_DIR }}/request
+          if-no-files-found: error
+          retention-days: 1
+      - name: Connect to the compute host and restart the desktop
+        run: node extension-source/scripts/smoke-compute-desktop.cjs run
+      - name: Retain desktop results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: compute-results
+          path: |
+            ${{ env.IDLE_COMPUTE_TEST_DIR }}/connect.json
+            ${{ env.IDLE_COMPUTE_TEST_DIR }}/restore.json
+            ${{ env.IDLE_COMPUTE_TEST_DIR }}/*-progress.jsonl
+          if-no-files-found: warn
+          retention-days: 1

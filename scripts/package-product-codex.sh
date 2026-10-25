@@ -9,6 +9,7 @@ for variant in codex codex-app-server; do
     entry_directory=app-server
   fi
   python3 scripts/build_codex_package.py --target x86_64-unknown-linux-gnu "${variant_args[@]}" \
+    --strip all \
     --entrypoint-bin "bazel-bin/codex-rs/$entry_directory/$variant" \
     --code-mode-host-bin bazel-bin/codex-rs/code-mode-host/codex-code-mode-host \
     --bwrap-bin bazel-bin/codex-rs/bwrap/bwrap \

@@ -138,6 +138,7 @@ jobs:
         with:
           name: product-desktop
           path: product-output
+          compression-level: 0
           if-no-files-found: error
           retention-days: 14
 
@@ -187,6 +188,7 @@ jobs:
         with:
           name: product-codex
           path: product-output
+          compression-level: 0
           if-no-files-found: error
           retention-days: 14
 
@@ -232,6 +234,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: idle-product-linux-x64
+          compression-level: 0
           path: |
             product-output/idle-product-linux-x64.tar.gz
             product-output/idle-product-linux-x64.tar.gz.sha256

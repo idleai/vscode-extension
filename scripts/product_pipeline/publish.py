@@ -6,7 +6,6 @@ from pathlib import Path
 import subprocess
 import tarfile
 import tempfile
-from urllib.error import HTTPError
 
 from .records import digest
 from .sources import api, read
@@ -14,6 +13,19 @@ from .sources import api, read
 
 ASSETS = ["idle-product-linux-x64.tar.gz", "idle-product-linux-x64.tar.gz.sha256",
           "idle.vsix", "product-inputs.json", "product-result.json"]
+
+
+def release_for(repository, tag):
+    # GitHub's tag endpoint finds published releases. The CLI also resolves
+    # pending tags on drafts, allowing an interrupted upload to resume.
+    result = subprocess.run(["gh", "release", "view", tag, "--repo", repository,
+                             "--json", "databaseId", "--jq", ".databaseId"],
+                            text=True, capture_output=True)
+    if result.returncode and result.stderr.strip() == "release not found":
+        return None
+    result.check_returncode()
+    release_id = int(result.stdout.strip())
+    return api(f"repos/{repository}/releases/{release_id}")
 
 
 def validate(output, repository, revision, run_id):
@@ -53,12 +65,7 @@ def publish(output):
     def gh(*arguments):
         return subprocess.check_output(["gh", *arguments, "--repo", repository], text=True).strip()
 
-    try:
-        release = api(f"repos/{repository}/releases/tags/{tag}")
-    except HTTPError as error:
-        if error.code != 404:
-            raise
-        release = None
+    release = release_for(repository, tag)
     with tempfile.TemporaryDirectory(prefix="idle-product-publish-") as temporary:
         staging = Path(temporary)
         if release is None:
@@ -69,10 +76,13 @@ def publish(output):
                              f"Build and checks: {result['run']['url']}\n\n"
                              "Install with `code --install-extension idle.vsix --force` to replace an earlier build of the same version. "
                              "The complete archive contains the tested native and Codex packages, "
-                             "source selections, checksums and stage timings.\n")
+                             "source selections, checksums and stage timings. "
+                             "Follow INSTALL.md in that archive to use the matching native helper on a compute host.\n")
             gh("release", "create", tag, "--target", revision, "--draft", "--prerelease", "--latest=false",
                "--title", f"Linux product {document['id']}", "--notes-file", str(notes))
-            release = api(f"repos/{repository}/releases/tags/{tag}")
+            release = release_for(repository, tag)
+            if release is None:
+                raise ValueError("the newly created product draft could not be read")
         if release["target_commitish"] != revision or not release["prerelease"]:
             raise ValueError("the existing release does not match this product candidate")
         assets = {asset["name"]: asset for asset in release["assets"]}
