@@ -25,7 +25,8 @@ The product build also runs the Cargo repositories' canonical checks, browser
 checks, and installation checks in an isolated desktop VS Code profile.
 
 The final integration check loads the VSIX's actual JavaScript bundle and its
-native host against the packaged Codex app server. It verifies coordination
+native host against both the packaged Codex CLI's app-server command and the
+standalone app-server package. It verifies coordination
 transfer, recovery after a lost transfer acknowledgement, writes on the
 compute checkout, repeated requests, and recovery after a Codex restart.
 This check uses a local owner stdio connection and private temporary state.

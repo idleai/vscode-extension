@@ -100,15 +100,17 @@ def finish(plan, sources, output):
         with timings.step("verify packaged component identities"):
             installed = unpack_vsix(output / "idle.vsix", staging / "vsix")
             verify_native(document, output, installed, staging)
-            runtime = staging / "runtime"
-            runtime.mkdir()
-            with tarfile.open(output / "codex-package-x86_64-unknown-linux-gnu.tar.gz") as bundle:
-                bundle.extractall(runtime, filter="data")
-        with timings.step("packaged extension and Codex local compute integration"):
-            environment = dict(os.environ, IDLE_PACKAGED_EXTENSION=str(installed),
-                               IDLE_CODEX_PACKAGE=str(runtime), IDLE_EXTENSION_SOURCE=str(sources / "vscode-extension"))
-            script = Path(__file__).parents[1] / "smoke-product.cjs"
-            subprocess.run(["node", str(script)], env=environment, check=True)
+        for variant in ["codex", "codex-app-server"]:
+            with timings.step(f"packaged extension and {variant} local compute integration"):
+                runtime = staging / variant
+                runtime.mkdir()
+                with tarfile.open(output / f"{variant}-package-x86_64-unknown-linux-gnu.tar.gz") as bundle:
+                    bundle.extractall(runtime, filter="data")
+                environment = dict(os.environ, IDLE_PACKAGED_EXTENSION=str(installed),
+                                   IDLE_CODEX_PACKAGE=str(runtime), IDLE_CODEX_VARIANT=variant,
+                                   IDLE_EXTENSION_SOURCE=str(sources / "vscode-extension"))
+                script = Path(__file__).parents[1] / "smoke-product.cjs"
+                subprocess.run(["node", str(script)], env=environment, check=True)
     with timings.step("require component CI for the exact selected commits"):
         checks = require_checks(document)
     completed = now()

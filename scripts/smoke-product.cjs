@@ -15,7 +15,8 @@ class AppServer {
     this.next = 0;
     this.pending = new Map();
     this.errors = '';
-    this.process = spawn(binary, ['app-server', '-c', 'features.plugin_startup_tasks=false'], {
+    const command = path.basename(binary) === 'codex' ? ['app-server'] : [];
+    this.process = spawn(binary, [...command, '-c', 'features.plugin_startup_tasks=false'], {
       env: { ...process.env, CODEX_HOME: home }, stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.closed = new Promise(resolve => this.process.once('close', resolve));
@@ -68,6 +69,8 @@ async function main() {
   const installed = process.env.IDLE_PACKAGED_EXTENSION;
   const runtime = process.env.IDLE_CODEX_PACKAGE;
   const source = process.env.IDLE_EXTENSION_SOURCE;
+  const variant = process.env.IDLE_CODEX_VARIANT ?? 'codex';
+  assert.ok(['codex', 'codex-app-server'].includes(variant));
   for (const directory of [installed, runtime, source]) assert.ok(path.isAbsolute(directory ?? ''));
   const { fixture, loadWithVSCode } = require(path.join(source, 'test/helpers/vscode.cjs'));
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'idle-product-runtime-'));
@@ -92,7 +95,7 @@ async function main() {
     checkoutId: 'product-checkout', chainId: binding.chain, checkoutRoot: checkout, chainDirectory: chain };
   let server;
   const start = async () => {
-    server = new AppServer(path.join(runtime, 'bin/codex'), home);
+    server = new AppServer(path.join(runtime, 'bin', variant), home);
     await server.initialize();
   };
   const read = async command => {
@@ -172,7 +175,7 @@ async function main() {
     assert.notEqual(restored.runtimeId, first.runtimeId);
     assert.deepEqual(await read({ kind: 'snapshot' }), after, 'Codex restart restores the same native coordinator');
     await assert.rejects(server.request('idle/runtime/status/read', { protocolVersion: 99 }), { code: -32602 });
-    console.log('PASS: packaged extension → packaged Codex → packaged native host; transfer, write routing, retry recovery and daemon restart.');
+    console.log(`PASS: packaged extension → packaged ${variant} → packaged native host; transfer, write routing, retry recovery and daemon restart.`);
   } finally {
     const cleanup = await Promise.allSettled([host.shutdown(), server?.stop()]);
     await fs.rm(directory, { recursive: true, force: true });
