@@ -37,6 +37,10 @@ in the triggering repository after acceptance, without rebuilding. Manual
 candidate runs retain downloadable workflow artifacts. Existing independent
 package releases remain available for external consumers.
 
+Install the VSIX with `code --install-extension idle.vsix --force` when replacing
+an earlier product build with the same extension version. The product archive
+and its prerelease tag identify the exact build independently of that version.
+
 `product-result.json` records elapsed time from workflow creation to completed
 validation. GitHub's workflow duration additionally includes final bundle
 compression and artifact upload. Failed stage timings are retained separately.

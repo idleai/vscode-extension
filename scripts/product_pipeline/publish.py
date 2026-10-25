@@ -67,7 +67,8 @@ def publish(output):
                              f"Acceptance completed {result['elapsed_seconds'] / 60:.1f} minutes after workflow creation. "
                              "The workflow duration also includes packaging, upload and publication.\n\n"
                              f"Build and checks: {result['run']['url']}\n\n"
-                             "Install idle.vsix in VS Code. The complete archive contains the tested native and Codex packages, "
+                             "Install with `code --install-extension idle.vsix --force` to replace an earlier build of the same version. "
+                             "The complete archive contains the tested native and Codex packages, "
                              "source selections, checksums and stage timings.\n")
             gh("release", "create", tag, "--target", revision, "--draft", "--prerelease", "--latest=false",
                "--title", f"Linux product {document['id']}", "--notes-file", str(notes))
