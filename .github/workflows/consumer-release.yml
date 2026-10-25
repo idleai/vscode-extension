@@ -22,7 +22,7 @@ permissions:
 jobs:
   package:
     env:
-      IDLE_RELEASE_INPUTS: ${{ github.workspace }}/target/released-dependencies.json
+      IDLE_RELEASE_INPUTS: ${{ github.workspace }}/../release-inputs/released-dependencies.json
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -38,13 +38,13 @@ jobs:
         if: ${{ inputs.dependencies_artifact != '' }}
         with:
           artifact-ids: ${{ inputs.dependencies_artifact }}
-          path: target
+          path: ${{ github.workspace }}/../release-inputs
       - name: Download recorded release dependencies for a manual retry
         if: ${{ !inputs.dependencies_artifact }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ inputs.tag }}
-        run: gh release download "$RELEASE_TAG" --pattern released-dependencies.json --dir target --clobber
+        run: gh release download "$RELEASE_TAG" --pattern released-dependencies.json --dir "$GITHUB_WORKSPACE/../release-inputs" --clobber
       - name: Restore the tested dependency selection
         run: python3 scripts/release_dependencies.py restore
       - uses: Swatinem/rust-cache@v2
