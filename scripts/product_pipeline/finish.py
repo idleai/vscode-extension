@@ -21,9 +21,13 @@ def require_checks(document, deadline=5400):
     started = time.monotonic()
     while pending:
         for name, entry in list(pending.items()):
-            resource = f"repos/{entry['repository']}/commits/{entry['revision']}/check-runs?per_page=100&filter=latest"
-            rows = [row for row in api(resource)["check_runs"] if row["name"] == "CI required"
-                    and row.get("app", {}).get("slug") == "github-actions"]
+            workflow = {"codex-evo": "blocking-ci.yml", "editchain": "lint.yml"}.get(name, "ci.yml")
+            resource = (f"repos/{entry['repository']}/actions/workflows/{workflow}/runs"
+                        f"?head_sha={entry['revision']}&per_page=100")
+            rows = [row for row in api(resource)["workflow_runs"]
+                    if row["head_sha"] == entry["revision"]
+                    and row["event"] in {"push", "schedule", "workflow_dispatch"}
+                    and (row.get("head_repository") or {}).get("full_name") == entry["repository"]]
             if not rows:
                 continue
             latest = max(rows, key=lambda row: row["id"])
@@ -31,9 +35,10 @@ def require_checks(document, deadline=5400):
                 continue
             if latest["conclusion"] != "success":
                 raise ValueError(f"{name} required CI failed at {entry['revision']}: {latest['html_url']}")
-            results[name] = {"revision": entry["revision"], "url": latest["html_url"], "result": "success"}
+            results[name] = {"revision": entry["revision"], "url": latest["html_url"], "result": "success",
+                             "run_id": latest["id"], "run_attempt": latest["run_attempt"], "event": latest["event"]}
             pending.pop(name)
-            print(f"Required CI passed: {name}@{entry['revision']}", flush=True)
+            print(f"Complete CI passed: {name}@{entry['revision']}", flush=True)
         if pending:
             if time.monotonic() - started > deadline:
                 raise TimeoutError(f"required CI did not finish: {', '.join(pending)}")

@@ -141,11 +141,38 @@ class ProductTests(unittest.TestCase):
 
     def test_required_ci_does_not_accept_an_older_successful_attempt(self):
         document = {"repositories": {"host-tools": {"repository": "idleai/host-tools", "revision": "c" * 40}}}
-        row = {"name": "CI required", "app": {"slug": "github-actions"}, "status": "completed", "html_url": "https://example.test/check"}
+        row = {"event": "push", "head_sha": "c" * 40, "head_repository": {"full_name": "idleai/host-tools"},
+               "status": "completed", "html_url": "https://example.test/check", "run_attempt": 1}
         rows = [dict(row, id=1, conclusion="success"), dict(row, id=2, conclusion="failure")]
-        with patch("product_pipeline.finish.api", return_value={"check_runs": rows}):
+        with patch("product_pipeline.finish.api", return_value={"workflow_runs": rows}):
             with self.assertRaisesRegex(ValueError, "required CI failed"):
                 require_checks(document)
+
+    def test_product_waits_for_complete_ci_even_when_pr_smoke_tests_passed(self):
+        document = {"repositories": {"codex-evo": {"repository": "idleai/codex-evo", "revision": "c" * 40}}}
+        row = {"id": 1, "event": "push", "head_sha": "c" * 40, "head_repository": {"full_name": "idleai/codex-evo"},
+               "status": "completed", "conclusion": "success", "html_url": "https://example.test/full", "run_attempt": 2}
+        pr = dict(row, id=2, event="pull_request", html_url="https://example.test/smoke")
+        responses = [{"workflow_runs": [pr]}, {"workflow_runs": [pr, dict(row, status="in_progress", conclusion=None)]},
+                     {"workflow_runs": [pr, row]}]
+        with patch("product_pipeline.finish.api", side_effect=responses) as api, \
+                patch("product_pipeline.finish.time.sleep") as sleep:
+            result = require_checks(document)
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(result["codex-evo"]["url"], row["html_url"])
+        self.assertEqual(result["codex-evo"]["run_attempt"], 2)
+        self.assertIn("/actions/workflows/blocking-ci.yml/runs?head_sha=", api.call_args.args[0])
+
+    def test_product_rejects_pr_only_and_other_source_validation(self):
+        document = {"repositories": {"editchain": {"repository": "idleai/editchain", "revision": "c" * 40}}}
+        row = {"id": 1, "event": "push", "head_sha": "c" * 40, "head_repository": {"full_name": "idleai/editchain"},
+               "status": "completed", "conclusion": "success", "html_url": "https://example.test/run", "run_attempt": 1}
+        for change in [{"event": "pull_request"}, {"head_sha": "d" * 40},
+                       {"head_repository": {"full_name": "other/editchain"}}]:
+            with self.subTest(change=change), \
+                    patch("product_pipeline.finish.api", return_value={"workflow_runs": [dict(row, **change)]}), \
+                    self.assertRaisesRegex(TimeoutError, "required CI did not finish"):
+                require_checks(document, deadline=-1)
 
     def test_failed_stage_retains_duration_and_failure_result(self):
         with tempfile.TemporaryDirectory() as temporary:
