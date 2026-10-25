@@ -5,18 +5,69 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import tomllib
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from product_pipeline import sources
-from product_pipeline.build import local_packages, pinned_artifacts
+from product_pipeline import build, sources
+from product_pipeline.build import cargo_environment, local_packages, pinned_artifacts
 from product_pipeline.finish import require_checks, unpack_vsix
 from product_pipeline.records import Timings
 from product_pipeline.publish import release_for, validate
 
 
 class ProductTests(unittest.TestCase):
+    def test_product_resolution_keeps_the_shared_cargo_home_and_restores_configs(self):
+        for fail in [False, True]:
+            with self.subTest(fail=fail), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                home, source = root / "cargo", root / "sources"
+                home.mkdir()
+                source.mkdir()
+                original_home = b'[net]\nretry = 4\n'
+                (home / "config.toml").write_bytes(original_home)
+                for name in build.NAMES:
+                    (source / name).mkdir()
+                producer = source / "editchain"
+                consumer = source / "host-tools"
+                (producer / ".cargo").mkdir()
+                original_project = b'[net]\nretry = 2\n'
+                (producer / ".cargo/config").write_bytes(original_project)
+                index = "sparse+https://example.test/index/"
+                registries = {"idle-test": {"index": index}}
+                patches = {index: {"sample": str(producer / "crates/sample")}}
+                metadata = {"packages": [{"name": "sample", "version": "1.0.0", "source": None,
+                                          "manifest_path": str(producer / "crates/sample/Cargo.toml")}]}
+                environment = {"CARGO_HOME": str(home), "CARGO_TARGET_DIR": str(root / "other-target"),
+                               "CARGO_BUILD_BUILD_DIR": str(root / "common-build")}
+                with patch.dict(os.environ, environment, clear=True), \
+                        patch.object(build.cargo_sources, "candidates", return_value=(registries, patches)), \
+                        patch.object(build.cargo_sources, "metadata", return_value=metadata), \
+                        patch.object(build.cargo_sources, "resolver_for", return_value=None):
+                    output = root / "output"
+                    output.mkdir()
+                    try:
+                        with cargo_environment(source, output, root / "plan.json") as (resolve, _):
+                            resolve(producer)
+                            selected = resolve(consumer)
+                            self.assertEqual(selected["CARGO_HOME"], str(home))
+                            self.assertEqual(selected["CARGO_BUILD_BUILD_DIR"], environment["CARGO_BUILD_BUILD_DIR"])
+                            self.assertNotIn("CARGO_TARGET_DIR", selected)
+                            self.assertEqual((home / "config.toml").read_bytes(), original_home)
+                            settings = tomllib.loads((consumer / ".cargo/config.toml").read_text())
+                            self.assertEqual(settings["patch"][index]["sample"]["path"], str(producer / "crates/sample"))
+                            self.assertEqual((consumer / "target").resolve(), root / "cargo-target")
+                            if fail:
+                                raise RuntimeError("build failed after dependency selection")
+                    except RuntimeError:
+                        if not fail:
+                            raise
+                self.assertEqual((home / "config.toml").read_bytes(), original_home)
+                self.assertEqual((producer / ".cargo/config").read_bytes(), original_project)
+                self.assertFalse((producer / ".cargo/config.toml").exists())
+                self.assertFalse((consumer / ".cargo/config.toml").exists())
+
     def test_workflow_source_does_not_fix_project_checkout_commits(self):
         root = Path(__file__).resolve().parents[1]
         for path in (root / ".github/workflows").glob("product*.yml"):
