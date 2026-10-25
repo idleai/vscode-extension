@@ -15,6 +15,16 @@ dependencies and the existing session exporter keep their committed selections.
 No package publication or scheduled dependency check is needed to produce a
 new VSIX.
 
+The builder keeps the runner's Cargo home and `CARGO_BUILD_BUILD_DIR`, so
+ordinary repository CI and coordinated builds can share matching compiler
+results through sccache. Source patches live temporarily in the selected
+checkouts' Cargo configurations and are restored after success or failure.
+Each checkout's `target` points to the product's local output directory. When
+the runner has no configured intermediate directory, the builder uses a
+`cargo-build` directory next to the selected sources. Reuse still depends on
+the actual source, dependency graph, features, compiler flags and target;
+published packages and local source candidates can require different results.
+
 Optimized Codex CLI and app-server packages build alongside the Cargo path.
 The existing package builder strips debug symbols from its staged executables
 before archiving them, reducing compression and transfer time.

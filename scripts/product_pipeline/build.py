@@ -63,13 +63,8 @@ def local_packages(metadata, roots):
 def cargo_environment(sources, output, plan):
     roots = [sources / name for name in NAMES]
     original_cargo = Path(os.environ.get("CARGO_HOME", Path.home() / ".cargo")).resolve()
-    cargo = sources.parent / "cargo-home"
-    cargo.mkdir(exist_ok=True)
-    for name in ["bin", "registry", "git"]:
-        source, destination = original_cargo / name, cargo / name
-        if source.exists() and not destination.exists():
-            destination.symlink_to(source, target_is_directory=True)
-    original_path = original_cargo / "config.toml"
+    legacy_home = original_cargo / "config"
+    original_path = legacy_home if legacy_home.exists() else original_cargo / "config.toml"
     original = original_path.read_text() if original_path.exists() else ""
     target = sources.parent / "cargo-target"
     target.mkdir(exist_ok=True)
@@ -79,15 +74,27 @@ def cargo_environment(sources, output, plan):
             link.symlink_to(target, target_is_directory=True)
         if link.resolve() != target.resolve():
             raise ValueError(f"expected the product's shared Cargo output directory: {root}")
-    environment = dict(os.environ, CARGO_HOME=str(cargo), CARGO_TARGET_DIR=str(target),
-                       IDLE_PRODUCT_INPUTS=str(plan), IDLE_ARTIFACTS_MIRROR=str(output / "native"))
+    environment = dict(os.environ, IDLE_PRODUCT_INPUTS=str(plan),
+                       IDLE_ARTIFACTS_MIRROR=str(output / "native"))
+    # Keep dependency inputs identical to ordinary CI jobs. Cargo's build directory
+    # holds intermediate outputs; the target symlinks retain each script's outputs.
+    environment.pop("CARGO_TARGET_DIR", None)
+    environment.setdefault("CARGO_BUILD_BUILD_DIR", str(sources.parent / "cargo-build"))
     environment.pop("IDLE_RELEASE_INPUTS", None)
     registries, patches = cargo_sources.candidates(roots[:-1], environment)
+    cargo_sources.cargo_config(original, registries, patches)
+    configurations = {}
+    for root in roots:
+        legacy = root / ".cargo/config"
+        config = legacy if legacy.exists() else root / ".cargo/config.toml"
+        configurations[root] = (config, config.read_bytes() if config.exists() else None)
     local_native = {}
 
     def resolve(root):
-        config = cargo / "config.toml"
-        config.write_text(cargo_sources.cargo_config(original, registries, patches))
+        config, saved = configurations[root]
+        contents = saved.decode() if saved is not None else ""
+        config.parent.mkdir(exist_ok=True)
+        config.write_text(cargo_sources.cargo_config(contents, registries, patches))
         resolver = cargo_sources.resolver_for(root)
         if resolver is not None:
             # A locked older release can win until Cargo updates that package.
@@ -99,7 +106,7 @@ def cargo_environment(sources, output, plan):
                  if not Path(package["manifest_path"]).is_relative_to(root)}
         needed = {registry: {name: path for name, path in packages.items() if path in paths}
                   for registry, packages in patches.items()}
-        config.write_text(cargo_sources.cargo_config(original, registries,
+        config.write_text(cargo_sources.cargo_config(contents, registries,
                           {registry: packages for registry, packages in needed.items() if packages}))
         metadata = cargo_sources.metadata(root, environment, resolve=True)
         selected = dict(environment)
@@ -114,7 +121,14 @@ def cargo_environment(sources, output, plan):
         write(output / "selections" / f"{root.name}.json", packages)
         return selected
 
-    yield resolve, local_native
+    try:
+        yield resolve, local_native
+    finally:
+        for config, saved in configurations.values():
+            if saved is None:
+                config.unlink(missing_ok=True)
+            else:
+                config.write_bytes(saved)
 
 
 def build(plan, sources, output):
