@@ -121,6 +121,12 @@ on the compute machine. Until the runner PRs merge, build Codex from
    and **Idle: Send to Runner** to submit another task. **Idle: Review Runner
    Approval** displays any command waiting for a decision.
 
+The output channel shows the selected runner's history and live output. Other
+runners keep working and can still request approval. Brief connection failures
+are retried automatically; reconnecting with the same invitation restores the
+watched runners and their pending approvals. Opening a runner that is already
+connected reads its history without replaying its approvals.
+
 Runners execute on the selected daemon's local executor. Network access is
 denied. The checkout's `.idle` and `.codex` directories, the chain directory and
 the daemon's private state remain inaccessible to runner commands. Required

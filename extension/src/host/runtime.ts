@@ -10,8 +10,10 @@ export interface RuntimeObservation { status: unknown; connected: boolean; obser
 export type RunnerCommand = { kind: 'runner'; method: string; params: unknown }
   | { kind: 'runner_events' }
   | { kind: 'runner_approve'; id: string | number; decision: 'accept' | 'decline' | 'cancel' };
+export interface RunnerConnection { readonly scope: string }
 interface Connection {
   client: CoordinationClient; binding: RepositoryBinding; config: FolderConfiguration;
+  runner: RunnerConnection;
   status?: unknown; observed: number; revision: number; failures: number; retry: number;
   pending?: Promise<RuntimeObservation | undefined>; timer?: NodeJS.Timeout; closed: boolean;
 }
@@ -139,25 +141,54 @@ export class RuntimeHost {
     return response;
   }
 
-  async runner(config: FolderConfiguration, binding: RepositoryBinding, command: RunnerCommand, signal?: AbortSignal): Promise<unknown> {
+  async runnerConnection(config: FolderConfiguration, binding: RepositoryBinding): Promise<RunnerConnection> {
+    return (await this.currentRunner(config, binding)).runner;
+  }
+
+  async runner(config: FolderConfiguration, binding: RepositoryBinding, command: RunnerCommand,
+    signal?: AbortSignal, expected?: RunnerConnection): Promise<unknown> {
+    const connection = await this.currentRunner(config, binding, signal);
+    if (expected && connection.runner !== expected) throw new HostError('cancelled', 'Runner connection changed.');
+    const encoded = JSON.stringify(command);
+    if (Buffer.byteLength(encoded) > 256 * 1024) throw new HostError('invalid_request', 'This runner request is too large.');
+    try {
+      const response: unknown = JSON.parse(await connection.client.request(encoded, signal, 45_000));
+      this.assertRunnerConnection(connection);
+      if (!record(response) || !record(response.result) || !Object.hasOwn(response.result, 'Ok')) {
+        throw new HostError('invalid_data', 'Invalid runner response.');
+      }
+      return response.result.Ok;
+    } catch (error) {
+      await this.discard(connection);
+      throw error;
+    }
+  }
+
+  private async currentRunner(config: FolderConfiguration, binding: RepositoryBinding, signal?: AbortSignal): Promise<Connection> {
     const generation = this.generation;
     const observation = await this.snapshot(config, binding, signal);
     this.assertCurrent(generation);
     if (this.native.supports && !await this.native.supports('runtime.runners')) {
       throw new HostError('incompatible_host', 'Update the native host to use compute runners.');
     }
+    this.assertCurrent(generation);
     if (!observation?.connected) throw new HostError('unavailable', 'Connect a runner invitation for this workspace.');
     this.assertRunnerStatus(observation.status);
     const connection = this.connections.get(this.key(binding));
     if (!connection || connection.closed) throw new HostError('unavailable', 'Runner connection is closed.');
-    const encoded = JSON.stringify(command);
-    if (Buffer.byteLength(encoded) > 256 * 1024) throw new HostError('invalid_request', 'This runner request is too large.');
-    const response: unknown = JSON.parse(await connection.client.request(encoded, signal, 45_000));
-    this.assertCurrent(generation);
-    if (!record(response) || !record(response.result) || !Object.hasOwn(response.result, 'Ok')) {
-      throw new HostError('invalid_data', 'Invalid runner response.');
+    return connection;
+  }
+
+  private assertRunnerConnection(connection: Connection): void {
+    this.configuration.assertTrusted();
+    if (this.closed || connection.closed || this.connections.get(this.key(connection.binding)) !== connection) {
+      throw new HostError('cancelled', 'Runner connection changed.');
     }
-    return response.result.Ok;
+  }
+
+  private async discard(connection: Connection): Promise<void> {
+    if (this.connections.get(this.key(connection.binding)) === connection) this.connections.delete(this.key(connection.binding));
+    await this.retire(connection);
   }
 
   private assertRunnerStatus(status: unknown): void {
@@ -174,7 +205,8 @@ export class RuntimeHost {
     }));
     client.start();
     const status = this.context.globalState.get<unknown>(`${this.key(binding)}.status`);
-    return { client, binding, config, status, observed: Date.now(), revision: this.nextRevision(binding),
+    return { client, binding, config, status, runner: { scope: createHash('sha256').update(invitation).digest('hex') },
+      observed: Date.now(), revision: this.nextRevision(binding),
       failures: 1, retry: 0, closed: false };
   }
 
@@ -208,6 +240,7 @@ export class RuntimeHost {
       });
     }
     catch {
+      if (this.purpose === 'runner') await this.discard(connection);
       connection.observed = Math.max(connection.observed, Date.now());
       connection.revision = this.nextRevision(connection.binding);
       connection.failures++;

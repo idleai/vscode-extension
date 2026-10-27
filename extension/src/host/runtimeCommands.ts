@@ -60,7 +60,7 @@ export function runtimeCommands(host: HostServices, views: WorkspaceViewProvider
         prompt: 'Paste a private runner invitation from the compute owner', ignoreFocusOut: true });
       if (invitation === undefined) return;
       host.assembly.validateBinding(context.binding);
-      await host.runners.connection.connect(context.config, context.binding, invitation);
+      await host.runners.connect(context, invitation);
       await host.diagnostics.notify('info', 'Runner host connected. Use Start Runner to submit a task.');
     }),
     register('idle.runner.start', async () => {

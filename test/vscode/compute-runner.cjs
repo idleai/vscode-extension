@@ -14,7 +14,7 @@ exports.run = async (host, config, binding, directory, phase, progress) => {
   };
   if (phase === 'connect') {
     await progress('runner pairing started');
-    await host.runners.connection.connect(config, binding,
+    await host.runners.connect({ config, binding },
       await fs.readFile(path.join(directory, 'runner-invitation.txt'), 'utf8'));
     await progress('runner pairing completed');
     const task = JSON.parse(await fs.readFile(path.join(directory, 'runner-task.json'), 'utf8'));
