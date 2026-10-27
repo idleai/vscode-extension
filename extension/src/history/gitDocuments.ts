@@ -4,11 +4,11 @@ import { RepositoryBinding, parseBinding } from "./contracts";
 import { CommitTarget, parseTimelineTarget } from "./timelineTarget";
 
 export const GIT_SCHEME = "idle-history-git";
-export interface GitAddress { connection: string; binding: RepositoryBinding; commit: CommitTarget }
+export interface GitAddress { connection: string; binding: RepositoryBinding; commit: CommitTarget; format?: "diff" | "json" }
 
 export function gitUri(address: GitAddress): vscode.Uri {
   const query = Buffer.from(JSON.stringify(address), "utf8").toString("base64url");
-  return vscode.Uri.parse(`${GIT_SCHEME}:/${address.commit.oid}.diff?${query}`);
+  return vscode.Uri.parse(`${GIT_SCHEME}:/${address.commit.oid}.${address.format ?? "diff"}?${query}`);
 }
 
 /** Commit documents are resolved again against the connection that opened them. */
@@ -21,9 +21,9 @@ export class GitDocuments implements vscode.TextDocumentContentProvider {
     let value: unknown;
     try { value = JSON.parse(Buffer.from(uri.query, "base64url").toString("utf8")); }
     catch { throw new HostError("invalid_reference", "Invalid commit document address."); }
-    if (!record(value) || typeof value.connection !== "string") throw new HostError("invalid_reference", "Invalid commit document address.");
+    if (!record(value) || typeof value.connection !== "string" || value.format !== undefined && value.format !== "diff" && value.format !== "json") throw new HostError("invalid_reference", "Invalid commit document address.");
     const target = parseTimelineTarget({ Commit: value.commit });
     if (!("Commit" in target)) throw new HostError("invalid_reference", "Invalid commit document destination.");
-    return this.read({ connection: value.connection, binding: parseBinding(value.binding), commit: target.Commit });
+    return this.read({ connection: value.connection, binding: parseBinding(value.binding), commit: target.Commit, format: value.format });
   }
 }
