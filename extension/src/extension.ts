@@ -23,6 +23,7 @@ export function activate(context: vscode.ExtensionContext): HostServices {
     host.history.disconnect();
     host.assembly.reset();
     void host.runtime.reset();
+    void host.runners.reset();
     provider.broadcast("host.configurationChanged", host.configuration.snapshot());
   };
   context.subscriptions.push(

@@ -2,17 +2,19 @@
 
 VS Code connects to the compute machine through Dev Tunnels. The daemon keeps
 running when the editor closes. You can attach a workspace, inspect its status
-and explicitly move workspace coordination to that daemon. Agent execution and
-general file and process actions are separate work.
+and explicitly move workspace coordination to that daemon. With a runner
+invitation, you can also submit agent work and reopen its results after the
+editor closes.
 
 ## Install matching versions
 
 Build `codex` from the `idle-base` branch of `idleai/codex-evo`. Build/install this
 extension from `main` using the normal [setup instructions](../README.md#setup).
-Its package includes native host 0.4.0 or a newer compatible release.
+Its package includes the native host selected by the repository's released
+dependency record, currently 0.5.2.
 
 On the compute machine, download the matching platform bundle from the
-[native host 0.4.0 release](https://github.com/idleai/host-tools/releases/tag/idle-coordination-v0.4.0)
+[native host 0.5.2 release](https://github.com/idleai/host-tools/releases/tag/idle-coordination-v0.5.2)
 and use its `idle-host` as the relay helper. A source build from host-tools `main`
 also works. Native host 0.3.1 supports attachment and status only. The extension
 checks the native host and daemon's capabilities before moving coordination.
@@ -96,6 +98,63 @@ a new invitation from the owner. Wrong workspace, expired and revoked
 invitations cannot fall back to local owner access. A saved host with missing
 checkout directories reports unavailable.
 
+## Run an agent on the compute host
+
+Runner support requires the Codex runner implementation and a native helper
+that advertises `runtime.runners`. Native host 0.5.2 includes that capability;
+use the packaged helper on the editor machine and the matching released helper
+on the compute machine. Until the runner PRs merge, build Codex from
+`evo2/runner-authorization` and this extension from `evo2/runner-client`.
+
+1. Complete the workspace coordination transfer above. The current runner
+   connection uses that same contributor and approved checkout.
+2. Sign in to the desired model provider on the compute machine and configure
+   the daemon's model using the normal Codex settings.
+3. Issue a separate invitation with `--runner` in place of
+   `--coordination-owner`, using a new private output file. The default runner
+   grant permits reading and writing the compute checkout. Workspace agent
+   rules can narrow that scope.
+4. In VS Code, run **Idle: Connect Runner Host** and paste the invitation. Run
+   **Idle: Start Runner** to submit a task. The **Idle Runners** output channel
+   shows its output and thread ID.
+5. Use **Idle: Open Runner** to select a saved runner or enter its thread ID,
+   and **Idle: Send to Runner** to submit another task. **Idle: Review Runner
+   Approval** displays any command waiting for a decision.
+
+The output channel shows the selected runner's history and live output. Other
+runners keep working and can still request approval. Brief connection failures
+are retried automatically; reconnecting with the same invitation restores the
+watched runners and their pending approvals. Opening a runner that is already
+connected reads its history without replaying its approvals.
+
+Runners execute on the selected daemon's local executor. Network access is
+denied. The checkout's `.idle` and `.codex` directories, the chain directory and
+the daemon's private state remain inaccessible to runner commands. Required
+platform runtime files remain readable. The daemon's existing approval policy
+still applies, and approval cannot expand the runner's saved permissions.
+
+In `.idle/workspace/agent-rules.json`, keep the existing document and add a
+`runners` object to narrow execution, for example:
+
+```json
+{
+  "schema_version": 1,
+  "runners": { "version": 1, "readRoots": ["."], "writeRoots": ["src"] }
+}
+```
+
+Roots must name existing directories inside the checkout. An empty
+`writeRoots` list makes checkout access read-only; `enabled: false` disables
+runners. Changing rules or revoking a grant stops affected active work.
+Reopen the runner to apply narrowed rules. A saved runner or fork cannot gain
+broader access from a later invitation or rule change.
+
+Closing VS Code or disconnecting its runner connection leaves admitted work
+running. Pending approvals remain undecided. Use **Idle: Interrupt Runner** to
+request interruption, or revoke its grant on the compute machine to stop
+authorized access. A daemon restart retains saved history and scope; it does
+not restart a terminated command automatically.
+
 ## Automated live check
 
 The following test creates its own temporary daemon and Dev Tunnel, uses the
@@ -148,3 +207,12 @@ coordination, writes configuration on the compute machine, exits completely and
 reopens using VS Code secret storage. The owner verifies the resulting compute
 files, revokes the grant and removes the tunnel, temporary branch and local
 state. The `compute-results` artifact records the desktop version and host IDs.
+
+Branches named `acceptance/compute/evo2-...` also run the real model test. Supply
+`IDLE_COMPUTE_RUNNER=1`, `IDLE_CODEX_AUTH_SOURCE` pointing to a private Codex
+`auth.json`, and `IDLE_CODEX_RUNNER_CONFIG` pointing to a Codex configuration
+file when starting the owner script. Those files are copied only into the
+temporary compute daemon's private home. The model runs a command that spans
+desktop exit and checks checkout writes, denied reads/writes, symlink escape,
+network denial and excluded account environment variables. Reopening the
+desktop must recover the completed result from native history.

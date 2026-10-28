@@ -8,15 +8,15 @@ on:
       dependency_mode:
         description: Dependency selection
         type: choice
-        options: [locked, latest]
-        default: locked
+        options: [latest, locked]
+        default: latest
   workflow_call:
     inputs:
       dependency_mode:
-        description: Use committed selections or explicitly test newer releases
+        description: Select latest compatible releases or replay committed selections
         required: false
         type: string
-        default: locked
+        default: latest
       revision:
         description: Commit to validate before publication
         required: true
@@ -78,7 +78,7 @@ jobs:
         if: ${{ !inputs.dependencies_artifact }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEPENDENCY_MODE: ${{ inputs.dependency_mode || 'locked' }}
+          DEPENDENCY_MODE: ${{ inputs.dependency_mode || 'latest' }}
         run: |
           case "$DEPENDENCY_MODE" in
             locked) python3 scripts/release_dependencies.py locked ;;
@@ -221,6 +221,7 @@ jobs:
       IDLE_COMPUTE_TEST_DIR: /tmp/idle-compute-desktop
       VSCODE_BIN: /tmp/idle-compute-vscode/VSCode-linux-x64/bin/code
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      IDLE_COMPUTE_RUNNER: ${{ startsWith(github.ref, 'refs/heads/acceptance/compute/evo2-') && '1' || '0' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -253,6 +254,7 @@ jobs:
           path: |
             ${{ env.IDLE_COMPUTE_TEST_DIR }}/connect.json
             ${{ env.IDLE_COMPUTE_TEST_DIR }}/restore.json
+            ${{ env.IDLE_COMPUTE_TEST_DIR }}/desktop-closed.json
             ${{ env.IDLE_COMPUTE_TEST_DIR }}/*-progress.jsonl
           if-no-files-found: warn
           retention-days: 1

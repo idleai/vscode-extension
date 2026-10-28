@@ -37,7 +37,7 @@ async function main() {
   };
   const owner = args => exec(process.env.IDLE_CODEX_BIN, ['app-server', 'idle', '--socket-path', socket, ...args],
     { env, timeout: 70_000, maxBuffer: 1024 * 1024 });
-  let daemon, hosted = false, channel = false, cleaned = false;
+  let daemon, runner, runnerGrant, hosted = false, channel = false, cleaned = false;
   try {
     const run = await api(`actions/runs/${runId}`);
     assert.ok(run.head_branch.startsWith('acceptance/compute/')
@@ -48,6 +48,9 @@ async function main() {
     await Promise.all([home, checkout, chain].map(child => fs.mkdir(child, { mode: 0o700 })));
     await fs.mkdir(path.join(checkout, '.idle'));
     await fs.cp(path.join(directory, 'request/definitions'), path.join(checkout, '.idle/workspace'), { recursive: true });
+    if (process.env.IDLE_COMPUTE_RUNNER === '1') {
+      runner = await require('./compute-runner-owner.cjs').prepare(home, checkout, chain);
+    }
     daemon = spawn(process.env.IDLE_CODEX_BIN, ['app-server', '--listen', `unix://${socket}`, '--managed-daemon',
       '-c', 'features.plugin_startup_tasks=false'], { env, stdio: 'ignore' });
     let ready = false;
@@ -61,8 +64,17 @@ async function main() {
     await owner(['host', '--request', path.join(directory, 'request/request.json'), '--checkout-root', checkout,
       '--chain-directory', chain, '--relay-helper', process.env.IDLE_RUNTIME_HOST_BIN,
       '--github-cli', process.env.IDLE_GITHUB_CLI, '--output', invitationFile, '--hours', '1', '--coordination-owner']);
-    const invitation = await fs.readFile(invitationFile);
+    let invitation = await fs.readFile(invitationFile);
     const grant = JSON.parse(Buffer.from(invitation.toString().slice('idle-runtime:'.length), 'base64url'));
+    if (runner) {
+      const runnerFile = path.join(directory, 'runner-invitation.txt');
+      await owner(['host', '--request', path.join(directory, 'request/request.json'), '--checkout-root', checkout,
+        '--chain-directory', chain, '--relay-helper', process.env.IDLE_RUNTIME_HOST_BIN,
+        '--github-cli', process.env.IDLE_GITHUB_CLI, '--output', runnerFile, '--hours', '1', '--runner']);
+      const runnerInvitation = await fs.readFile(runnerFile, 'utf8');
+      runnerGrant = JSON.parse(Buffer.from(runnerInvitation.slice('idle-runtime:'.length), 'base64url'));
+      invitation = Buffer.from(JSON.stringify({ coordination: invitation.toString('utf8'), runner: runnerInvitation, task: runner.task }));
+    }
     const key = crypto.randomBytes(32);
     const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
@@ -90,9 +102,14 @@ async function main() {
     assert.deepEqual(JSON.parse(await fs.readFile(path.join(checkout, '.idle/workspace/settings.json'), 'utf8')),
       { savedOnRemoteCompute: true }, 'desktop writes reached the separate compute filesystem');
     await owner(['status']);
+    if (runner) {
+      await runner.verify(path.join(directory, 'results'), result);
+      await owner(['revoke', '--grant-id', runnerGrant.grantId]);
+    }
     await owner(['revoke', '--grant-id', grant.grantId]);
     console.log(`PASS: VS Code ${result.version} on a separate machine transferred coordination, wrote only compute files and reconnected after full desktop exit.`);
   } finally {
+    if (runner) await runner.close();
     if (hosted) {
       try { await owner(['stop']); cleaned = true; }
       catch { console.error(`Relay cleanup needs retry using the private state at ${home}`); }

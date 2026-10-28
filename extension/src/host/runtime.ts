@@ -7,8 +7,13 @@ import { NativeServices } from './nativeHost';
 import { HostError, record } from './protocol';
 
 export interface RuntimeObservation { status: unknown; connected: boolean; observed_at: number; revision: number }
+export type RunnerCommand = { kind: 'runner'; method: string; params: unknown }
+  | { kind: 'runner_events' }
+  | { kind: 'runner_approve'; id: string | number; decision: 'accept' | 'decline' | 'cancel' };
+export interface RunnerConnection { readonly scope: string }
 interface Connection {
   client: CoordinationClient; binding: RepositoryBinding; config: FolderConfiguration;
+  runner: RunnerConnection;
   status?: unknown; observed: number; revision: number; failures: number; retry: number;
   pending?: Promise<RuntimeObservation | undefined>; timer?: NodeJS.Timeout; closed: boolean;
 }
@@ -25,7 +30,8 @@ export class RuntimeHost {
   readonly onDidChange = this.changed.event;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly configuration: HostConfiguration,
-    private readonly native: NativeServices, private readonly contributor: () => Promise<string>) {}
+    private readonly native: NativeServices, private readonly contributor: () => Promise<string>,
+    private readonly purpose: 'workspace' | 'runner' = 'workspace') {}
 
   async connectionRequest(binding: RepositoryBinding): Promise<string> {
     this.configuration.assertTrusted();
@@ -45,6 +51,7 @@ export class RuntimeHost {
     try {
       candidate = await this.open(config, binding, invitation.trim());
       await this.query(candidate);
+      if (this.purpose === 'runner') this.assertRunnerStatus(candidate.status);
       this.assertCurrent(generation);
       const key = this.key(binding);
       const previous = await this.update(async () => {
@@ -134,6 +141,62 @@ export class RuntimeHost {
     return response;
   }
 
+  async runnerConnection(config: FolderConfiguration, binding: RepositoryBinding): Promise<RunnerConnection> {
+    return (await this.currentRunner(config, binding)).runner;
+  }
+
+  async runner(config: FolderConfiguration, binding: RepositoryBinding, command: RunnerCommand,
+    signal?: AbortSignal, expected?: RunnerConnection): Promise<unknown> {
+    const connection = await this.currentRunner(config, binding, signal);
+    if (expected && connection.runner !== expected) throw new HostError('cancelled', 'Runner connection changed.');
+    const encoded = JSON.stringify(command);
+    if (Buffer.byteLength(encoded) > 256 * 1024) throw new HostError('invalid_request', 'This runner request is too large.');
+    try {
+      const response: unknown = JSON.parse(await connection.client.request(encoded, signal, 45_000));
+      this.assertRunnerConnection(connection);
+      if (!record(response) || !record(response.result) || !Object.hasOwn(response.result, 'Ok')) {
+        throw new HostError('invalid_data', 'Invalid runner response.');
+      }
+      return response.result.Ok;
+    } catch (error) {
+      await this.discard(connection);
+      throw error;
+    }
+  }
+
+  private async currentRunner(config: FolderConfiguration, binding: RepositoryBinding, signal?: AbortSignal): Promise<Connection> {
+    const generation = this.generation;
+    const observation = await this.snapshot(config, binding, signal);
+    this.assertCurrent(generation);
+    if (this.native.supports && !await this.native.supports('runtime.runners')) {
+      throw new HostError('incompatible_host', 'Update the native host to use compute runners.');
+    }
+    this.assertCurrent(generation);
+    if (!observation?.connected) throw new HostError('unavailable', 'Connect a runner invitation for this workspace.');
+    this.assertRunnerStatus(observation.status);
+    const connection = this.connections.get(this.key(binding));
+    if (!connection || connection.closed) throw new HostError('unavailable', 'Runner connection is closed.');
+    return connection;
+  }
+
+  private assertRunnerConnection(connection: Connection): void {
+    this.configuration.assertTrusted();
+    if (this.closed || connection.closed || this.connections.get(this.key(connection.binding)) !== connection) {
+      throw new HostError('cancelled', 'Runner connection changed.');
+    }
+  }
+
+  private async discard(connection: Connection): Promise<void> {
+    if (this.connections.get(this.key(connection.binding)) === connection) this.connections.delete(this.key(connection.binding));
+    await this.retire(connection);
+  }
+
+  private assertRunnerStatus(status: unknown): void {
+    if (!record(status) || !Array.isArray(status.capabilities) || !status.capabilities.includes('runnerSessions')) {
+      throw new HostError('denied', 'This invitation does not allow runners. Request a runner invitation from the compute owner.');
+    }
+  }
+
   private async open(config: FolderConfiguration, binding: RepositoryBinding, invitation: string): Promise<Connection> {
     const clientId = await this.contributor();
     const client = new CoordinationClient({}, undefined, this.native.connection(config.cwd, 'runtime', {
@@ -142,7 +205,8 @@ export class RuntimeHost {
     }));
     client.start();
     const status = this.context.globalState.get<unknown>(`${this.key(binding)}.status`);
-    return { client, binding, config, status, observed: Date.now(), revision: this.nextRevision(binding),
+    return { client, binding, config, status, runner: { scope: createHash('sha256').update(invitation).digest('hex') },
+      observed: Date.now(), revision: this.nextRevision(binding),
       failures: 1, retry: 0, closed: false };
   }
 
@@ -151,6 +215,9 @@ export class RuntimeHost {
     if (!connection.client.isRunning()) connection.client.start();
     if (this.native.supports && !await this.native.supports('runtime.workspace')) {
       throw new HostError('incompatible_host', 'Install the native host with compute connection support, or set idle.native.hostPath to that build.');
+    }
+    if (this.purpose === 'runner' && this.native.supports && !await this.native.supports('runtime.runners')) {
+      throw new HostError('incompatible_host', 'Update the native host to use compute runners.');
     }
     const response: unknown = JSON.parse(await connection.client.request('{"kind":"status"}', undefined, 45_000));
     const result = record(response) && record(response.result) ? response.result.Ok : undefined;
@@ -173,6 +240,7 @@ export class RuntimeHost {
       });
     }
     catch {
+      if (this.purpose === 'runner') await this.discard(connection);
       connection.observed = Math.max(connection.observed, Date.now());
       connection.revision = this.nextRevision(connection.binding);
       connection.failures++;
@@ -205,7 +273,8 @@ export class RuntimeHost {
   }
 
   private key(binding: RepositoryBinding): string {
-    return `runtime.connection.${createHash('sha256').update(bindingKey(binding)).digest('hex')}`;
+    const prefix = this.purpose === 'runner' ? 'runtime.runner.connection' : 'runtime.connection';
+    return `${prefix}.${createHash('sha256').update(bindingKey(binding)).digest('hex')}`;
   }
 
   private update<T>(work: () => Promise<T>): Promise<T> {
