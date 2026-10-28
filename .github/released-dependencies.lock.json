@@ -18,24 +18,24 @@
           "package": "editchain",
           "repository": "idleai/editchain",
           "sha256": {
-            "darwin-arm64": "745751662ca27264957cca7573f1277ed04f454f47dce055f9097b3ea2983d18",
-            "darwin-x64": "a0a817476fbaf4e4707e56a31a1494cc02811d92c98fde75d656e93d66edd604",
-            "linux-x64": "9f83237e6357867f714877f39748a88ee2012a788dbc324c6219f42512340ac3",
-            "win32-x64": "3952b6b8490d572c0d56cae4f784e7c932781579dc6b1f8dcac78a9922b505af"
+            "darwin-arm64": "6fd8d2e66649e1c910a3ccd7fb5f44d653f68a7ac374e411064a66a912a19282",
+            "darwin-x64": "41832dbac224909a70b83e9c7316532993bb7e950cd0dd57cb1f4a8ca806f164",
+            "linux-x64": "064623bb823f84a972a77f587bd74c9556dc7928ba2bef05e5f240f7a22fc1c4",
+            "win32-x64": "dc717f65cea3bfe71e0b3d6580a52a93645f0d13e9a024fa37b0b148b7fe2b5a"
           },
-          "tag": "editchain-v0.1.7",
+          "tag": "editchain-v0.1.8",
           "version": "^0.1.6"
         },
         "host-tools": {
           "package": "idle-coordination",
           "repository": "idleai/host-tools",
           "sha256": {
-            "darwin-arm64": "5a779a62599d692894ebdf002cdf6bb50d6bd6cafb897bec0d95815e19025d56",
-            "darwin-x64": "26e7fc95b9be07ed62811182fb29fc79a224684d30f88f5623d5b35133c4ba45",
-            "linux-x64": "88dfd913cc96f2c6cbd6a1397ac749fe178601f7917a1e79f3954bc5a692444a",
-            "win32-x64": "6e0f77cf3284000b9ddf17c01b97709c253482f626bf431f56530da2a740b87b"
+            "darwin-arm64": "46c288367fa9d92040b55b28ced2a705a3bb881a380f309228652b15140cd56b",
+            "darwin-x64": "f86e56983de82b16d53c00f385d8edb634b8d76c1b0ba544b1a00d3a9e72b49d",
+            "linux-x64": "70e3acbfbaa9631588986fe54a1f0b5390cbb391a8454a94ed34485302e37e45",
+            "win32-x64": "cff079b810ce9fbf6cf0bf1e675eb39e3fa9e8d6a3472bd7cffdc33719070c3c"
           },
-          "tag": "idle-coordination-v0.5.2",
+          "tag": "idle-coordination-v0.5.3",
           "version": "^0.5.1"
         }
       },
