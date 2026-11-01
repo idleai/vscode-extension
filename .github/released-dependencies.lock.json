@@ -30,12 +30,12 @@
           "package": "idle-coordination",
           "repository": "idleai/host-tools",
           "sha256": {
-            "darwin-arm64": "46c288367fa9d92040b55b28ced2a705a3bb881a380f309228652b15140cd56b",
-            "darwin-x64": "f86e56983de82b16d53c00f385d8edb634b8d76c1b0ba544b1a00d3a9e72b49d",
-            "linux-x64": "70e3acbfbaa9631588986fe54a1f0b5390cbb391a8454a94ed34485302e37e45",
-            "win32-x64": "cff079b810ce9fbf6cf0bf1e675eb39e3fa9e8d6a3472bd7cffdc33719070c3c"
+            "darwin-arm64": "982249069c5af3db1528b1e22346974870e4e02e0b27c1ce3ec2caf732621583",
+            "darwin-x64": "6fedd7fda9fe18de85d56572abab7b3ac3af7f5140debc083a4397d78518b103",
+            "linux-x64": "3772f6669f59269db1cd1cffadf6899c75108fdc78389bccb331b5f7ea18c8a5",
+            "win32-x64": "c73d4524b635910ace4493e7203fe09b9fa5d6e4967b4a9d22f065b8987ae475"
           },
-          "tag": "idle-coordination-v0.5.3",
+          "tag": "idle-coordination-v0.5.4",
           "version": "^0.5.1"
         }
       },
