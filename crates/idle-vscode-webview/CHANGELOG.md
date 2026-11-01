@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/idleai/vscode-extension/compare/idle-vscode-webview-v0.2.2...idle-vscode-webview-v0.2.3) - 2026-11-01
+
+### Other
+
+- Restore Activity Git file opening and add comparison harness ([#40](https://github.com/idleai/vscode-extension/pull/40))
+
 ## [0.2.2](https://github.com/idleai/vscode-extension/compare/idle-vscode-webview-v0.2.1...idle-vscode-webview-v0.2.2) - 2026-10-25
 
 ### Other
