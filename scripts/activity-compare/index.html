@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Activity comparison</title><link rel="stylesheet" href="/compare.css"></head>
+<body>
+<header><div><strong>Activity comparison</strong><span id="revisions">Loading build details…</span></div>
+<nav aria-label="Comparison controls">
+<label>History <select id="profile"><option value="all">All activity</option><option value="git">Git only</option></select></label>
+<label>Pane width <input id="width" type="number" min="480" max="2400" value="1200" step="20"></label>
+<label>Pane height <input id="height" type="number" min="300" max="1600" value="800" step="20"></label>
+<button id="reload">Reload views</button><button id="capture">Save checkpoint</button>
+<label>Scroll both <input id="scroll" type="range" min="0" max="100" value="0" aria-label="Scroll both by percentage"></label>
+</nav>
+<p>Each pane runs the original renderer and native service on matching frozen input. Equal scroll percentages may show different records. Click inside either pane to operate it independently.</p>
+</header>
+<main><section><h2>Old EditChain <a id="legacy-link" target="_blank" href="/legacy/">Open full size ↗</a></h2><div class="frame"><iframe title="Old EditChain Activity" id="legacy"></iframe></div></section>
+<section><h2>Current VS Code extension <a id="current-link" target="_blank" href="/current/">Open full size ↗</a></h2><div class="frame"><iframe title="Current Activity" id="current"></iframe></div></section></main>
+<footer><span id="status" role="status">Starting views…</span><details><summary>Actions and editor opens</summary><pre id="events"></pre></details><details><summary>Build and input details</summary><pre id="manifest"></pre></details></footer>
+<script type="module" src="/compare.js"></script>
+</body></html>

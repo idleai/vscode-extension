@@ -498,3 +498,76 @@ test('late and foreign commit replies cannot open an editor', async t => {
   await pending;
   assert.equal(f.calls.editorCommands.length, 0);
 });
+
+test('Git file changes open immutable rename sides and expire with the connection', async t => {
+  const h = setup(t);
+  const change = { repository: '123', oid: 'a'.repeat(40), path: 'new.ts', old_path: 'old.ts',
+    old_oid: 'b'.repeat(40), new_oid: 'c'.repeat(40), old_mode: 'blob', new_mode: 'blob', status: 'R', binary: false };
+  const before = '\ufeffbefore 😀\r\n';
+  const after = 'after\n  ';
+  const reads = [];
+  h.provider.query = async query => {
+    reads.push(query);
+    return { Ok: { CommitFile: { change: structuredClone(change), before, after } } };
+  };
+  h.host.connect(binding(), h.provider);
+  const open = (target = 'Diff', selected = change) => h.host.openQuery({ binding: repository,
+    query: { chain: repository.chain, action: { OpenAt: { address: { CommitFile: selected }, target } } } });
+  assert.equal(await open(), 'Opened');
+  const opened = f.calls.editorCommands.at(-1);
+  assert.equal(opened.id, 'vscode.diff');
+  assert.deepEqual(reads[0].action, { CommitFile: { change } });
+  const content = f.calls.contentProviders.find(item => item.scheme === 'idle-history-git-file').provider;
+  assert.equal(await content.provideTextDocumentContent(opened.args[0]), before);
+  assert.equal(await content.provideTextDocumentContent(opened.args[1]), after);
+  await open('OperationJson');
+  assert.deepEqual(JSON.parse(await content.provideTextDocumentContent(f.calls.editorCommands.at(-1).args[0])), change);
+  for (const invalid of [{ ...change, oid: 'HEAD' }, { ...change, extra: 'field' },
+    { ...change, old_oid: null, new_oid: null }, { ...change, old_mode: 'unknown' }]) {
+    await assert.rejects(open('Diff', invalid), { code: 'invalid_request' });
+  }
+  h.host.connect(binding(), h.provider);
+  await assert.rejects(content.provideTextDocumentContent(opened.args[0]), { code: 'unavailable' });
+});
+
+test('Git file replies must match every descriptor field and cannot open after cancellation', async t => {
+  const h = setup(t);
+  const change = { repository: '123', oid: 'a'.repeat(40), path: 'file.ts', old_path: null,
+    old_oid: 'b'.repeat(40), new_oid: 'c'.repeat(40), old_mode: 'blob', new_mode: 'blob', status: 'M', binary: false };
+  const request = { binding: repository, query: { chain: repository.chain,
+    action: { OpenAt: { address: { CommitFile: change }, target: 'Diff' } } } };
+  h.host.connect(binding(), h.provider);
+  for (const replacement of [{ repository: '456' }, { path: 'foreign.ts' }, { new_oid: 'd'.repeat(40) }, { binary: true }]) {
+    h.provider.query = async () => ({ Ok: { CommitFile: { change: { ...change, ...replacement }, before: 'a', after: 'b' } } });
+    await assert.rejects(h.host.openQuery(request), { code: 'invalid_response' });
+  }
+  let finish;
+  h.provider.query = () => new Promise(done => { finish = done; });
+  const controller = new AbortController();
+  const pending = assert.rejects(h.host.openQuery(request, controller.signal), { code: 'cancelled' });
+  await turn();
+  controller.abort();
+  finish({ Ok: { CommitFile: { change, before: 'late', after: 'reply' } } });
+  await pending;
+  assert.equal(f.calls.editorCommands.length, 0);
+});
+
+test('binary Git changes report their type and commit inspection opens JSON', async t => {
+  const h = setup(t);
+  const change = { repository: '123', oid: 'a'.repeat(40), path: 'binary.bin', old_path: null,
+    old_oid: null, new_oid: 'c'.repeat(40), old_mode: null, new_mode: 'blob', status: 'A', binary: true };
+  h.host.connect(binding(), h.provider);
+  h.provider.query = async () => ({ Ok: { CommitFile: { change, before: '', after: '' } } });
+  await h.host.openQuery({ binding: repository, query: { chain: repository.chain,
+    action: { OpenAt: { address: { CommitFile: change }, target: 'Diff' } } } });
+  assert.equal(f.calls.editorCommands.length, 0);
+  const commit = { repository: change.repository, oid: change.oid };
+  const metadata = JSON.stringify({ ...commit, message: 'Original commit' }, null, 4);
+  h.provider.query = async () => ({ Ok: { Commit: { ...commit, content: 'patch', metadata } } });
+  await h.host.openQuery({ binding: repository, query: { chain: repository.chain,
+    action: { OpenAt: { address: { Commit: commit }, target: 'OperationJson' } } } });
+  const opened = f.calls.editorCommands.at(-1);
+  assert.match(opened.args[0].path, /\.json$/);
+  const content = f.calls.contentProviders.find(item => item.scheme === 'idle-history-git').provider;
+  assert.equal(await content.provideTextDocumentContent(opened.args[0]), metadata);
+});

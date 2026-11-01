@@ -12,7 +12,7 @@
             "win32-x64": "657d87bfeec51c35058cee53f989c128f0262b74cb2ed4053b732b58dfe08338"
           },
           "tag": "codex-session-exporter-v0.1.1",
-          "version": "^0.1.1"
+          "version": ">=0.1.1, <1.0.0"
         },
         "engine": {
           "package": "editchain",
@@ -24,19 +24,19 @@
             "win32-x64": "dc717f65cea3bfe71e0b3d6580a52a93645f0d13e9a024fa37b0b148b7fe2b5a"
           },
           "tag": "editchain-v0.1.8",
-          "version": "^0.1.6"
+          "version": ">=0.1.6, <1.0.0"
         },
         "host-tools": {
           "package": "idle-coordination",
           "repository": "idleai/host-tools",
           "sha256": {
-            "darwin-arm64": "982249069c5af3db1528b1e22346974870e4e02e0b27c1ce3ec2caf732621583",
-            "darwin-x64": "6fedd7fda9fe18de85d56572abab7b3ac3af7f5140debc083a4397d78518b103",
-            "linux-x64": "3772f6669f59269db1cd1cffadf6899c75108fdc78389bccb331b5f7ea18c8a5",
-            "win32-x64": "c73d4524b635910ace4493e7203fe09b9fa5d6e4967b4a9d22f065b8987ae475"
+            "darwin-arm64": "a2d1d742868a3fbe3d57909fbecaec9b49875ce5fdde1d1ef928e4b3970fd371",
+            "darwin-x64": "fefda7fb39c4e3ed31c08dadfd63179b1af25518a0fbd1234dca3317e04205af",
+            "linux-x64": "cc81370c4bbaa465ea9fc8e8e6e649426c9087ce075794c4bb67d79676aabbe4",
+            "win32-x64": "9960af53f8c255edd384ce175e8b3672816d3244e4dd4f25528640e3fccc5b3f"
           },
-          "tag": "idle-coordination-v0.5.4",
-          "version": "^0.5.1"
+          "tag": "idle-coordination-v0.6.0",
+          "version": ">=0.6.0, <1.0.0"
         }
       },
       "schema": 1

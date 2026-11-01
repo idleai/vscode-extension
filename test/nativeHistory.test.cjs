@@ -112,9 +112,9 @@ for (const reason of ['abort', 'shutdown', 'trust']) test(`storage retries stop 
 });
 
 test('timeline capabilities are checked before a query and again after adapter restart', async t => {
-  const query = { chain: 'chain', action: { Timeline: { version: 2, action: 'Cancel' } } };
+  const query = { chain: 'chain', action: { Timeline: { version: 3, action: 'Cancel' } } };
   const h = setup(t, selected => selected.capabilities === true
-    ? { Ok: { timeline: 2, operation_json: true } } : { Ok: { Timeline: 'Cancelled' } });
+    ? { Ok: { timeline: 3, operation_json: true } } : { Ok: { Timeline: 'Cancelled' } });
   const signal = new AbortController().signal;
   await h.provider.query(query, signal);
   await h.provider.query(query, signal);
@@ -125,12 +125,12 @@ test('timeline capabilities are checked before a query and again after adapter r
 });
 
 test('a timeline window waits through initial repository contention with the same exact query', async t => {
-  const query = { chain: 'chain', action: { Timeline: { version: 2,
+  const query = { chain: 'chain', action: { Timeline: { version: 3,
     action: { Window: { position: 'Latest', limit: 200, view: { filter: {}, disclosures: [] } } } } } };
   const result = { Ok: { Timeline: { Window: { revision: 'ready', rows: [] } } } };
   let attempts = 0;
   const h = setup(t, selected => {
-    if (selected.capabilities === true) return { Ok: { timeline: 2, operation_json: true } };
+    if (selected.capabilities === true) return { Ok: { timeline: 3, operation_json: true } };
     attempts++;
     assert.deepEqual(selected, { binding: binding.repository, query });
     return attempts <= 5 ? { Err: { message: storage.Err.message } } : result;
@@ -140,7 +140,7 @@ test('a timeline window waits through initial repository contention with the sam
 });
 
 test('an older host cannot receive a timeline query or operation JSON request', async t => {
-  for (const response of [{ Err: { message: 'Invalid native history request.' } }, { Ok: { timeline: 1, operation_json: true } }, { Ok: { timeline: 2, operation_json: false } }]) {
+  for (const response of [{ Err: { message: 'Invalid native history request.' } }, { Ok: { timeline: 1, operation_json: true } }, { Ok: { timeline: 2, operation_json: true } }, { Ok: { timeline: 3, operation_json: false } }]) {
     const h = setup(t, () => response);
     const signal = new AbortController().signal;
     await assert.rejects(h.provider.query({ action: { Timeline: {} } }, signal), { code: 'incompatible_history' });

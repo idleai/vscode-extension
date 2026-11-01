@@ -12,8 +12,9 @@ import {
 } from "./contracts";
 import { BYTE_SCHEME, TEXT_SCHEME, HEX_SCHEME, DocumentAddress, HexDocuments, TextDocuments, HistoryDocuments, documentUri, needsHex } from "./documents";
 import { NativeHistoryProvider } from "./native";
-import { CommitTarget, parseTimelineTarget } from "./timelineTarget";
+import { CommitTarget, CommitFileTarget, parseTimelineTarget } from "./timelineTarget";
 import { GIT_SCHEME, GitAddress, GitDocuments, gitUri } from "./gitDocuments";
+import { GIT_FILE_SCHEME, GitFileAddress, GitFileDocuments, GitFileText, gitFileUri } from "./gitFiles";
 import { NativeServices } from "../host/nativeHost";
 import { openWorkingFile } from "./workingFile";
 import { linkCancellation } from "./cancellation";
@@ -47,6 +48,10 @@ export class HistoryHost implements vscode.Disposable {
     this.installed.push(
       this.documents,
       vscode.workspace.registerTextDocumentContentProvider(GIT_SCHEME, new GitDocuments(address => this.readCommit(address))),
+      vscode.workspace.registerTextDocumentContentProvider(GIT_FILE_SCHEME, new GitFileDocuments(async address => {
+        const text = await this.readGitFile(address);
+        return address.side === "metadata" ? JSON.stringify(address.change, null, 4) : text[address.side];
+      })),
       vscode.workspace.registerFileSystemProvider(BYTE_SCHEME, this.documents, { isReadonly: true, isCaseSensitive: true }),
       vscode.workspace.registerTextDocumentContentProvider(TEXT_SCHEME, new TextDocuments(this.documents)),
       vscode.workspace.registerTextDocumentContentProvider(HEX_SCHEME, new HexDocuments(this.documents)),
@@ -181,8 +186,10 @@ export class HistoryHost implements vscode.Disposable {
       const destination = parseTimelineTarget(exact.address);
       if ("Record" in destination) {
         await this.open({ binding, ...destination.Record, target: exact.target }, signal);
+      } else if ("Commit" in destination) {
+        await this.openCommit(binding, destination.Commit, exact.target === "OperationJson" ? "json" : "diff", signal);
       } else {
-        await this.openCommit(binding, destination.Commit, signal);
+        await this.openGitFile(binding, destination.CommitFile, exact.target, signal);
       }
     } else if (record(open) && Object.keys(open).every(key => key === "record" || key === "target")) {
       await this.open({ binding, source: "current", record: open.record, target: open.target }, signal);
@@ -202,21 +209,74 @@ export class HistoryHost implements vscode.Disposable {
     if (!record(commit) || commit.repository !== address.commit.repository || commit.oid !== address.commit.oid || typeof commit.content !== "string") {
       throw new HostError("invalid_response", "The history adapter returned a different commit.");
     }
+    if (address.format === "json") {
+      if (typeof commit.metadata !== "string") throw new HostError("invalid_response", "The history adapter omitted the commit fields.");
+      return commit.metadata;
+    }
     return commit.content;
   }
 
-  private async openCommit(binding: RepositoryBinding, commit: CommitTarget, signal?: AbortSignal): Promise<void> {
+  private async openCommit(binding: RepositoryBinding, commit: CommitTarget, format: "json" | "diff", signal?: AbortSignal): Promise<void> {
     this.opening?.abort();
     const opening = new AbortController();
     this.opening = opening;
     const cancellation = linkCancellation(opening.signal, signal);
     try {
       const connection = this.connection(binding);
-      const address = { connection: connection.id, binding, commit };
+      const address = { connection: connection.id, binding, commit, format };
       await this.readCommit(address, cancellation.signal);
       const action = this.editorQueue.then(async () => {
         this.assertCurrent(connection, cancellation.signal);
         await vscode.commands.executeCommand("vscode.open", gitUri(address), { preview: true });
+      });
+      this.editorQueue = action.catch(() => undefined);
+      await action;
+      this.assertCurrent(connection, cancellation.signal);
+    } finally {
+      cancellation.dispose();
+      if (this.opening === opening) this.opening = undefined;
+    }
+  }
+
+  private async readGitFile(address: GitFileAddress, signal?: AbortSignal): Promise<GitFileText> {
+    const connection = this.connection(address.binding);
+    if (connection.id !== address.connection) throw new HostError("unavailable", "This Git file document's history binding has expired.");
+    const result = await this.query({ binding: address.binding, operation: {
+      chain: address.binding.chain, action: { CommitFile: { change: address.change } },
+    } }, signal);
+    this.assertCurrent(connection, signal);
+    if (record(result) && record(result.Err)) throw new HostError("unavailable", String(result.Err.message));
+    const file = record(result) && record(result.Ok) ? result.Ok.CommitFile : undefined;
+    if (!record(file) || !isDeepStrictEqual(file.change, address.change)
+      || typeof file.before !== "string" || typeof file.after !== "string"
+      || Buffer.byteLength(file.before, "utf8") > 8 * 1024 * 1024 || Buffer.byteLength(file.after, "utf8") > 8 * 1024 * 1024) {
+      throw new HostError("invalid_response", "The history adapter returned a different Git file change.");
+    }
+    return { before: file.before, after: file.after };
+  }
+
+  private async openGitFile(binding: RepositoryBinding, change: CommitFileTarget, target: unknown, signal?: AbortSignal): Promise<void> {
+    if (target !== "Diff" && target !== "File" && target !== "OperationJson") throw new HostError("invalid_request", "Unsupported Git file action.");
+    this.opening?.abort();
+    const opening = new AbortController();
+    this.opening = opening;
+    const cancellation = linkCancellation(opening.signal, signal);
+    try {
+      const connection = this.connection(binding);
+      const address: GitFileAddress = { connection: connection.id, binding, change, side: "after" };
+      await this.readGitFile(address, cancellation.signal);
+      const action = this.editorQueue.then(async () => {
+        this.assertCurrent(connection, cancellation.signal);
+        if (target === "OperationJson") {
+          await vscode.commands.executeCommand("vscode.open", gitFileUri({ ...address, side: "metadata" }), { preview: true });
+        } else if (change.binary) {
+          await vscode.window.showInformationMessage("This change contains binary file content.");
+        } else if (target === "File") {
+          await vscode.commands.executeCommand("vscode.open", gitFileUri(address), { preview: true });
+        } else {
+          await vscode.commands.executeCommand("vscode.diff", gitFileUri({ ...address, side: "before" }), gitFileUri(address),
+            `${change.path} (${change.oid.slice(0, 8)})`, { preview: true });
+        }
       });
       this.editorQueue = action.catch(() => undefined);
       await action;

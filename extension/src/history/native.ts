@@ -56,8 +56,8 @@ export class NativeHistoryProvider implements HistoryProvider {
   private async ensureTimeline(signal: AbortSignal): Promise<void> {
     if (this.timelineReady) return;
     const response = await this.request({ capabilities: true }, signal);
-    if (!record(response) || !record(response.Ok) || response.Ok.timeline !== 2 || response.Ok.operation_json !== true) {
-      throw new HostError("incompatible_history", "This native host does not support Activity timeline version 2. Update the native tools and restart the adapters.");
+    if (!record(response) || !record(response.Ok) || response.Ok.timeline !== 3 || response.Ok.operation_json !== true) {
+      throw new HostError("incompatible_history", "This native host does not support Activity timeline version 3. Update the native tools and restart the adapters.");
     }
     this.timelineReady = true;
   }

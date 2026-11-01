@@ -4,17 +4,17 @@
     "engine": {
       "repository": "idleai/editchain",
       "package": "editchain",
-      "version": "^0.1.6"
+      "version": ">=0.1.6, <1.0.0"
     },
     "host-tools": {
       "repository": "idleai/host-tools",
       "package": "idle-coordination",
-      "version": "^0.5.1"
+      "version": ">=0.6.0, <1.0.0"
     },
     "codex-exporter": {
       "repository": "idleai/codex-evo",
       "package": "codex-session-exporter",
-      "version": "^0.1.1"
+      "version": ">=0.1.1, <1.0.0"
     }
   }
 }
