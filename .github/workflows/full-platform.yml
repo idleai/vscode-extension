@@ -1,0 +1,187 @@
+name: Full platform CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Attach missing platform assets; disable to validate without changing the release
+        type: boolean
+        default: true
+      tag:
+        description: Existing release tag to validate; native bundles are attached to this release
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: full-platform-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  dependencies:
+    runs-on: ${{ vars.IDLE_BACKGROUND_RUNNER || 'idle-background-linux-x64' }}
+    outputs:
+      artifact: ${{ steps.save.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          path: release-source
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: release-tools
+          persist-credentials: false
+      - name: Load the original release dependency versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          IDLE_RELEASE_INPUTS: ${{ github.workspace }}/release-inputs/released-dependencies.json
+        run: |
+          gh release download "$RELEASE_TAG" --pattern released-dependencies.json --dir release-inputs --clobber
+          python3 release-tools/scripts/release_dependencies.py --root release-source expand-platforms
+      - uses: actions/upload-artifact@v7
+        id: save
+        with:
+          name: full-platform-dependencies
+          path: release-inputs/released-dependencies.json
+          if-no-files-found: error
+
+  verify:
+    needs: dependencies
+    uses: ./.github/workflows/ci.yml
+    with:
+      revision: ${{ inputs.tag }}
+      dependencies_artifact: ${{ needs.dependencies.outputs.artifact }}
+      all_platforms: true
+
+  build:
+    name: Build and test (${{ matrix.platform }})
+    needs: [dependencies, verify]
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux-x64, darwin-x64, darwin-arm64, win32-x64]
+    runs-on: ${{ matrix.platform == 'linux-x64' && (vars.IDLE_BACKGROUND_RUNNER || 'idle-background-linux-x64') || matrix.platform == 'darwin-x64' && 'macos-15-intel' || matrix.platform == 'darwin-arm64' && 'macos-15' || 'windows-2022' }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      IDLE_RELEASE_INPUTS: ${{ github.workspace }}/../release-inputs/released-dependencies.json
+      OPENSSL_STATIC: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.dependencies.outputs.artifact }}
+          path: ${{ github.workspace }}/../release-inputs
+      - name: Restore the recorded release dependency selection
+        run: python3 scripts/release_dependencies.py restore
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: full-platform-${{ matrix.platform }}
+      - name: Configure static OpenSSL on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+          echo "OPENSSL_LIB_DIR=/usr/lib/$(gcc -dumpmachine)" >> "$GITHUB_ENV"
+          echo "OPENSSL_INCLUDE_DIR=/usr/include" >> "$GITHUB_ENV"
+      - name: Configure static OpenSSL on macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install openssl@3
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
+      - name: Cache Windows native dependencies
+        if: runner.os == 'Windows'
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-windows-openssl-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: vcpkg-windows-openssl-
+      - name: Configure static OpenSSL on Windows
+        if: runner.os == 'Windows'
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}/vcpkg-cache
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          vcpkg install openssl:x64-windows-static-md
+          echo "OPENSSL_DIR=$VCPKG_INSTALLATION_ROOT/installed/x64-windows-static-md" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
+        with:
+          tool: wasm-bindgen@0.2.127
+          fallback: none
+      - run: npm ci
+      - name: Build and test the platform extension
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          cargo test --workspace --all-features --locked
+          npm test
+          npm run package -- --target "$PLATFORM"
+          node scripts/smoke-package.cjs idle.vsix
+      - name: Name and checksum the platform artifact
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          python3 - <<'PYTHON'
+          import hashlib, os, pathlib, shutil
+          directory = pathlib.Path('releases')
+          directory.mkdir(exist_ok=True)
+          archive = directory / f"{os.environ['RELEASE_TAG']}-{os.environ['PLATFORM']}.vsix"
+          shutil.copyfile('idle.vsix', archive)
+          with archive.open('rb') as stream:
+              checksum = hashlib.file_digest(stream, 'sha256').hexdigest()
+          archive.with_name(archive.name + '.sha256').write_text(f'{checksum}  {archive.name}\n')
+          PYTHON
+      - uses: actions/upload-artifact@v7
+        with:
+          name: full-platform-vsix-${{ matrix.platform }}
+          path: releases/*
+          if-no-files-found: error
+
+  artifacts:
+    if: inputs.publish
+    needs: build
+    runs-on: ${{ vars.IDLE_BACKGROUND_RUNNER || 'idle-background-linux-x64' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: release-tools
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: full-platform-vsix-*
+          path: releases
+          merge-multiple: true
+      - name: Attach platform extensions to the existing release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          python3 release-tools/scripts/publish-native.py --repository "$GH_REPO" \
+            --tag "$RELEASE_TAG" --directory releases --extension vsix --all-platforms

@@ -23,7 +23,7 @@ jobs:
   package:
     env:
       IDLE_RELEASE_INPUTS: ${{ github.workspace }}/../release-inputs/released-dependencies.json
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.IDLE_BACKGROUND_RUNNER || 'idle-background-linux-x64' }}
     permissions:
       contents: write
     steps:
