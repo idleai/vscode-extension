@@ -5,6 +5,7 @@ import { HistoryHost, RepositoryBinding } from "../history";
 import { FolderConfiguration, HostConfiguration } from "./configuration";
 import { CoordinationHost } from "./coordination";
 import { RepositoryHost } from "./repository";
+import { SessionHost } from "./sessions";
 import { HostCallContext, HostEffects } from "./effects";
 import { HostError, record } from "./protocol";
 
@@ -27,7 +28,7 @@ export class AssemblyHost implements vscode.Disposable {
 
   constructor(private readonly configuration: HostConfiguration, private readonly history: HistoryHost, effects: HostEffects,
     private readonly report: (folder: string, error: unknown) => void, private readonly coordination?: CoordinationHost,
-    private readonly repository?: RepositoryHost) {
+    private readonly repository?: RepositoryHost, private readonly sessions?: SessionHost) {
     this.installed = [
       effects.register("app.workspace", params => this.workspace(params)),
       effects.register("app.history", (params, context) => {
@@ -40,6 +41,13 @@ export class AssemblyHost implements vscode.Disposable {
       const { config, binding } = this.selected(params);
       return repository.read(config, binding, params, context);
     }));
+    if (sessions) this.installed.push(
+      effects.register("app.session", (params, context) => {
+        const { config, binding } = this.selected(params);
+        return sessions.call(config, binding, params, context);
+      }),
+      effects.register("app.sessionState", (params, context) => sessions.state(this.selected(params).binding, params, context)),
+    );
     if (coordination) this.installed.push(
       effects.register("app.coordination", (params, context) => this.coordinate(params, context)),
       effects.register("app.configurationState", (params, context) => this.coordinate(params, context, true)),
@@ -168,6 +176,7 @@ export class AssemblyHost implements vscode.Disposable {
     this.folders.clear();
     this.coordination?.reset();
     this.repository?.reset();
+    this.sessions?.reset();
     for (const binding of this.bindings.splice(0)) binding.dispose();
   }
 

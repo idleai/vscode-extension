@@ -13,6 +13,7 @@ use crate::bridge::BridgeError;
 mod drafts;
 mod navigation;
 mod reconnect;
+mod session_forms;
 #[cfg(test)]
 mod startup_tests;
 
@@ -34,6 +35,8 @@ pub struct Runtime {
     next: u64,
     capabilities: HostCapabilities,
     coordination: crate::coordination::Adapter,
+    sessions: crate::sessions::Adapter,
+    session_forms: session_forms::State,
     drafts: drafts::State,
     reconnect: Option<app_core::workspace::RepositoryChainBinding>,
     navigation: Option<navigation::Target>,
@@ -58,6 +61,8 @@ impl Default for Runtime {
             next: 0,
             capabilities: HostCapabilities::new(HostKind::VsCode),
             coordination: crate::coordination::Adapter::default(),
+            sessions: crate::sessions::Adapter::default(),
+            session_forms: session_forms::State::default(),
             drafts: drafts::State::default(),
             reconnect: None,
             navigation: None,
@@ -77,7 +82,10 @@ impl Runtime {
     /// Latest coordinator clock for freshness labels, without inventing runtime state.
     #[must_use]
     pub const fn now_ms(&self) -> Option<u64> {
-        self.coordination.now_ms
+        match self.sessions.now_ms {
+            Some(now) => Some(now),
+            None => self.coordination.now_ms,
+        }
     }
 
     /// Presentation hints negotiated with the host, denied before its handshake.
@@ -93,6 +101,8 @@ impl Runtime {
         self.core = Core::new();
         self.capabilities = HostCapabilities::new(HostKind::VsCode);
         self.coordination = crate::coordination::Adapter::default();
+        self.sessions = crate::sessions::Adapter::default();
+        self.session_forms = session_forms::State::default();
         self.drafts = drafts::State::default();
         self.navigation = None;
         self.projection_started = None;
@@ -107,6 +117,7 @@ impl Runtime {
         self.invalidate();
         self.capabilities = capabilities(value);
         self.configure_drafts(value);
+        self.configure_session_forms(value);
         self.native_views = value
             .get("capabilities")
             .and_then(Value::as_array)
@@ -127,6 +138,11 @@ impl Runtime {
                     .iter()
                     .any(|method| method.as_str() == Some("app.repository"))
             });
+        self.sessions.enabled = value
+            .get("capabilities")
+            .and_then(Value::as_array)
+            .is_some_and(|methods| methods.iter().any(|method| method == "app.session"));
+        self.coordination.sessions_enabled = self.sessions.enabled;
         let mut calls = self.dispatch(Event::Start)?;
         calls.extend(self.dispatch(Event::Workspace(app_core::workspace::Event::Load))?);
         Ok(calls)
@@ -137,6 +153,29 @@ impl Runtime {
     /// # Errors
     /// Returns a serialization or Crux continuation failure.
     pub fn dispatch(&mut self, event: Event) -> Result<Vec<Call>, String> {
+        let opposite = match &event {
+            Event::Sessions(app_core::sessions::Event::Select(_)) => Some(Event::Repository(
+                app_core::repository::Event::SelectSession(None),
+            )),
+            Event::Repository(app_core::repository::Event::SelectSession(Some(_))) => {
+                Some(Event::Sessions(app_core::sessions::Event::Select(None)))
+            }
+            Event::Start
+            | Event::Bootstrap(_)
+            | Event::History(_)
+            | Event::Workspace(_)
+            | Event::Subscriptions(_)
+            | Event::Sessions(_)
+            | Event::Projections(_)
+            | Event::Resources(_)
+            | Event::Configuration(_)
+            | Event::Repository(_) => None,
+        };
+        let mut effects = opposite.map_or_else(Vec::new, |event| self.core.process_event(event));
+        self.session_forms.submitted(&event);
+        if matches!(&event, Event::Sessions(app_core::sessions::Event::Refresh)) {
+            self.session_forms.retry();
+        }
         if matches!(
             &event,
             Event::Workspace(
@@ -152,7 +191,8 @@ impl Runtime {
         ) {
             self.drafts.retry_load();
         }
-        self.enqueue(self.core.process_event(event))
+        effects.extend(self.core.process_event(event));
+        self.enqueue(effects)
     }
 
     /// Reconcile a local change only when it belongs to the current binding.
@@ -190,6 +230,9 @@ impl Runtime {
         if self.drafts.has_request(id) {
             return self.receive_drafts(id, result);
         }
+        if self.session_forms.has_request(id) {
+            return self.receive_session_forms(id, result);
+        }
         let Some(mut effect) = self.pending.remove(id) else {
             return Ok(Vec::new());
         };
@@ -204,6 +247,13 @@ impl Runtime {
                     error.message.as_str()
                 }),
         );
+        if matches!(&effect, Effect::Session(_))
+            && let Err(error) = &result
+        {
+            let mut session_error = crate::sessions::failure(&error.code);
+            session_error.message.clone_from(&error.message);
+            failure = json!({"Err":session_error});
+        }
         if self.coordination.enabled
             && matches!(&effect, Effect::Subscription(_))
             && result.as_ref().is_err_and(|error| {
@@ -222,10 +272,15 @@ impl Runtime {
         if let Some(local) = local {
             value = local;
         }
-        let value = match self
-            .coordination
-            .decode(&effect, value, id, &self.core.view())
-        {
+        let decoded = if let Effect::Session(request) = &effect {
+            self.sessions
+                .decode(&request.operation, value, &self.core.view())
+                .map(Some)
+        } else {
+            self.coordination
+                .decode(&effect, value, id, &self.core.view())
+        };
+        let value = match decoded {
             Ok(Some(value)) => value,
             Ok(None) => {
                 let mut effects = self.tick();
@@ -289,7 +344,7 @@ impl Runtime {
     }
 
     fn tick(&self) -> Vec<Effect> {
-        let Some(now) = self.coordination.now_ms else {
+        let Some(now) = self.now_ms() else {
             return Vec::new();
         };
         [
@@ -366,6 +421,17 @@ impl Runtime {
                 | Effect::Configuration(_)
                 | Effect::Repository(_) => None,
             };
+            if self.sessions.enabled
+                && let Effect::Session(request) = &effect
+            {
+                let _previous = params
+                    .as_object_mut()
+                    .ok_or("Session request requires an object")?
+                    .insert(
+                        "command".into(),
+                        Value::String(self.sessions.route(&request.operation)?),
+                    );
+            }
             if let Some(initial) = initial {
                 let _previous = params
                     .as_object_mut()
@@ -380,6 +446,7 @@ impl Runtime {
             let _previous = self.pending.insert(id, effect);
         }
         calls.extend(self.collect_drafts());
+        calls.extend(self.collect_session_forms()?);
         Ok(calls)
     }
 }

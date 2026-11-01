@@ -8,6 +8,7 @@ mod connection;
 mod coordination;
 mod destinations;
 pub mod native;
+mod sessions;
 mod trees;
 
 /// Mount the shared component after the WASM module loads.

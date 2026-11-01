@@ -20,32 +20,43 @@ pub fn App() -> Element {
         },
     );
     #[cfg(target_arch = "wasm32")]
-    let (view, capabilities, now_ms) = connection.as_ref().map_or_else(
+    let (view, capabilities, now_ms, session_forms) = connection.as_ref().map_or_else(
         || {
             (
                 app_core::ViewModel::default(),
                 web_ui::host::HostCapabilities::new(web_ui::host::HostKind::VsCode),
                 None,
+                web_ui::sessions::SessionForms::default(),
             )
         },
         |connection| {
             let runtime = connection.runtime.borrow();
-            (runtime.view(), runtime.capabilities(), runtime.now_ms())
+            (
+                runtime.view(),
+                runtime.capabilities(),
+                runtime.now_ms(),
+                runtime.session_forms(),
+            )
         },
     );
     #[cfg(not(target_arch = "wasm32"))]
     let runtime =
         use_hook(|| std::rc::Rc::new(std::cell::RefCell::new(crate::adapters::Runtime::default())));
     #[cfg(not(target_arch = "wasm32"))]
-    let (view, capabilities, now_ms) = (
+    let (view, capabilities, now_ms, session_forms) = (
         runtime.borrow().view(),
         runtime.borrow().capabilities(),
         runtime.borrow().now_ms(),
+        runtime.borrow().session_forms(),
     );
+    #[cfg(target_arch = "wasm32")]
+    let form_connection = connection.clone();
     #[cfg(target_arch = "wasm32")]
     let save_connection = connection.clone();
     #[cfg(target_arch = "wasm32")]
     let link_connection = connection.clone();
+    #[cfg(not(target_arch = "wasm32"))]
+    let form_runtime = runtime.clone();
     #[cfg(not(target_arch = "wasm32"))]
     let save_runtime = runtime.clone();
     let onaction = EventHandler::new(move |event| {
@@ -78,6 +89,21 @@ pub fn App() -> Element {
             revision.set(next);
         }
     });
+    let onsessionform = EventHandler::new(move |edit| {
+        #[cfg(target_arch = "wasm32")]
+        if let Some(connection) = &form_connection {
+            connection.edit_session_form(edit);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if let Err(message) = form_runtime.borrow_mut().edit_session_form(edit) {
+                error.set(Some(message));
+            }
+            let mut revision = revision;
+            let next = revision.peek().wrapping_add(1);
+            revision.set(next);
+        }
+    });
     let onexecute = EventHandler::new(move |_mutation| {
         error.set(Some("No runtime is connected for resource actions.".into()));
     });
@@ -99,7 +125,7 @@ pub fn App() -> Element {
         .then_some(open);
     let destination = crate::destinations::destination(&view, onaction, onsave, onexecute);
     rsx! { WorkspaceSurface {
-        destination, now_ms, view, capabilities, surface: surface(), error: error(), onaction, onopen,
+        destination, now_ms, view, capabilities, session_forms: Some(session_forms), onsessionform, surface: surface(), error: error(), onaction, onopen,
     } }
 }
 

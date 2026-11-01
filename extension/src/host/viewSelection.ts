@@ -29,6 +29,7 @@ export function detailTarget(value: unknown, validate: (binding: unknown) => Rep
     timeline = { occurrence: selected.occurrence, address: parseTimelineTarget(selected.address) };
   }
   return { binding: validate(value.binding), section: value.section,
+    new_session: value.new_session === true,
     session: key(value.session), recorded_session: key(value.recorded_session), host: key(value.host), provider: key(value.provider),
     history: record(value.history) ? { item: key(value.history.item), observation: key(value.history.observation) } : null, timeline };
 }

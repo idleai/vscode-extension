@@ -62,7 +62,7 @@ impl Adapter {
     }
 }
 
-pub(super) fn recovery(snapshot: RepositorySnapshot) -> RecoverySnapshot {
+pub(crate) fn recovery(snapshot: RepositorySnapshot) -> RecoverySnapshot {
     RecoverySnapshot {
         as_of: snapshot.as_of,
         workspace: snapshot.workspace,

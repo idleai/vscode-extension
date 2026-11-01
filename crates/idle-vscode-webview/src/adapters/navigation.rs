@@ -12,6 +12,8 @@ pub(super) struct Target {
     section: workspace::NavigationSection,
     session: Option<String>,
     recorded_session: Option<String>,
+    #[serde(default)]
+    new_session: bool,
     host: Option<String>,
     provider: Option<String>,
     history: Option<history::Selected>,
@@ -73,12 +75,17 @@ impl Runtime {
             return Vec::new();
         }
         let mut events = Vec::new();
+        if std::mem::take(&mut target.new_session) {
+            events.push(Event::Repository(repository::Event::SelectSession(None)));
+            events.push(Event::Sessions(sessions::Event::Select(None)));
+        }
         if view.workspace.section != target.section {
             events.push(Event::Workspace(workspace::Event::Navigate(target.section)));
         }
         if view.repository.snapshot.is_some()
             && let Some(id) = target.recorded_session.take()
         {
+            events.push(Event::Sessions(sessions::Event::Select(None)));
             events.push(Event::Repository(repository::Event::SelectSession(Some(
                 id,
             ))));
@@ -86,6 +93,7 @@ impl Runtime {
         if view.sessions.load == sessions::SessionLoadState::Ready
             && let Some(id) = target.session.take()
         {
+            events.push(Event::Repository(repository::Event::SelectSession(None)));
             events.push(Event::Sessions(sessions::Event::Select(Some(id))));
         }
         if view.resources.load == resources::ResourceLoadState::Ready {
@@ -127,7 +135,10 @@ impl Runtime {
         }
         events
             .into_iter()
-            .flat_map(|event| self.core.process_event(event))
+            .flat_map(|event| {
+                self.session_forms.submitted(&event);
+                self.core.process_event(event)
+            })
             .collect()
     }
 }
