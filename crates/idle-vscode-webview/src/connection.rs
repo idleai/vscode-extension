@@ -111,6 +111,11 @@ impl Connection {
         self.publish(calls);
     }
 
+    pub(crate) fn edit_session_form(self: &Rc<Self>, edit: web_ui::sessions::SessionFormEdit) {
+        let calls = self.runtime.borrow_mut().edit_session_form(edit);
+        self.publish(calls);
+    }
+
     pub(crate) fn open_url(self: &Rc<Self>, url: &str) {
         if !self
             .runtime

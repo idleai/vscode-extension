@@ -11,6 +11,7 @@ import { NativeHost } from "./nativeHost";
 import { CoordinationHost } from "./coordination";
 import { RuntimeHost } from "./runtime";
 import { RunnerSessions } from "./runners";
+import { SessionHost } from "./sessions";
 import { RepositoryHost } from "./repository";
 import { AssemblyHost } from "./assembly";
 import { HostCredentials } from "./credentials";
@@ -35,6 +36,7 @@ export class HostServices implements vscode.Disposable {
   readonly coordination: CoordinationHost;
   readonly runtime: RuntimeHost;
   readonly runners: RunnerSessions;
+  readonly sessions: SessionHost;
   readonly repository: RepositoryHost;
   readonly activity: ActivityDecorations;
   private readonly changed = new vscode.EventEmitter<void>();
@@ -59,11 +61,12 @@ export class HostServices implements vscode.Disposable {
     this.runners = new RunnerSessions(context, new RuntimeHost(context, this.configuration, this.native,
       () => this.coordination.contributor(), 'runner'));
     this.coordination = new CoordinationHost(context, this.configuration, this.native, this.runtime);
+    this.sessions = new SessionHost(context.globalState, this.configuration, this.runners.connection, () => this.coordination.contributor());
     this.repository = new RepositoryHost(context, this.configuration, this.credentials, () => this.coordination.contributor(), this.native);
     this.assembly = new AssemblyHost(this.configuration, this.history, this.effects, (folder, error) => {
       this.diagnostics.failure("Workspace " + folder, error);
       void this.diagnostics.notify("warning", "Idle cannot open " + folder + ": " + publicError(error).message);
-    }, this.coordination, this.repository);
+    }, this.coordination, this.repository, this.sessions);
     this.activity = new ActivityDecorations(this.history, this.capture, this.assembly, this.diagnostics);
     const refreshCaptureAccount = () => { void this.capture.refreshAccount(async () => (await this.credentials.account())?.label); };
     refreshCaptureAccount();
@@ -85,7 +88,7 @@ export class HostServices implements vscode.Disposable {
   cleanupTunnels(): Promise<void> { return this.sharing.cleanup(); }
 
   private registerPlatformEffects(): void {
-    this.effects.register("host.ready", () => ({ capabilities: this.effects.available(), configuration: this.configuration.snapshot(), mutation_prefix: randomUUID() }), false);
+    this.effects.register("host.ready", (_params, call) => ({ capabilities: this.effects.available(), configuration: this.configuration.snapshot(), mutation_prefix: randomUUID(), view_kind: call.viewKind }), false);
     this.effects.register("configuration.read", () => this.configuration.snapshot(), false);
     this.effects.register("output.show", () => this.diagnostics.show(), false);
     this.effects.register("notification.show", async params => {
@@ -121,7 +124,7 @@ export class HostServices implements vscode.Disposable {
     this.effects.dispose();
     try {
       const services = await Promise.allSettled([this.sharing.shutdown(), this.capture.shutdown(),
-        this.collection.shutdown(), this.history.shutdown(), this.coordination.shutdown(), this.repository.shutdown(), this.runtime.shutdown(), this.runners.shutdown()]);
+        this.collection.shutdown(), this.history.shutdown(), this.coordination.shutdown(), this.repository.shutdown(), this.runtime.shutdown(), this.runners.shutdown(), this.sessions.shutdown()]);
       if (services.some(result => result.status === "rejected")) {
         throw new HostError("shutdown_failed", "Some host services did not close successfully.");
       }

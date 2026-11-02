@@ -22,6 +22,7 @@ interface Connection {
 export class RuntimeHost {
   private readonly connections = new Map<string, Connection>();
   private readonly revisions = new Map<string, number>();
+  private readonly denied = new Map<string, HostError>();
   private generation = 0;
   private closed = false;
   private updating: Promise<unknown> = Promise.resolve();
@@ -71,6 +72,7 @@ export class RuntimeHost {
         }
         const previous = this.connections.get(key);
         this.connections.set(key, candidate!);
+        this.denied.delete(key);
         return previous;
       });
       await this.retire(previous);
@@ -85,7 +87,10 @@ export class RuntimeHost {
     if (this.closed || signal?.aborted) throw new HostError('cancelled', 'Compute connection cancelled.');
     const generation = this.generation;
     const key = this.key(binding);
+    const denial = this.denied.get(key);
+    if (denial && this.purpose === 'runner') throw denial;
     let connection = this.connections.get(key);
+    if (denial && connection) return this.observation(connection);
     if (!connection) {
       const invitation = await this.context.secrets.get(key);
       this.assertCurrent(generation);
@@ -113,6 +118,7 @@ export class RuntimeHost {
     const key = this.key(binding);
     const connection = this.connections.get(key);
     this.connections.delete(key);
+    this.denied.delete(key);
     await this.update(async () => {
       await this.context.secrets.delete(key);
       await this.context.globalState.update(`${key}.status`, undefined);
@@ -130,6 +136,8 @@ export class RuntimeHost {
     }
     const observation = await this.snapshot(config, binding, signal);
     this.assertCurrent(generation);
+    const denial = this.denied.get(this.key(binding));
+    if (denial) throw denial;
     if (!observation?.connected || !record(observation.status)) throw new HostError('unavailable', 'Reconnect the compute host that owns workspace coordination.');
     if (!Array.isArray(observation.status.capabilities) || !observation.status.capabilities.includes('workspaceCoordination')) {
       throw new HostError('denied', 'This invitation does not allow workspace coordination. The compute owner must issue one with --coordination-owner.');
@@ -143,6 +151,24 @@ export class RuntimeHost {
 
   async runnerConnection(config: FolderConfiguration, binding: RepositoryBinding): Promise<RunnerConnection> {
     return (await this.currentRunner(config, binding)).runner;
+  }
+
+  async session(config: FolderConfiguration, binding: RepositoryBinding, request: string, signal?: AbortSignal): Promise<unknown> {
+    const connection = await this.currentRunner(config, binding, signal);
+    if (this.native.supports && !await this.native.supports('runtime.shared-sessions')
+      || !record(connection.status) || !Array.isArray(connection.status.capabilities) || !connection.status.capabilities.includes('sharedSessions')) {
+      throw new HostError('incompatible_host', 'Update the editor host tools and compute runtime to use shared sessions.');
+    }
+    const result = await this.runner(config, binding, { kind: 'runner', method: 'idle/session/call',
+      params: { protocolVersion: 1, request } }, signal, connection.runner);
+    if (!record(result) || !record(result.response)) throw new HostError('invalid_data', 'Invalid session response.');
+    if (record(result.response.error)) {
+      const message = result.response.error.message;
+      throw new HostError('session_request_failed', typeof message === 'string' ? message.slice(0, 2000) : 'The compute host could not complete this session request.');
+    }
+    if (!record(result.response.result) || typeof result.response.result.response !== 'string') throw new HostError('invalid_data', 'Invalid session result.');
+    try { return JSON.parse(result.response.result.response); }
+    catch { throw new HostError('invalid_data', 'Invalid session result.'); }
   }
 
   async runner(config: FolderConfiguration, binding: RepositoryBinding, command: RunnerCommand,
@@ -159,6 +185,7 @@ export class RuntimeHost {
       }
       return response.result.Ok;
     } catch (error) {
+      if (error instanceof HostError && error.code === 'denied') this.denied.set(this.key(binding), error);
       await this.discard(connection);
       throw error;
     }
@@ -239,8 +266,12 @@ export class RuntimeHost {
         }
       });
     }
-    catch {
+    catch (error) {
       if (this.purpose === 'runner') await this.discard(connection);
+      if (error instanceof HostError && error.code === 'denied') {
+        this.denied.set(this.key(connection.binding), error);
+        if (this.purpose === 'runner') throw error;
+      }
       connection.observed = Math.max(connection.observed, Date.now());
       connection.revision = this.nextRevision(connection.binding);
       connection.failures++;
@@ -262,7 +293,7 @@ export class RuntimeHost {
   }
 
   private schedule(connection: Connection): void {
-    if (this.closed || connection.closed || connection.timer) return;
+    if (this.closed || connection.closed || connection.timer || this.denied.has(this.key(connection.binding))) return;
     connection.timer = setTimeout(() => {
       connection.timer = undefined;
       void this.snapshot(connection.config, connection.binding).then(() => {
@@ -299,6 +330,7 @@ export class RuntimeHost {
     this.generation++;
     const connections = [...this.connections.values()];
     this.connections.clear();
+    this.denied.clear();
     await Promise.all([...connections.map(connection => this.retire(connection)), this.updating]);
   }
 

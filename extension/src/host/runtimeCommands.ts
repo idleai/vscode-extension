@@ -66,12 +66,15 @@ export function runtimeCommands(host: HostServices, views: WorkspaceViewProvider
     register('idle.runner.start', async () => {
       const context = await selected();
       if (!context) return;
+      await host.runners.ready(context);
       const prompt = await vscode.window.showInputBox({ title: 'Start Runner',
-        prompt: 'Describe the task for the compute host’s configured model', ignoreFocusOut: true });
+        prompt: 'Describe the task for the compute host’s configured model', value: host.runners.draft(context), ignoreFocusOut: true });
       if (!prompt?.trim()) return;
       host.assembly.validateBinding(context.binding);
       host.runners.validatePrompt(prompt);
+      await host.runners.saveDraft(context, prompt);
       await host.runners.start(context, prompt);
+      await host.runners.saveDraft(context, '');
     }),
     ...(['show', 'send', 'interrupt', 'review'] as const).map(action => register(`idle.runner.${action}`, async () => {
       const context = await selected();

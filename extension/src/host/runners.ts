@@ -61,6 +61,19 @@ export class RunnerSessions {
     return runner.id;
   }
 
+  async ready(workspace: RunnerWorkspace): Promise<void> {
+    await this.useConnection(this.state(workspace));
+    await this.connection.session(workspace.config, workspace.binding, '{"kind":"ready"}');
+  }
+
+  draft(workspace: RunnerWorkspace): string {
+    return this.context.globalState.get<string>(`${this.key(workspace)}.draft`) ?? '';
+  }
+
+  async saveDraft(workspace: RunnerWorkspace, text: string): Promise<void> {
+    await this.context.globalState.update(`${this.key(workspace)}.draft`, text || undefined);
+  }
+
   async show(workspace: RunnerWorkspace): Promise<void> {
     const state = this.state(workspace), connection = await this.useConnection(state);
     const runner = await this.select(workspace);
@@ -307,8 +320,13 @@ export class RunnerSessions {
           if (action === 'Review') return this.reviewConnection(state, reviewedConnection);
         }).then(undefined, () => {});
       }
-    } catch {
+    } catch (error) {
       if (this.states.get(bindingKey(state.workspace.binding)) !== state || connection && state.connection !== connection) return;
+      if (error instanceof HostError && error.code === 'denied') {
+        state.threads.clear();
+        this.output.appendLine('Runner access was removed or expired. Connect a new invitation from the compute owner to continue.');
+        return;
+      }
       if (state.failures++ === 0 && this.focus?.state === state) {
         this.output.appendLine('Runner updates are unavailable. Retrying the connection automatically.');
       }

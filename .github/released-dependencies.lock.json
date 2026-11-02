@@ -30,10 +30,10 @@
           "package": "idle-coordination",
           "repository": "idleai/host-tools",
           "sha256": {
-            "linux-x64": "2eac880717476b580a896587bac33a1aea43f00fd3765c954a968790d24ecd91"
+            "linux-x64": "26317738d7d5fd02d765d06e1ff161a57a1e8bf46c175c7bcfb4dc0718e2669d"
           },
-          "tag": "idle-coordination-v0.6.3",
-          "version": ">=0.6.0, <1.0.0"
+          "tag": "idle-coordination-v0.7.0",
+          "version": ">=0.7.0, <1.0.0"
         }
       },
       "schema": 1

@@ -17,6 +17,18 @@ pub(super) fn sessions(view: &ViewModel) -> Tree {
         return tree;
     }
     let control = controller(view);
+    if view.sessions.context.is_some() {
+        let mut target = destination(view, NavigationSection::Sessions);
+        if let Some(super::Action::Detail(value)) = &mut target {
+            value["new_session"] = serde_json::Value::Bool(true);
+        }
+        tree.rows.push(Row::new(
+            key(view, tree.id, "new"),
+            "New session…".into(),
+            "add",
+            target,
+        ));
+    }
     if !view
         .sessions
         .sessions

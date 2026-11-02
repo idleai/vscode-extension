@@ -5,6 +5,8 @@ mod recovery;
 mod runtime;
 mod writes;
 
+pub(crate) use reads::recovery as recovery_snapshot;
+
 use app_core::{
     Effect, Event, ViewModel, configuration, projections, resources, subscriptions, workspace,
 };
@@ -16,6 +18,7 @@ use std::collections::BTreeMap;
 pub(crate) struct Adapter {
     pub(crate) enabled: bool,
     pub(crate) repository_enabled: bool,
+    pub(crate) sessions_enabled: bool,
     context: Option<subscriptions::Context>,
     pub(crate) now_ms: Option<u64>,
     latest_join: Option<String>,
@@ -165,6 +168,18 @@ impl Adapter {
                 Event::Configuration(configuration::Event::Connect(configuration)),
             ]
         };
+        if self.sessions_enabled {
+            let session = app_core::sessions::SessionContext {
+                provider: context.provider.clone(),
+                workspace_id: context.workspace.clone(),
+                contributor_id: context.contributor.clone(),
+                chain: context.chain.clone(),
+                mode: workspace::WorkspaceMode::Standalone,
+            };
+            if view.sessions.context.as_ref() != Some(&session) {
+                events.push(Event::Sessions(app_core::sessions::Event::Connect(session)));
+            }
+        }
         if self.repository_enabled
             && let Some(binding) = &view.workspace.repository_binding
         {
