@@ -174,7 +174,8 @@ jobs:
             ./.github/scripts/run-bazel-ci.sh --remote-download-toplevel -- build \
             --compilation_mode=opt --platforms=//:local_linux -- \
             //codex-rs/cli:codex //codex-rs/app-server:codex-app-server \
-            //codex-rs/code-mode-host:codex-code-mode-host //codex-rs/bwrap:bwrap
+            //codex-rs/code-mode-host:codex-code-mode-host \
+            //codex-rs/exec-server-cli:codex-exec-server //codex-rs/bwrap:bwrap
       - name: Assemble the shipped Codex packages
         run: |
           python3 product-tools/scripts/product_step.py --record product-output/codex-timings.json \

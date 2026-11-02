@@ -1788,9 +1788,9 @@ dependencies = [
 
 [[package]]
 name = "web-ui"
-version = "0.4.0"
+version = "0.4.1"
 source = "sparse+https://raw.githubusercontent.com/idleai/web-ui/cargo-index/"
-checksum = "4d1719cebfa11f493b812553efc5ce4e9e5b32989009e7ba4147c39da7262630"
+checksum = "0d9d45762bcc867e83cfc0a684f645793b36a357b47e2d66bdb0f3c0837c9dc3"
 dependencies = [
  "app-core",
  "dioxus",
