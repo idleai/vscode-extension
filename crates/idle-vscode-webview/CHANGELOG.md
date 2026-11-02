@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4](https://github.com/idleai/vscode-extension/compare/idle-vscode-webview-v0.2.3...idle-vscode-webview-v0.2.4) - 2026-11-02
+
+### Added
+
+- complete live Sessions with shared prompts and durable recovery ([#44](https://github.com/idleai/vscode-extension/pull/44))
+
 ## [0.2.3](https://github.com/idleai/vscode-extension/compare/idle-vscode-webview-v0.2.2...idle-vscode-webview-v0.2.3) - 2026-11-01
 
 ### Other
