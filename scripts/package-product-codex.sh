@@ -12,6 +12,7 @@ for variant in codex codex-app-server; do
     --strip all \
     --entrypoint-bin "bazel-bin/codex-rs/$entry_directory/$variant" \
     --code-mode-host-bin bazel-bin/codex-rs/code-mode-host/codex-code-mode-host \
+    --exec-server-bin bazel-bin/codex-rs/exec-server-cli/codex-exec-server \
     --bwrap-bin bazel-bin/codex-rs/bwrap/bwrap \
     --package-dir "$RUNNER_TEMP/product-$variant-package" \
     --archive-output "product-output/$variant-package-x86_64-unknown-linux-gnu.tar.gz" --force
