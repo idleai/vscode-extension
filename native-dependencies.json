@@ -9,7 +9,7 @@
     "host-tools": {
       "repository": "idleai/host-tools",
       "package": "idle-coordination",
-      "version": ">=0.6.0, <1.0.0"
+      "version": ">=0.7.0, <1.0.0"
     },
     "codex-exporter": {
       "repository": "idleai/codex-evo",
