@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5](https://github.com/idleai/vscode-extension/compare/idle-vscode-webview-v0.2.4...idle-vscode-webview-v0.2.5) - 2026-11-02
+
+### Fixed
+
+- ship session readiness guard and exec-server runtime ([#45](https://github.com/idleai/vscode-extension/pull/45))
+
 ## [0.2.4](https://github.com/idleai/vscode-extension/compare/idle-vscode-webview-v0.2.3...idle-vscode-webview-v0.2.4) - 2026-11-02
 
 ### Added
